@@ -1,0 +1,42 @@
+{
+  "name": "Mindful Space",
+  "short_name": "Mindful",
+  "description": "Desktop-focused mindful productivity workspace.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#18181B",
+  "theme_color": "#18181B",
+  "lang": "en-US",
+  "categories": ["productivity", "utilities"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Workspace",
+      "short_name": "Workspace",
+      "url": "/"
+    },
+    {
+      "name": "New Session",
+      "short_name": "Session",
+      "url": "/?new=1"
+    }
+  ]
+}
