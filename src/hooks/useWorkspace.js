@@ -449,10 +449,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setCardPositions(current => ({ ...current, [cardId]: { x: target.x, y: target.y } }))
   }, [])
 
-  // Action methods generic generators (to save file space)
-  const generatorForUpdateProperty = (setter) => (id, property, value) => {
-    setter(prev => prev.map(item => item.id === id ? { ...item, [property]: value } : item))
-  }
   const generatorForToggleMinimize = (setter) => (id) => {
     setter(prev => prev.map(item => item.id === id ? { ...item, minimized: !item.minimized } : item))
   }
@@ -483,8 +479,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [removeCardPosition, saveSnapshot])
 
   // Todos
-  const updateTodoCardTitle = useCallback(generatorForUpdateProperty(setColumns), [])
-  const updateTodoCardColor = useCallback(generatorForUpdateProperty(setColumns), [])
+  const updateTodoCardTitle = useCallback((id, title) => setColumns(prev => prev.map(c => c.id === id ? { ...c, title } : c)), [])
+  const updateTodoCardColor = useCallback((id, color) => setColumns(prev => prev.map(c => c.id === id ? { ...c, color } : c)), [])
   const toggleTodoCardMinimize = useCallback(generatorForToggleMinimize(setColumns), [])
   const updateItemDetails = useCallback((colId, itemId, details) => {
     setColumns(prev => prev.map(c => c.id === colId ? { ...c, items: c.items.map(i => i.id === itemId ? { ...i, ...details } : i) } : c))
@@ -512,9 +508,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [clearCardDraft, removeCardPosition, saveSnapshot])
 
   // Notes
-  const updateNoteTitle = useCallback(generatorForUpdateProperty(setNotes), [])
-  const updateNoteText = useCallback(generatorForUpdateProperty(setNotes), [])
-  const updateNoteColor = useCallback(generatorForUpdateProperty(setNotes), [])
+  const updateNoteTitle = useCallback((id, title) => setNotes(prev => prev.map(n => n.id === id ? { ...n, title } : n)), [])
+  const updateNoteText = useCallback((id, text) => setNotes(prev => prev.map(n => n.id === id ? { ...n, text } : n)), [])
+  const updateNoteColor = useCallback((id, color) => setNotes(prev => prev.map(n => n.id === id ? { ...n, color } : n)), [])
   const toggleNoteMinimize = useCallback(generatorForToggleMinimize(setNotes), [])
   const duplicateNoteCard = useCallback((id) => {
     setNotes(prev => {
