@@ -124,12 +124,10 @@ export const QuickLinksCard = memo(function QuickLinksCard({
           spellCheck="false"
         />
         <CardContextMenu
-          cardId={quickLinkCard.id}
-          cardType="quick-links"
-          currentColor={quickLinkCard.color}
-          onColorSelect={onUpdateColor}
-          onMove={onMoveCard}
-          isMinimized={quickLinkCard.minimized}
+          showTitleInput={false}
+          minimized={quickLinkCard.minimized}
+          onColorChange={(color) => onUpdateColor(quickLinkCard.id, color)}
+          onMove={(targetId) => onMoveCard(quickLinkCard.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(quickLinkCard.id)}
           onDuplicate={() => onDuplicateCard(quickLinkCard.id)}
           onArchive={() => onArchiveCard(quickLinkCard.id)}

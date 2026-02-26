@@ -27,6 +27,7 @@ import {
   Image,
 } from 'lucide-react'
 import { buildDateKey } from '../utils/dateUtils'
+import { ConfirmModal } from './ConfirmModal'
 
 function ActionRailIcon({ kind }) {
   switch (kind) {
@@ -83,6 +84,8 @@ export function TopBar({
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const [activeAccountTab, setActiveAccountTab] = useState('profile')
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [workspaceToDelete, setWorkspaceToDelete] = useState(null)
+  const [alertMessage, setAlertMessage] = useState(null)
   const menuRef = useRef(null)
   const searchRef = useRef(null)
   const accountRef = useRef(null)
@@ -440,13 +443,10 @@ export function TopBar({
                         className="workspace-action-btn workspace-delete-btn"
                         onClick={() => {
                           if (allWorkspaces.length <= 1) {
-                            alert("You must have at least one workspace.")
+                            setAlertMessage("You must have at least one workspace.")
                             return
                           }
-                          if (window.confirm(`Delete workspace "${ws.name}"?`)) {
-                            onDeleteWorkspace(ws.id)
-                            setIsWorkspaceMenuOpen(false)
-                          }
+                          setWorkspaceToDelete(ws)
                         }}
                         aria-label="delete workspace"
                       >
@@ -589,6 +589,31 @@ export function TopBar({
           <span className="theme-moon" />
         </button>
       </div>
+
+      <ConfirmModal
+        isOpen={!!workspaceToDelete}
+        title="Delete Workspace"
+        message={`Are you sure you want to delete workspace "${workspaceToDelete?.name}"?`}
+        confirmText="Delete"
+        onConfirm={() => {
+          if (workspaceToDelete) {
+            onDeleteWorkspace(workspaceToDelete.id)
+            setIsWorkspaceMenuOpen(false)
+          }
+          setWorkspaceToDelete(null)
+        }}
+        onCancel={() => setWorkspaceToDelete(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!alertMessage}
+        title="Notice"
+        message={alertMessage}
+        confirmText="OK"
+        hideCancel={true}
+        onConfirm={() => setAlertMessage(null)}
+        onCancel={() => setAlertMessage(null)}
+      />
     </header>
   )
 }

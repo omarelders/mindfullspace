@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Pencil, Palette, MoveRight, Minimize2, Maximize2, Copy, Archive, Trash2 } from 'lucide-react'
 import { CARD_MENU_COLORS, CARD_MOVE_TARGETS } from '../utils/constants'
+import { ConfirmModal } from './ConfirmModal'
 
 export function CardContextMenu({
   title,
@@ -16,6 +17,7 @@ export function CardContextMenu({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [openSubmenu, setOpenSubmenu] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -192,9 +194,7 @@ export function CardContextMenu({
             type="button"
             className="card-menu-item delete-item"
             onClick={() => {
-              if (window.confirm('Delete this card permanently?')) {
-                handleAction(onDelete)
-              }
+              setShowDeleteConfirm(true)
             }}
           >
             <span className="card-menu-item-label">
@@ -205,6 +205,19 @@ export function CardContextMenu({
 
 
         </div>
+      )}
+
+      {showDeleteConfirm && (
+        <ConfirmModal
+          isOpen={true}
+          title="Delete Card"
+          message="Are you sure you want to delete this card permanently? This action cannot be undone."
+          onConfirm={() => {
+            setShowDeleteConfirm(false)
+            handleAction(onDelete)
+          }}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       )}
     </div>
   )

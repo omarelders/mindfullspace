@@ -67,8 +67,8 @@ export const THEME_COLORS = {
     labelProgramming: '#EA580C',
     labelEnglish: '#65A30D',
     labelText: '#FFFFFF',
-    railButton: '#F4F4F5',
-    railIcon: '#18181B',
+    railButton: '#3F3F46',
+    railIcon: '#FFFFFF',
     switchTrack: '#9333EA',
     switchKnob: '#FDE047',
     palette: {
@@ -112,8 +112,8 @@ export const THEME_COLORS = {
     labelProgramming: '#FDBA74',
     labelEnglish: '#BEF264',
     labelText: '#000000',
-    railButton: '#F4F4F5',
-    railIcon: '#000000',
+    railButton: '#525A67',
+    railIcon: '#FFFFFF',
     switchTrack: '#D4D4D8',
     switchKnob: '#FDBA74',
     palette: {
