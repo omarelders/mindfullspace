@@ -2,6 +2,7 @@
 import { readJsonStorage, writeJsonStorage } from './utils/storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX, APP_STORAGE_KEY } from './utils/constants'
 import { WorkspaceBoard } from './components/WorkspaceBoard'
+import { InstallPrompt } from './components/InstallPrompt'
 
 const WORKSPACES_LIST_KEY = 'mindfulspace_workspaces'
 const DEFAULT_WORKSPACES = [{ id: 'default', name: 'Main Workspace' }]
@@ -86,6 +87,7 @@ function App() {
           onCreateWorkspace={handleCreateWorkspace}
         />
       ))}
+      <InstallPrompt />
     </>
   )
 }

@@ -3455,3 +3455,114 @@ html:-webkit-full-screen .app-shell {
   background: var(--card-ui-strong);
   color: var(--card-text);
 }
+
+/* PWA Install Prompt */
+.install-prompt-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  width: auto;
+  min-width: 320px;
+  max-width: 400px;
+  padding: 0 20px;
+  animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slide-up {
+  from {
+    transform: translate(-50%, 100%);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+.install-prompt-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(39, 39, 42, 0.85);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 12px 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.install-prompt-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.install-prompt-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: #fff;
+}
+
+.install-prompt-text h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.install-prompt-text p {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 2px 0 0 0;
+}
+
+.install-prompt-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.install-button {
+  background: #fff;
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.install-button:hover {
+  transform: scale(1.05);
+  opacity: 0.9;
+}
+
+.dismiss-button {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  border: none;
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.dismiss-button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
