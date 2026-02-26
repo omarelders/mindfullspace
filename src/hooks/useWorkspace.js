@@ -714,6 +714,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [removeCardPosition, saveSnapshot])
 
   // Quick Links
+  //new stuff
   const updateQuickLinksTitle = useCallback((id, v) => setQuickLinks(p => p.map(t => t.id === id ? { ...t, title: v } : t)), [])
   const updateQuickLinksColor = useCallback((id, v) => setQuickLinks(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
   const toggleQuickLinksMinimize = useCallback(generatorForToggleMinimize(setQuickLinks), [])
