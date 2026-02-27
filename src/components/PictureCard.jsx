@@ -15,12 +15,16 @@ export const PictureCard = memo(function PictureCard({
   onArchiveCard,
   onDeleteCard,
   onUpdateImageId,
+  onUpdateDimensions,
+  scale = 1,
   isPopping,
 }) {
   const [objectUrl, setObjectUrl] = useState(null)
   const [isDragOver, setIsDragOver] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
   const [error, setError] = useState(null)
   const fileInputRef = useRef(null)
+  const resizerRef = useRef(null)
 
   // Load image from IndexedDB on mount or when imageId changes
   useEffect(() => {
@@ -103,6 +107,50 @@ export const PictureCard = memo(function PictureCard({
     fileInputRef.current?.click()
   }, [])
 
+  const handleResizeStart = useCallback((e) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    
+    setIsResizing(true)
+    const startX = e.clientX
+    const startY = e.clientY
+    const startWidth = picture.width || 280
+    const startHeight = picture.height || (resizerRef.current?.closest('.picture-card')?.offsetHeight || 200)
+
+    const handleMouseMove = (moveEvent) => {
+      const dx = (moveEvent.clientX - startX) / scale
+      const dy = (moveEvent.clientY - startY) / scale
+      const newWidth = Math.max(160, startWidth + dx)
+      const newHeight = Math.max(80, startHeight + dy)
+      
+      // Update visually during drag
+      const card = resizerRef.current?.closest('.picture-card')
+      if (card) {
+        card.style.width = `${newWidth}px`
+        card.style.height = `${newHeight}px`
+      }
+    }
+
+    const handleMouseUp = (upEvent) => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      setIsResizing(false)
+      
+      const dx = (upEvent.clientX - startX) / scale
+      const dy = (upEvent.clientY - startY) / scale
+      const finalWidth = Math.max(160, startWidth + dx)
+      const finalHeight = Math.max(80, startHeight + dy)
+      
+      if (onUpdateDimensions) {
+        onUpdateDimensions(finalWidth, finalHeight)
+      }
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }, [picture.width, picture.height, scale, onUpdateDimensions])
+
   return (
     <section
       className={`floating-card picture-card ${picture.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
@@ -110,12 +158,15 @@ export const PictureCard = memo(function PictureCard({
       style={{
         left: position?.x,
         top: position?.y,
+        width: picture.width || undefined,
+        height: picture.height || undefined,
         margin: position ? 0 : undefined,
         backgroundColor: picture.color || undefined,
+        zIndex: isResizing ? 1000 : undefined,
       }}
     >
       <header className="card-header" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
-        <span className="card-title">{picture.title || 'Picture'}</span>
+        <span className="card-title">{picture.title}</span>
         <CardContextMenu
           title={picture.title}
           minimized={Boolean(picture.minimized)}
@@ -163,6 +214,13 @@ export const PictureCard = memo(function PictureCard({
             onChange={handleFileInput}
           />
         </div>
+      )}
+      {!picture.minimized && (
+        <div 
+          ref={resizerRef}
+          className="picture-resizer" 
+          onMouseDown={handleResizeStart}
+        />
       )}
     </section>
   )

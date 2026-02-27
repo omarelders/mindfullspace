@@ -36,9 +36,13 @@ export function ActionRail({ open, onToggle, quickActions, onQuickAction }) {
             key={action.id}
             className="rail-button"
             aria-label={action.title}
-            onClick={() => onQuickAction(action.id)}
+            onClick={() => {
+              onQuickAction(action.id)
+              onToggle() // Close the menu
+            }}
           >
             <ActionRailIcon kind={action.icon} />
+            <span className="rail-button-label">{action.title}</span>
           </button>
         ))}
       </div>

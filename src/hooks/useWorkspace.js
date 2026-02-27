@@ -740,6 +740,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const updatePictureColor = useCallback((id, v) => setPictures(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
   const togglePictureMinimize = useCallback(generatorForToggleMinimize(setPictures), [])
   const updatePictureImageId = useCallback((id, imageId) => setPictures(p => p.map(t => t.id === id ? { ...t, imageId } : t)), [])
+  const updatePictureDimensions = useCallback((id, width, height) => setPictures(p => p.map(t => t.id === id ? { ...t, width, height } : t)), [])
   const duplicatePictureCard = useCallback((id) => {
     setPictures(prev => {
       const source = prev.find(t => t.id === id); if (!source) return prev
@@ -1011,7 +1012,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       updateStopwatchTitle, updateStopwatchColor, updateStopwatchElapsedSeconds, toggleStopwatchMinimize, duplicateStopwatchCard, archiveStopwatchCard, deleteStopwatchCard,
       updateCalendarTitle, updateCalendarColor, toggleCalendarMinimize, changeCalendarMonth, openCalendarDay, closeCalendarDay, updateCalendarEntry, duplicateCalendarCard, archiveCalendarCard, deleteCalendarCard,
       updateHabitTitle, updateHabitIcon, updateHabitColor, toggleHabitMinimize, setHabitView, changeHabitMonth, toggleHabitDate, duplicateHabitCard, archiveHabitCard, deleteHabitCard,
-      updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, duplicatePictureCard, archivePictureCard, deletePictureCard,
+      updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, duplicatePictureCard, archivePictureCard, deletePictureCard,
       updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard
     }
   }

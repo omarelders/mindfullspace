@@ -320,6 +320,8 @@ export function WorkspaceBoard({
                 onArchiveCard={actions.archivePictureCard}
                 onDeleteCard={actions.deletePictureCard}
                 onUpdateImageId={actions.updatePictureImageId}
+                onUpdateDimensions={(width, height) => actions.updatePictureDimensions(picture.id, width, height)}
+                scale={viewport.scale}
                 isPopping={poppingCardIds.has(picture.id)}
               />
             ))}
