@@ -15,7 +15,7 @@ import {
   WORKSPACE_STORAGE_KEY_PREFIX,
 } from '../utils/constants'
 import { parseDateKey, buildDateKey } from '../utils/dateUtils'
-import { deleteImage as deleteImageBlob } from '../utils/imageStore'
+import { saveImage, deleteImage as deleteImageBlob, MAX_IMAGE_SIZE } from '../utils/imageStore'
 import { useUndoRedo } from './useUndoRedo'
 
 function reorderListItems(list, itemId, targetItemId) {
@@ -328,6 +328,56 @@ export function useWorkspace(workspaceId, workspaceRef) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleUndo, handleRedo])
+
+  const handlePasteImage = useCallback(async (blob) => {
+    if (blob.size > MAX_IMAGE_SIZE) {
+      showToast(`Image too large (${(blob.size / 1024 / 1024).toFixed(1)}MB). Max 5MB.`)
+      return
+    }
+    const id = `picture-${Date.now()}`
+    const imageId = `img-paste-${Date.now()}`
+    try {
+      await saveImage(imageId, blob)
+    } catch {
+      showToast('Failed to paste image.')
+      return
+    }
+    setPictures(p => [...p, { id, imageId, title: '', color: null, minimized: false }])
+    setCardPositions(p => ({
+      ...p,
+      [id]: {
+        x: 500 - (viewport.x / viewport.scale),
+        y: 300 - (viewport.y / viewport.scale),
+      },
+    }))
+    showToast('Image pasted!')
+  }, [viewport, showToast])
+
+  // Ctrl+V clipboard paste → Picture Card
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const tag = document.activeElement?.tagName?.toLowerCase()
+      const isEditable =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        document.activeElement?.isContentEditable
+      if (isEditable) return
+
+      const items = e.clipboardData?.items
+      if (!items) return
+
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const blob = item.getAsFile()
+          if (blob) handlePasteImage(blob)
+          break
+        }
+      }
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [handlePasteImage])
 
   const setDraft = useCallback((columnId, value) => setDrafts(prev => ({ ...prev, [columnId]: value })), [])
 
@@ -916,6 +966,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setPictures(p => [...p, { id, imageId: null, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: { x: 500 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
   }, [viewport])
+
   const handleAddQuickLinks = useCallback(() => {
     const id = `quick-links-${Date.now()}`
     setQuickLinks(p => [...p, { id, links: [], title: '', color: null, minimized: false }])

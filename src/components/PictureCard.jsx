@@ -61,9 +61,15 @@ export const PictureCard = memo(function PictureCard({
       return
     }
     try {
-      const imageId = picture.imageId || `img-${picture.id}-${Date.now()}`
-      await saveImage(imageId, file)
-      if (onUpdateImageId) onUpdateImageId(picture.id, imageId)
+      const oldImageId = picture.imageId
+      const newImageId = `img-${picture.id}-${Date.now()}`
+      await saveImage(newImageId, file)
+      if (onUpdateImageId) onUpdateImageId(picture.id, newImageId)
+      
+      // Cleanup old image from storage if it exists
+      if (oldImageId) {
+        deleteImage(oldImageId).catch(err => console.error('Failed to cleanup old image:', err))
+      }
     } catch (err) {
       setError(err.message || 'Failed to save image.')
     }
