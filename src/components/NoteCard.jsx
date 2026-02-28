@@ -13,10 +13,40 @@ export const NoteCard = memo(function NoteCard({
   onArchiveCard,
   onDeleteCard,
   onUpdateText,
+  onUpdateDimensions,
+  scale,
   isPopping,
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(note.text)
+
+  const handleResizeStart = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    const startX = e.clientX
+    const startY = e.clientY
+    const startWidth = note.width || 280
+    const startHeight = note.height || 220
+
+    const handlePointerMove = (moveEvent) => {
+      const deltaX = (moveEvent.clientX - startX) / scale
+      const deltaY = (moveEvent.clientY - startY) / scale
+      
+      const newWidth = Math.max(180, startWidth + deltaX)
+      const newHeight = Math.max(100, startHeight + deltaY)
+      
+      onUpdateDimensions(newWidth, newHeight)
+    }
+
+    const handlePointerUp = () => {
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+    }
+
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp)
+  }
 
   const handleStartEdit = (e) => {
     e.stopPropagation()
@@ -46,6 +76,8 @@ export const NoteCard = memo(function NoteCard({
       style={{
         left: position?.x,
         top: position?.y,
+        width: note.width || undefined,
+        height: note.height || undefined,
         margin: position ? 0 : undefined,
         backgroundColor: note.color || undefined,
       }}
@@ -65,20 +97,27 @@ export const NoteCard = memo(function NoteCard({
         />
       </header>
       {!note.minimized && (
-        isEditing ? (
-          <textarea
-            className="note-text-edit"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleCommitEdit}
-            onKeyDown={handleKeyDown}
-            autoFocus
+        <>
+          {isEditing ? (
+            <textarea
+              className="note-text-edit"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleCommitEdit}
+              onKeyDown={handleKeyDown}
+              autoFocus
+            />
+          ) : (
+            <p className="note-content" onClick={handleStartEdit} style={{ height: 'calc(100% - 36px)' }}>
+              {note.text || 'Click to edit note...'}
+            </p>
+          )}
+          <div 
+            className="note-resizer" 
+            onPointerDown={handleResizeStart}
+            title="Resize note"
           />
-        ) : (
-          <p className="note-content" onClick={handleStartEdit} style={{ height: 'calc(100% - 36px)' }}>
-            {note.text || 'Click to edit note...'}
-          </p>
-        )
+        </>
       )}
     </section>
   )

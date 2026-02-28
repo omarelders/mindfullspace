@@ -68,6 +68,13 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const panRef = useRef({ active: false, lastX: 0, lastY: 0 })
   const toastTimerRef = useRef(null)
 
+  // Long-press context menu state
+  const [longPressMenu, setLongPressMenu] = useState({ visible: false, x: 0, y: 0, canvasX: 0, canvasY: 0 })
+  const [isLongPressHolding, setIsLongPressHolding] = useState(false)
+  const [longPressPos, setLongPressPos] = useState({ x: 0, y: 0 })
+  const longPressTimerRef = useRef(null)
+  const longPressStartRef = useRef({ x: 0, y: 0 })
+
   const { pushSnapshot, undo, redo } = useUndoRedo()
 
   const showToast = useCallback((msg) => {
@@ -562,6 +569,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const updateNoteText = useCallback((id, text) => setNotes(prev => prev.map(n => n.id === id ? { ...n, text } : n)), [])
   const updateNoteColor = useCallback((id, color) => setNotes(prev => prev.map(n => n.id === id ? { ...n, color } : n)), [])
   const toggleNoteMinimize = useCallback(generatorForToggleMinimize(setNotes), [])
+  const updateNoteDimensions = useCallback((id, width, height) => setNotes(prev => prev.map(n => n.id === id ? { ...n, width, height } : n)), [])
   const duplicateNoteCard = useCallback((id) => {
     setNotes(prev => {
       const source = prev.find(n => n.id === id); if (!source) return prev
@@ -924,76 +932,127 @@ export function useWorkspace(workspaceId, workspaceRef) {
     }))
   }, [workspaceRef, cardPositions])
 
-  const handleAddLabel = useCallback(() => {
+  const handleAddLabel = useCallback((pos) => {
     const id = `label-${Date.now()}`; const roles = ['routine', 'programming', 'english']
     setCustomLabels(p => [...p, { id, text: '', role: roles[Math.floor(Math.random() * roles.length)] }])
-    setCardPositions(p => ({ ...p, [id]: { x: 400 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-  const handleAddNote = useCallback(() => {
+  const handleAddNote = useCallback((pos) => {
     const id = `note-${Date.now()}`
     setNotes(p => [...p, { id, text: '', title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: { x: 350 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 350 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-  const handleAddTodoList = useCallback(() => {
+  const handleAddTodoList = useCallback((pos) => {
     const id = `col-${Date.now()}`; const tones = ['charcoal', 'gold', 'violet', 'red', 'blue']
     setColumns(p => [...p, { id, tone: tones[Math.floor(Math.random() * tones.length)], positionClass: '', items: [], title: '', color: null, minimized: false }])
     setDrafts(p => ({ ...p, [id]: '' }))
-    setCardPositions(p => ({ ...p, [id]: { x: 400 - (viewport.x / viewport.scale), y: 200 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 200 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-  const handleAddTimer = useCallback(() => {
+  const handleAddTimer = useCallback((pos) => {
     const id = `timer-${Date.now()}`; setTimers(p => [...p, { id, initialSeconds: 2700, remainingSeconds: 2700, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: { x: 600 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 600 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-  const handleAddCounter = useCallback(() => {
+  const handleAddCounter = useCallback((pos) => {
     const id = `counter-${Date.now()}`; setCounters(p => [...p, { id, initialValue: 0, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: { x: 960 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 960 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-  const handleAddStopwatch = useCallback(() => {
+  const handleAddStopwatch = useCallback((pos) => {
     const id = `stopwatch-${Date.now()}`; setStopwatches(p => [...p, { id, initialSeconds: 0, elapsedSeconds: 0, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: { x: 1240 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 1240 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-  const handleAddCalendar = useCallback(() => {
+  const handleAddCalendar = useCallback((pos) => {
     const id = `calendar-${Date.now()}`; const now = new Date()
     setCalendars(p => [...p, { id, year: now.getFullYear(), month: now.getMonth(), selectedDate: null, entries: {}, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: { x: 1500 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 1500 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-  const handleAddHabit = useCallback(() => {
+  const handleAddHabit = useCallback((pos) => {
     const id = `habit-${Date.now()}`; const now = new Date()
     setHabits(p => [...p, { id, icon: HABIT_ICON_OPTIONS[0].id, year: now.getFullYear(), month: now.getMonth(), view: 'summary', completions: {}, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: { x: 1700 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 1700 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-  const handleAddPicture = useCallback(() => {
+  const handleAddPicture = useCallback((pos) => {
     const id = `picture-${Date.now()}`
     setPictures(p => [...p, { id, imageId: null, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: { x: 500 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 500 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
   }, [viewport])
-
-  const handleAddQuickLinks = useCallback(() => {
+  const handleAddQuickLinks = useCallback((pos) => {
     const id = `quick-links-${Date.now()}`
     setQuickLinks(p => [...p, { id, links: [], title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: { x: 1000 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 1000 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
   }, [viewport])
 
-  const handleQuickAction = useCallback((actionId) => {
-    if (actionId === 'label') handleAddLabel()
-    else if (actionId === 'note') handleAddNote()
-    else if (actionId === 'todo-list') handleAddTodoList()
-    else if (actionId === 'counter') handleAddCounter()
-    else if (actionId === 'timer') handleAddTimer()
-    else if (actionId === 'stopwatch') handleAddStopwatch()
-    else if (actionId === 'calendar') handleAddCalendar()
-    else if (actionId === 'habit') handleAddHabit()
-    else if (actionId === 'picture') handleAddPicture()
-    else if (actionId === 'quick-links') handleAddQuickLinks()
+  const handleQuickAction = useCallback((actionId, event, canvasPos) => {
+    let pos = canvasPos || null
+    if (!pos && event && event.clientX !== undefined) {
+      const bounds = workspaceRef.current?.getBoundingClientRect()
+      if (bounds) {
+        pos = {
+          x: (event.clientX - bounds.left - viewport.x) / viewport.scale,
+          y: (event.clientY - bounds.top - viewport.y) / viewport.scale
+        }
+      }
+    }
+    if (actionId === 'label') handleAddLabel(pos)
+    else if (actionId === 'note') handleAddNote(pos)
+    else if (actionId === 'todo-list') handleAddTodoList(pos)
+    else if (actionId === 'counter') handleAddCounter(pos)
+    else if (actionId === 'timer') handleAddTimer(pos)
+    else if (actionId === 'stopwatch') handleAddStopwatch(pos)
+    else if (actionId === 'calendar') handleAddCalendar(pos)
+    else if (actionId === 'habit') handleAddHabit(pos)
+    else if (actionId === 'picture') handleAddPicture(pos)
+    else if (actionId === 'quick-links') handleAddQuickLinks(pos)
     setIsRailOpen(false)
-  }, [handleAddLabel, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks])
+  }, [viewport, workspaceRef, handleAddLabel, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks])
+
+  // Long-press callbacks
+  const startLongPress = useCallback((event) => {
+    if (event.button !== 1) return
+    // Only trigger on empty canvas (not on cards)
+    if (event.target !== event.currentTarget && !event.target.classList.contains('board-stage') && !event.target.classList.contains('board')) return
+    const x = event.clientX
+    const y = event.clientY
+    longPressStartRef.current = { x, y }
+    setLongPressPos({ x, y })
+    setIsLongPressHolding(true)
+    clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = setTimeout(() => {
+      const bounds = workspaceRef.current?.getBoundingClientRect()
+      if (bounds) {
+        const canvasX = (x - bounds.left - viewport.x) / viewport.scale
+        const canvasY = (y - bounds.top - viewport.y) / viewport.scale
+        setLongPressMenu({ visible: true, x, y, canvasX, canvasY })
+      }
+      setIsLongPressHolding(false)
+    }, 650)
+  }, [viewport, workspaceRef])
+
+  const moveLongPress = useCallback((event) => {
+    if (!isLongPressHolding) return
+    const dx = event.clientX - longPressStartRef.current.x
+    const dy = event.clientY - longPressStartRef.current.y
+    if (Math.sqrt(dx * dx + dy * dy) > 5) {
+      clearTimeout(longPressTimerRef.current)
+      setIsLongPressHolding(false)
+    }
+  }, [isLongPressHolding])
+
+  const cancelLongPress = useCallback(() => {
+    clearTimeout(longPressTimerRef.current)
+    setIsLongPressHolding(false)
+  }, [])
+
+  const closeLongPressMenu = useCallback(() => {
+    setLongPressMenu(prev => ({ ...prev, visible: false }))
+  }, [])
 
 
   return {
     state: {
       columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, theme,
       dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks,
-      archivedCards, detachedLabels, cardPositions, draggingCard, poppingCardIds, toastMessage
+      archivedCards, detachedLabels, cardPositions, draggingCard, poppingCardIds, toastMessage,
+      longPressMenu, isLongPressHolding, longPressPos
     },
     setters: {
       setThemeMode, setIsFocusMode, setIsRailOpen
@@ -1003,10 +1062,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
       handleDragStartItem, handleDragEndItem, handleDragOverItem, handleDropOnItem, handleDropOnList,
       handleCardMouseDown, handleWheel, startPanning, movePanning, endPanning,
       handleQuickAction, focusLabelCard, restoreArchivedCard, moveCardToTarget,
-      handleUndo, handleRedo,
+      handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,
       updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,
       updateLabelText, updateLabelColor, toggleLabelMinimize, duplicateLabelCard, archiveLabelCard, deleteLabelCard,
-      updateNoteTitle, updateNoteText, updateNoteColor, toggleNoteMinimize, duplicateNoteCard, archiveNoteCard, deleteNoteCard,
+      updateNoteTitle, updateNoteText, updateNoteColor, toggleNoteMinimize, updateNoteDimensions, duplicateNoteCard, archiveNoteCard, deleteNoteCard,
       updateTimerTitle, updateTimerColor, toggleTimerMinimize, updateTimerRemainingSeconds, updateTimerInitialSeconds, updatePomodoroConfig, duplicateTimerCard, archiveTimerCard, deleteTimerCard,
       updateCounterTitle, updateCounterValue, updateCounterColor, toggleCounterMinimize, duplicateCounterCard, archiveCounterCard, deleteCounterCard,
       updateStopwatchTitle, updateStopwatchColor, updateStopwatchElapsedSeconds, toggleStopwatchMinimize, duplicateStopwatchCard, archiveStopwatchCard, deleteStopwatchCard,

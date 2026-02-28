@@ -1,5 +1,5 @@
-import { useRef } from 'react'
-import { ActionRail } from './ActionRail'
+import { useRef, useEffect } from 'react'
+import { ActionRail, ActionRailIcon } from './ActionRail'
 import { TodoCard } from './TodoCard'
 import { LabelCard } from './LabelCard'
 import { NoteCard } from './NoteCard'
@@ -33,7 +33,8 @@ export function WorkspaceBoard({
     state: {
       columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, theme,
       dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks,
-      archivedCards, detachedLabels, cardPositions, draggingCard, poppingCardIds, toastMessage
+      archivedCards, detachedLabels, cardPositions, draggingCard, poppingCardIds, toastMessage,
+      longPressMenu, isLongPressHolding, longPressPos
     },
     setters: { setThemeMode, setIsFocusMode, setIsRailOpen },
     actions
@@ -136,10 +137,10 @@ export function WorkspaceBoard({
         ref={workspaceRef}
         onContextMenu={(event) => event.preventDefault()}
         onWheel={actions.handleWheel}
-        onMouseDown={actions.startPanning}
-        onMouseMove={actions.movePanning}
-        onMouseUp={actions.endPanning}
-        onMouseLeave={actions.endPanning}
+        onMouseDown={(e) => { actions.startPanning(e); actions.startLongPress(e) }}
+        onMouseMove={(e) => { actions.movePanning(e); actions.moveLongPress(e) }}
+        onMouseUp={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
+        onMouseLeave={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
       >
         <div className="board-stage" style={boardStageStyle}>
           <main className="board">
@@ -204,6 +205,8 @@ export function WorkspaceBoard({
                 onDuplicateCard={actions.duplicateNoteCard}
                 onArchiveCard={actions.archiveNoteCard}
                 onDeleteCard={actions.deleteNoteCard}
+                onUpdateDimensions={(width, height) => actions.updateNoteDimensions(note.id, width, height)}
+                scale={viewport.scale}
                 isPopping={poppingCardIds.has(note.id)}
               />
             ))}
@@ -360,6 +363,64 @@ export function WorkspaceBoard({
       {toastMessage && (
         <div className="undo-toast" key={toastMessage}>{toastMessage}</div>
       )}
+
+      {isLongPressHolding && (
+        <div
+          className="long-press-ring"
+          style={{ left: longPressPos.x, top: longPressPos.y }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" />
+            <circle className="long-press-ring-fill" cx="12" cy="12" r="10" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="3" />
+          </svg>
+        </div>
+      )}
+
+      {longPressMenu.visible && (
+        <LongPressContextMenu
+          menu={longPressMenu}
+          quickActions={QUICK_CREATE_ACTIONS}
+          onAction={(actionId) => {
+            actions.handleQuickAction(actionId, null, { x: longPressMenu.canvasX, y: longPressMenu.canvasY })
+            actions.closeLongPressMenu()
+          }}
+          onClose={actions.closeLongPressMenu}
+        />
+      )}
     </div>
+  )
+}
+
+function LongPressContextMenu({ menu, quickActions, onAction, onClose }) {
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
+  return (
+    <>
+      <div className="long-press-backdrop" onClick={onClose} />
+      <div
+        ref={menuRef}
+        className="long-press-menu"
+        style={{ left: menu.x, top: menu.y }}
+      >
+        {quickActions.map((action) => (
+          <button
+            key={action.id}
+            className="long-press-menu-item"
+            onClick={() => onAction(action.id)}
+          >
+            <ActionRailIcon kind={action.icon} />
+            <span>{action.title}</span>
+          </button>
+        ))}
+      </div>
+    </>
   )
 }
