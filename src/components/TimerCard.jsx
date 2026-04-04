@@ -49,60 +49,96 @@ export const TimerCard = memo(function TimerCard({
 
   // Keep internal state in sync if external props force an update (e.g. duplicating/loading)
   useEffect(() => {
-    setSecondsLeft(persistedSeconds)
-  }, [persistedSeconds, timer.id])
+    if (!isRunning) {
+      setSecondsLeft(persistedSeconds)
+      baseSecondsRef.current = persistedSeconds
+    }
+  }, [persistedSeconds, timer.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Accurate timing refs (same pattern as StopwatchCard) ──────────────────
+  const startTimeRef = useRef(null)
+  const baseSecondsRef = useRef(persistedSeconds)
+  const hasFinishedRef = useRef(false)
   const justAdvancedRef = useRef(false)
+  const lastPersistedRef = useRef(persistedSeconds)
 
+  // Refs to always hold the latest pomodoro props inside the interval closure
+  const isPomodoroModeRef = useRef(isPomodoroMode)
+  const pomodoroStageRef = useRef(pomodoroStage)
+  const timerTitleRef = useRef(timer.title)
+  const timerIdRef = useRef(timer.id)
+  const onUpdateRemainingSecondsRef = useRef(onUpdateRemainingSeconds)
+
+  useEffect(() => { isPomodoroModeRef.current = isPomodoroMode }, [isPomodoroMode])
+  useEffect(() => { pomodoroStageRef.current = pomodoroStage }, [pomodoroStage])
+  useEffect(() => { timerTitleRef.current = timer.title }, [timer.title])
+  useEffect(() => { timerIdRef.current = timer.id }, [timer.id])
+  useEffect(() => { onUpdateRemainingSecondsRef.current = onUpdateRemainingSeconds }, [onUpdateRemainingSeconds])
+
+  // ── Core timer interval — only restarted when isRunning toggles ──────────
   useEffect(() => {
-    let interval = null
-    if (isRunning && secondsLeft > 0) {
-      interval = window.setInterval(() => {
-        setSecondsLeft((current) => {
-          const next = current - 1
-          if (next <= 0) {
-            playBeep(isPomodoroMode ? POMODORO_STAGES[pomodoroStage]?.freq || 880 : 880, 1.5)
-            fireNotification(
-              timer.title || (isPomodoroMode ? POMODORO_STAGES[pomodoroStage]?.label : 'Timer'),
-              'Time is up!'
-            )
+    if (!isRunning) return undefined
 
-            if (!isPomodoroMode) {
-              setIsRunning(false)
-              if (onUpdateRemainingSeconds) onUpdateRemainingSeconds(timer.id, 0)
-              return 0
-            }
+    // Capture the wall-clock start moment and the seconds we had on resume
+    startTimeRef.current = Date.now()
+    baseSecondsRef.current = secondsLeft // snapshot current value at the moment of start
+    hasFinishedRef.current = false
 
-            // Pomodoro auto-advance logic
-            justAdvancedRef.current = true
-            return 0
-          }
-          if (next % 5 === 0 && onUpdateRemainingSeconds) {
-            onUpdateRemainingSeconds(timer.id, next)
-          }
-          return next
-        })
-      }, 1000)
-    }
+    const intervalId = window.setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000)
+      const next = Math.max(0, baseSecondsRef.current - elapsed)
 
-    return () => {
-      if (interval) window.clearInterval(interval)
-    }
-  }, [isRunning, secondsLeft, isPomodoroMode, pomodoroStage, timer.title, timer.id, onUpdateRemainingSeconds])
+      setSecondsLeft(next)
 
-  // Handle pomodoro stage transition after reaching 0 (preventing race conditions in interval)
+      // Persist every 5 seconds to avoid hammering the parent state
+      if (next !== lastPersistedRef.current && next % 5 === 0 && onUpdateRemainingSecondsRef.current) {
+        lastPersistedRef.current = next
+        onUpdateRemainingSecondsRef.current(timerIdRef.current, next)
+      }
+
+      // Timer has hit zero — fire once
+      if (next <= 0 && !hasFinishedRef.current) {
+        hasFinishedRef.current = true
+
+        const stage = pomodoroStageRef.current
+        const isPomodoro = isPomodoroModeRef.current
+        playBeep(isPomodoro ? POMODORO_STAGES[stage]?.freq || 880 : 880, 1.5)
+        fireNotification(
+          timerTitleRef.current || (isPomodoro ? POMODORO_STAGES[stage]?.label : 'Timer'),
+          'Time is up!'
+        )
+
+        if (!isPomodoro) {
+          setIsRunning(false)
+          if (onUpdateRemainingSecondsRef.current) onUpdateRemainingSecondsRef.current(timerIdRef.current, 0)
+        } else {
+          justAdvancedRef.current = true
+          setIsRunning(false)
+        }
+      }
+    }, 200) // 200ms — smooth display, no per-second drift
+
+    return () => window.clearInterval(intervalId)
+    // ⚠️  secondsLeft intentionally omitted — captured in baseSecondsRef above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning])
+
+  // ── Pomodoro stage transition (runs after interval stops when secondsLeft = 0) ──
   useEffect(() => {
-    if (secondsLeft === 0 && isPomodoroMode && justAdvancedRef.current && onUpdatePomodoroConfig && onUpdateRemainingSeconds && onUpdateInitialSeconds) {
+    if (
+      secondsLeft === 0 &&
+      isPomodoroMode &&
+      justAdvancedRef.current &&
+      onUpdatePomodoroConfig &&
+      onUpdateRemainingSeconds &&
+      onUpdateInitialSeconds
+    ) {
       justAdvancedRef.current = false
       let nextStage = POMODORO_STAGES[pomodoroStage]?.next || 'work'
       let nextRound = pomodoroRound
 
       if (pomodoroStage === 'work') {
-        if (pomodoroRound >= 4) {
-          nextStage = 'long-break'
-        } else {
-          nextStage = 'short-break'
-        }
+        nextStage = pomodoroRound >= 4 ? 'long-break' : 'short-break'
       } else if (pomodoroStage === 'long-break') {
         nextStage = 'work'
         nextRound = 1
@@ -116,13 +152,11 @@ export const TimerCard = memo(function TimerCard({
         nextStage === 'short-break' ? pomodoroShortBreak :
         pomodoroLongBreak
 
-      onUpdatePomodoroConfig(timer.id, {
-        pomodoroStage: nextStage,
-        pomodoroRound: nextRound,
-      })
+      onUpdatePomodoroConfig(timer.id, { pomodoroStage: nextStage, pomodoroRound: nextRound })
       onUpdateInitialSeconds(timer.id, nextDuration)
       onUpdateRemainingSeconds(timer.id, nextDuration)
       setSecondsLeft(nextDuration)
+      baseSecondsRef.current = nextDuration
     }
   }, [
     secondsLeft,
@@ -140,21 +174,20 @@ export const TimerCard = memo(function TimerCard({
 
   const toggleRunning = () => {
     if (secondsLeft <= 0 && !isRunning) return // don't start at 0 unless pomodoro resets
-    setIsRunning(!isRunning)
+    setIsRunning((prev) => !prev)
   }
 
   const resetTimer = () => {
     setIsRunning(false)
     if (isPomodoroMode && onUpdatePomodoroConfig) {
-      onUpdatePomodoroConfig(timer.id, {
-        pomodoroStage: 'work',
-        pomodoroRound: 1,
-      })
+      onUpdatePomodoroConfig(timer.id, { pomodoroStage: 'work', pomodoroRound: 1 })
       setSecondsLeft(pomodoroWork)
+      baseSecondsRef.current = pomodoroWork
       if (onUpdateRemainingSeconds) onUpdateRemainingSeconds(timer.id, pomodoroWork)
       if (onUpdateInitialSeconds) onUpdateInitialSeconds(timer.id, pomodoroWork)
     } else {
       setSecondsLeft(initialSeconds)
+      baseSecondsRef.current = initialSeconds
       if (onUpdateRemainingSeconds) onUpdateRemainingSeconds(timer.id, initialSeconds)
     }
   }
@@ -174,6 +207,7 @@ export const TimerCard = memo(function TimerCard({
     if (parsed === null) { cancelEditing(); return }
     setIsEditing(false)
     setSecondsLeft(parsed)
+    baseSecondsRef.current = parsed
     if (onUpdateInitialSeconds) onUpdateInitialSeconds(timer.id, parsed)
   }
 
