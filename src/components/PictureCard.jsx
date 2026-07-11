@@ -6,7 +6,7 @@ import { getImage, saveImage, deleteImage, MAX_IMAGE_SIZE } from '../utils/image
 export const PictureCard = memo(function PictureCard({
   picture,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateColor,
   onMoveCard,
@@ -165,7 +165,7 @@ export const PictureCard = memo(function PictureCard({
         zIndex: isResizing ? 1000 : undefined,
       }}
     >
-      <header className="card-header" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{picture.title}</span>
         <CardContextMenu
           title={picture.title}
@@ -219,7 +219,7 @@ export const PictureCard = memo(function PictureCard({
         <div 
           ref={resizerRef}
           className="picture-resizer" 
-          onMouseDown={handleResizeStart}
+          onPointerDown={handleResizeStart}
         />
       )}
     </section>

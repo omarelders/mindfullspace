@@ -35,7 +35,7 @@ export function ConfirmModal({
 
   // Hardcode colors so it works globally outside of .app-shell where CSS variables might not be provided
   return createPortal(
-    <div className="confirm-modal-overlay" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="confirm-modal-overlay" onPointerDown={(e) => e.stopPropagation()}>
       <div className="confirm-modal-content">
         <button className="confirm-modal-close" onClick={onCancel} aria-label="close">
           <X size={16} />

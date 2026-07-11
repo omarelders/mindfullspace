@@ -52,12 +52,12 @@ export function CardContextMenu({
   }
 
   return (
-    <div className="card-menu-wrap" ref={menuRef} onMouseDown={(event) => event.stopPropagation()}>
+    <div className="card-menu-wrap" ref={menuRef} onPointerDown={(event) => event.stopPropagation()}>
       <button
         type="button"
         className="card-menu card-menu-trigger"
         aria-label="card menu"
-        onMouseDown={stopMenuDrag}
+        onPointerDown={stopMenuDrag}
         onClick={() => {
           setIsOpen((open) => !open)
           setOpenSubmenu(null)
@@ -67,7 +67,7 @@ export function CardContextMenu({
       </button>
 
       {isOpen && (
-        <div className="card-menu-panel" role="menu" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="card-menu-panel" role="menu" onPointerDown={(event) => event.stopPropagation()}>
           {showTitleInput && (
             <div className="card-menu-title-row">
               <Pencil aria-hidden="true" />
@@ -80,11 +80,7 @@ export function CardContextMenu({
             </div>
           )}
 
-          <div
-            className="submenu-trigger-wrap"
-            onMouseEnter={() => setOpenSubmenu('color')}
-            onMouseLeave={() => setOpenSubmenu(null)}
-          >
+          <div className="submenu-trigger-wrap">
             <button
               type="button"
               className={`card-menu-item ${openSubmenu === 'color' ? 'is-active' : ''}`}
@@ -121,11 +117,7 @@ export function CardContextMenu({
             )}
           </div>
 
-          <div
-            className="submenu-trigger-wrap"
-            onMouseEnter={() => setOpenSubmenu('move')}
-            onMouseLeave={() => setOpenSubmenu(null)}
-          >
+          <div className="submenu-trigger-wrap">
             <button
               type="button"
               className={`card-menu-item ${openSubmenu === 'move' ? 'is-active' : ''}`}

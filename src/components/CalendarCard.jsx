@@ -6,7 +6,7 @@ import { buildDateKey, formatCalendarMonthLabel, formatCalendarEntryLabel } from
 export const CalendarCard = memo(function CalendarCard({
   calendar,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateColor,
   onMoveCard,
@@ -38,7 +38,7 @@ export const CalendarCard = memo(function CalendarCard({
         backgroundColor: calendar.color || undefined,
       }}
     >
-      <header className="card-header" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{calendar.title || 'Calendar'}</span>
         <CardContextMenu
           title={calendar.title || 'Calendar'}

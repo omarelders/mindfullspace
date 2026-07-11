@@ -5,7 +5,7 @@ export const LabelCard = memo(function LabelCard({
   label,
   position,
   labelTextColor,
-  onMouseDown,
+  onPointerDown,
   onUpdateText,
   onUpdateColor,
   onMoveCard,
@@ -27,7 +27,7 @@ export const LabelCard = memo(function LabelCard({
         color: labelTextColor,
       }}
     >
-      <div className="label-drag-handle" onMouseDown={onMouseDown} style={{ flex: 1, cursor: onMouseDown ? 'grab' : 'default', paddingRight: '4px' }}>
+      <div className="label-drag-handle" onPointerDown={onPointerDown} style={{ flex: 1, cursor: onPointerDown ? 'grab' : 'default', paddingRight: '4px' }}>
         {label.text}
       </div>
       <CardContextMenu

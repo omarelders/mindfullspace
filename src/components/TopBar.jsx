@@ -28,33 +28,8 @@ import {
 } from 'lucide-react'
 import { buildDateKey } from '../utils/dateUtils'
 import { ConfirmModal } from './ConfirmModal'
-
-function ActionRailIcon({ kind }) {
-  switch (kind) {
-    case 'label':
-      return <Tag aria-hidden="true" />
-    case 'note':
-      return <FileText aria-hidden="true" />
-    case 'todo-list':
-      return <ListTodo aria-hidden="true" />
-    case 'counter':
-      return <Hash aria-hidden="true" />
-    case 'timer':
-      return <Timer aria-hidden="true" />
-    case 'stopwatch':
-      return <TimerReset aria-hidden="true" />
-    case 'quick-links':
-      return <Link2 aria-hidden="true" />
-    case 'calendar':
-      return <CalendarDays aria-hidden="true" />
-    case 'habit':
-      return <Sparkles aria-hidden="true" />
-    case 'picture':
-      return <Image aria-hidden="true" />
-    default:
-      return null
-  }
-}
+import { ActionRailIcon } from './ActionRail'
+import { exportWorkspace, importWorkspace } from '../utils/backup'
 
 export function TopBar({
   mode,
@@ -86,6 +61,42 @@ export function TopBar({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [workspaceToDelete, setWorkspaceToDelete] = useState(null)
   const [alertMessage, setAlertMessage] = useState(null)
+
+  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const fileInputRef = useRef(null)
+
+  const handleExportClick = () => {
+    exportWorkspace(workspace.id, workspace.name).catch((err) => {
+      setAlertMessage(err.message || 'Export failed.')
+    })
+  }
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setSelectedFile(file)
+      setIsImportConfirmOpen(true)
+    }
+    e.target.value = ''
+  }
+
+  const handleConfirmImport = () => {
+    if (selectedFile) {
+      importWorkspace(workspace.id, selectedFile)
+        .then(() => {
+          window.location.reload()
+        })
+        .catch((err) => {
+          setIsImportConfirmOpen(false)
+          setAlertMessage(err.message || 'Import failed.')
+        })
+    }
+  }
   const menuRef = useRef(null)
   const searchRef = useRef(null)
   const accountRef = useRef(null)
@@ -358,6 +369,18 @@ export function TopBar({
                       </button>
                     </div>
                     <div className="account-setting-row">
+                      <span>Export Workspace</span>
+                      <button type="button" className="account-setting-btn" onClick={handleExportClick}>
+                        Export JSON
+                      </button>
+                    </div>
+                    <div className="account-setting-row">
+                      <span>Import Workspace</span>
+                      <button type="button" className="account-setting-btn" onClick={handleImportClick}>
+                        Import JSON
+                      </button>
+                    </div>
+                    <div className="account-setting-row">
                       <span>Archived cards</span>
                       <strong>{archivedItems.length}</strong>
                     </div>
@@ -613,6 +636,26 @@ export function TopBar({
         hideCancel={true}
         onConfirm={() => setAlertMessage(null)}
         onCancel={() => setAlertMessage(null)}
+      />
+
+      <ConfirmModal
+        isOpen={isImportConfirmOpen}
+        title="Import Workspace"
+        message="Are you sure you want to import this workspace? This will completely overwrite all cards and settings in your current active workspace!"
+        confirmText="Overwrite & Import"
+        onConfirm={handleConfirmImport}
+        onCancel={() => {
+          setIsImportConfirmOpen(false)
+          setSelectedFile(null)
+        }}
+      />
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="application/json"
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
       />
     </header>
   )

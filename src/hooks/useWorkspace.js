@@ -17,6 +17,7 @@ import {
 import { parseDateKey, buildDateKey } from '../utils/dateUtils'
 import { saveImage, deleteImage as deleteImageBlob, MAX_IMAGE_SIZE } from '../utils/imageStore'
 import { useUndoRedo } from './useUndoRedo'
+import { useCardCollection } from './useCardCollection'
 
 function reorderListItems(list, itemId, targetItemId) {
   const currentIndex = list.findIndex((item) => item.id === itemId)
@@ -40,7 +41,6 @@ function normalizeHabitIconId(iconId) {
 
 export function useWorkspace(workspaceId, workspaceRef) {
   const initialWorkspaceState = useMemo(() => getInitialWorkspaceState(workspaceId), [workspaceId])
-  const [columns, setColumns] = useState(() => initialWorkspaceState.columns)
   const [drafts, setDrafts] = useState(() => initialWorkspaceState.drafts)
   const [viewport, setViewport] = useState(() => initialWorkspaceState.viewport)
   const [isPanning, setIsPanning] = useState(false)
@@ -48,16 +48,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const [isFocusMode, setIsFocusMode] = useState(false)
   const [themeMode, setThemeMode] = useState(() => initialWorkspaceState.themeMode)
   const [dragState, setDragState] = useState({ columnId: null, itemId: null })
-  const [notes, setNotes] = useState(() => initialWorkspaceState.notes)
-  const [timers, setTimers] = useState(() => initialWorkspaceState.timers)
-  const [counters, setCounters] = useState(() => initialWorkspaceState.counters)
-  const [stopwatches, setStopwatches] = useState(() => initialWorkspaceState.stopwatches)
-  const [calendars, setCalendars] = useState(() => initialWorkspaceState.calendars)
-  const [habits, setHabits] = useState(() => initialWorkspaceState.habits)
-  const [pictures, setPictures] = useState(() => initialWorkspaceState.pictures || [])
-  const [quickLinks, setQuickLinks] = useState(() => initialWorkspaceState.quickLinks || [])
   const [archivedCards, setArchivedCards] = useState(() => initialWorkspaceState.archivedCards)
-  const [customLabels, setCustomLabels] = useState(() => initialWorkspaceState.customLabels)
   const [cardPositions, setCardPositions] = useState(() => initialWorkspaceState.cardPositions)
   const [draggingCard, setDraggingCard] = useState(null)
   const [poppingCardIds, setPoppingCardIds] = useState(() => new Set())
@@ -82,6 +73,173 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setToastMessage(msg)
     toastTimerRef.current = setTimeout(() => setToastMessage(null), 2000)
   }, [])
+
+  const removeCardPosition = useCallback((cardId) => {
+    setCardPositions((currentPositions) => {
+      if (!(cardId in currentPositions)) return currentPositions
+      const nextPositions = { ...currentPositions }
+      delete nextPositions[cardId]
+      return nextPositions
+    })
+  }, [])
+
+  const clearCardDraft = useCallback((cardId) => {
+    setDrafts((currentDrafts) => {
+      if (!(cardId in currentDrafts)) return currentDrafts
+      const nextDrafts = { ...currentDrafts }
+      delete nextDrafts[cardId]
+      return nextDrafts
+    })
+  }, [])
+
+  const archiveCardSnapshot = useCallback((cardType, cardData) => {
+    const archivedPosition = cardData?.id && cardPositions[cardData.id] ? { ...cardPositions[cardData.id] } : null
+    setArchivedCards(current => [...current, { id: `${cardType}-${Date.now()}`, type: cardType, archivedAt: Date.now(), data: cardData, position: archivedPosition }])
+  }, [cardPositions])
+
+  // Card Collections
+  const labelCol = useCardCollection({
+    initialItems: initialWorkspaceState.customLabels,
+    idPrefix: 'label',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+    onDuplicate: (source, dupData) => ({ ...source, id: dupData.id })
+  })
+
+  const colCol = useCardCollection({
+    initialItems: initialWorkspaceState.columns,
+    idPrefix: 'col',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+    onDuplicate: (source, dupData, dupId) => {
+      setDrafts(d => ({ ...d, [dupId]: d[source.id] || '' }))
+      return {
+        ...dupData,
+        items: source.items.map((i, idx) => ({ ...i, id: `${dupId}-item-${idx}-${Date.now()}` }))
+      }
+    },
+    onDelete: (id) => {
+      clearCardDraft(id)
+      setDragState(d => d.columnId === id ? { columnId: null, itemId: null } : d)
+    }
+  })
+
+  const noteCol = useCardCollection({
+    initialItems: initialWorkspaceState.notes,
+    idPrefix: 'note',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
+  const timerCol = useCardCollection({
+    initialItems: initialWorkspaceState.timers,
+    idPrefix: 'timer',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
+  const counterCol = useCardCollection({
+    initialItems: initialWorkspaceState.counters,
+    idPrefix: 'counter',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
+  const stopwatchCol = useCardCollection({
+    initialItems: initialWorkspaceState.stopwatches,
+    idPrefix: 'stopwatch',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
+  const calendarCol = useCardCollection({
+    initialItems: initialWorkspaceState.calendars,
+    idPrefix: 'calendar',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
+  const habitCol = useCardCollection({
+    initialItems: initialWorkspaceState.habits,
+    idPrefix: 'habit',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
+  const picCol = useCardCollection({
+    initialItems: initialWorkspaceState.pictures || [],
+    idPrefix: 'picture',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
+  const qlCol = useCardCollection({
+    initialItems: initialWorkspaceState.quickLinks || [],
+    idPrefix: 'quick-links',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
+  // Aliases for state variables so existing codebase works without modification
+  const customLabels = labelCol.items
+  const setCustomLabels = labelCol.setItems
+
+  const columns = colCol.items
+  const setColumns = colCol.setItems
+
+  const notes = noteCol.items
+  const setNotes = noteCol.setItems
+
+  const timers = timerCol.items
+  const setTimers = timerCol.setItems
+
+  const counters = counterCol.items
+  const setCounters = counterCol.setItems
+
+  const stopwatches = stopwatchCol.items
+  const setStopwatches = stopwatchCol.setItems
+
+  const calendars = calendarCol.items
+  const setCalendars = calendarCol.setItems
+
+  const habits = habitCol.items
+  const setHabits = habitCol.setItems
+
+  const pictures = picCol.items
+  const setPictures = picCol.setItems
+
+  const quickLinks = qlCol.items
+  const setQuickLinks = qlCol.setItems
 
   // Refs that always hold current state for snapshot capture
   const stateRefsForSnapshot = useRef({})
@@ -129,9 +287,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setCardPositions(snapshot.cardPositions)
   }, [])
 
-  const saveSnapshot = useCallback(() => {
+  function saveSnapshot() {
     pushSnapshot(captureSnapshot())
-  }, [pushSnapshot, captureSnapshot])
+  }
 
   const handleUndo = useCallback(() => {
     const snapshot = undo(captureSnapshot())
@@ -268,7 +426,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
     document.body.style.userSelect = 'none'
     window.getSelection()?.removeAllRanges()
 
-    const handleMouseMove = (e) => {
+    const handlePointerMove = (e) => {
+      if (draggingCard.pointerId !== undefined && e.pointerId !== draggingCard.pointerId) return
       const scale = viewport.scale || 1
       const dx = (e.clientX - draggingCard.startX) / scale
       const dy = (e.clientY - draggingCard.startY) / scale
@@ -277,26 +436,44 @@ export function useWorkspace(workspaceId, workspaceRef) {
         [draggingCard.id]: { x: draggingCard.initialX + dx, y: draggingCard.initialY + dy }
       }))
     }
-    const handleMouseUp = () => setDraggingCard(null)
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
+    const handlePointerUp = (e) => {
+      if (draggingCard.pointerId !== undefined && e.pointerId !== draggingCard.pointerId) return
+      setDraggingCard(null)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
     return () => {
       document.body.style.userSelect = previousUserSelect
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
     }
   }, [draggingCard, viewport.scale])
 
-  const handleCardMouseDown = (cardId, e) => {
-    if (e.button !== 0) return
+  const handleCardPointerDown = (cardId, e) => {
+    if (window.innerWidth <= 1200) return
+    if (e.button !== 0 && e.pointerType === 'mouse') return
     if (!e.target.closest('.card-header') && !e.target.closest('.label-drag-handle') && !e.target.closest('.stopwatch-drag-handle')) return
     if (e.target.closest('.card-menu-wrap')) return
     const cardPosition = cardPositions[cardId]
     if (!cardPosition) return
     e.preventDefault()
     e.stopPropagation()
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // Ignore pointer capture errors if element not attached
+    }
     window.getSelection()?.removeAllRanges()
-    setDraggingCard({ id: cardId, startX: e.clientX, startY: e.clientY, initialX: cardPosition.x, initialY: cardPosition.y })
+    setDraggingCard({
+      id: cardId,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: cardPosition.x,
+      initialY: cardPosition.y
+    })
   }
 
   useEffect(() => {
@@ -305,10 +482,12 @@ export function useWorkspace(workspaceId, workspaceRef) {
       panRef.current.active = false
       setIsPanning(false)
     }
-    window.addEventListener('mouseup', stopPanning)
+    window.addEventListener('pointerup', stopPanning)
+    window.addEventListener('pointercancel', stopPanning)
     window.addEventListener('blur', stopPanning)
     return () => {
-      window.removeEventListener('mouseup', stopPanning)
+      window.removeEventListener('pointerup', stopPanning)
+      window.removeEventListener('pointercancel', stopPanning)
       window.removeEventListener('blur', stopPanning)
     }
   }, [])
@@ -407,29 +586,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setColumns(current => current.map(col => col.id === columnId ? { ...col, items: col.items.filter(i => i.id !== itemId) } : col))
   }, [])
 
-  const removeCardPosition = useCallback((cardId) => {
-    setCardPositions((currentPositions) => {
-      if (!(cardId in currentPositions)) return currentPositions
-      const nextPositions = { ...currentPositions }
-      delete nextPositions[cardId]
-      return nextPositions
-    })
-  }, [])
-
-  const clearCardDraft = useCallback((cardId) => {
-    setDrafts((currentDrafts) => {
-      if (!(cardId in currentDrafts)) return currentDrafts
-      const nextDrafts = { ...currentDrafts }
-      delete nextDrafts[cardId]
-      return nextDrafts
-    })
-  }, [])
-
-  const archiveCardSnapshot = (cardType, cardData) => {
-    const archivedPosition = cardData?.id && cardPositions[cardData.id] ? { ...cardPositions[cardData.id] } : null
-    setArchivedCards(current => [...current, { id: `${cardType}-${Date.now()}`, type: cardType, archivedAt: Date.now(), data: cardData, position: archivedPosition }])
-  }
-
   const getRestorePosition = (cardType, archivedPosition) => {
     if (archivedPosition && Number.isFinite(archivedPosition.x) && Number.isFinite(archivedPosition.y)) return { x: archivedPosition.x + 24, y: archivedPosition.y + 24 }
     const vx = viewport.x / viewport.scale; const vy = viewport.y / viewport.scale
@@ -506,304 +662,171 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setCardPositions(current => ({ ...current, [cardId]: { x: target.x, y: target.y } }))
   }, [])
 
-  const generatorForToggleMinimize = (setter) => (id) => {
-    setter(prev => prev.map(item => item.id === id ? { ...item, minimized: !item.minimized } : item))
-  }
-
-  // Cards generic CRUD methods
   // Labels
-  const updateLabelText = useCallback((id, text) => setCustomLabels(p => p.map(l => l.id === id ? { ...l, text: text.toUpperCase() } : l)), [])
-  const updateLabelColor = useCallback((id, color) => setCustomLabels(p => p.map(l => l.id === id ? { ...l, customColor: color } : l)), [])
-  const toggleLabelMinimize = useCallback(generatorForToggleMinimize(setCustomLabels), [])
-  const duplicateLabelCard = useCallback((id) => {
-    setCustomLabels(prev => {
-      const source = prev.find(l => l.id === id); if (!source) return prev
-      const dupId = `label-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId }]
-    })
-  }, [])
-  const archiveLabelCard = useCallback((id) => {
-    saveSnapshot()
-    setCustomLabels(prev => {
-      const source = prev.find(l => l.id === id); if (source) archiveCardSnapshot('label', source); return prev.filter(l => l.id !== id)
-    })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
-  const deleteLabelCard = useCallback((id) => {
-    saveSnapshot()
-    setCustomLabels(prev => prev.filter(l => l.id !== id)); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+  const updateLabelText = useCallback((id, text) => labelCol.update(id, { text: text.toUpperCase() }), [labelCol])
+  const updateLabelColor = useCallback((id, color) => labelCol.update(id, { customColor: color }), [labelCol])
+  const toggleLabelMinimize = labelCol.toggleMinimize
+  const duplicateLabelCard = labelCol.duplicate
+  const archiveLabelCard = labelCol.archive
+  const deleteLabelCard = labelCol.remove
 
-  // Todos
-  const updateTodoCardTitle = useCallback((id, title) => setColumns(prev => prev.map(c => c.id === id ? { ...c, title } : c)), [])
-  const updateTodoCardColor = useCallback((id, color) => setColumns(prev => prev.map(c => c.id === id ? { ...c, color } : c)), [])
-  const toggleTodoCardMinimize = useCallback(generatorForToggleMinimize(setColumns), [])
+  // Todos (Columns)
+  const updateTodoCardTitle = colCol.updateTitle
+  const updateTodoCardColor = colCol.updateColor
+  const toggleTodoCardMinimize = colCol.toggleMinimize
   const updateItemDetails = useCallback((colId, itemId, details) => {
-    setColumns(prev => prev.map(c => c.id === colId ? { ...c, items: c.items.map(i => i.id === itemId ? { ...i, ...details } : i) } : c))
-  }, [])
+    colCol.update(colId, (c) => ({
+      items: c.items.map(i => i.id === itemId ? { ...i, ...details } : i)
+    }))
+  }, [colCol])
   const updateItemText = useCallback((colId, itemId, text) => {
-    setColumns(prev => prev.map(c => c.id === colId ? { ...c, items: c.items.map(i => i.id === itemId ? { ...i, text } : i) } : c))
-  }, [])
-  const duplicateTodoCard = useCallback((id) => {
-    setColumns(prev => {
-      const source = prev.find(c => c.id === id); if (!source) return prev
-      const dupId = `col-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      setDrafts(d => ({ ...d, [dupId]: d[id] || '' }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false, items: source.items.map((i, idx) => ({ ...i, id: `${dupId}-item-${idx}-${Date.now()}` })) }]
-    })
-  }, [])
-  const archiveTodoCard = useCallback((id) => {
-    saveSnapshot()
-    setColumns(prev => { const src = prev.find(c => c.id === id); if (src) archiveCardSnapshot('todo', src); return prev.filter(c => c.id !== id) });
-    clearCardDraft(id); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c); setDragState(d => d.columnId === id ? { columnId: null, itemId: null } : d)
-  }, [clearCardDraft, removeCardPosition, saveSnapshot])
-  const deleteTodoCard = useCallback((id) => {
-    saveSnapshot()
-    setColumns(prev => prev.filter(c => c.id !== id)); clearCardDraft(id); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c); setDragState(d => d.columnId === id ? { columnId: null, itemId: null } : d)
-  }, [clearCardDraft, removeCardPosition, saveSnapshot])
+    colCol.update(colId, (c) => ({
+      items: c.items.map(i => i.id === itemId ? { ...i, text } : i)
+    }))
+  }, [colCol])
+  const duplicateTodoCard = colCol.duplicate
+  const archiveTodoCard = colCol.archive
+  const deleteTodoCard = colCol.remove
 
   // Notes
-  const updateNoteTitle = useCallback((id, title) => setNotes(prev => prev.map(n => n.id === id ? { ...n, title } : n)), [])
-  const updateNoteText = useCallback((id, text) => setNotes(prev => prev.map(n => n.id === id ? { ...n, text } : n)), [])
-  const updateNoteColor = useCallback((id, color) => setNotes(prev => prev.map(n => n.id === id ? { ...n, color } : n)), [])
-  const toggleNoteMinimize = useCallback(generatorForToggleMinimize(setNotes), [])
-  const updateNoteDimensions = useCallback((id, width, height) => setNotes(prev => prev.map(n => n.id === id ? { ...n, width, height } : n)), [])
-  const duplicateNoteCard = useCallback((id) => {
-    setNotes(prev => {
-      const source = prev.find(n => n.id === id); if (!source) return prev
-      const dupId = `note-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }]
-    })
-  }, [])
-  const archiveNoteCard = useCallback((id) => {
-    saveSnapshot()
-    setNotes(prev => { const src = prev.find(n => n.id === id); if (src) archiveCardSnapshot('note', src); return prev.filter(n => n.id !== id) })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
-  const deleteNoteCard = useCallback((id) => {
-    saveSnapshot()
-    setNotes(prev => prev.filter(n => n.id !== id)); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+  const updateNoteTitle = noteCol.updateTitle
+  const updateNoteColor = noteCol.updateColor
+  const toggleNoteMinimize = noteCol.toggleMinimize
+  const duplicateNoteCard = noteCol.duplicate
+  const archiveNoteCard = noteCol.archive
+  const deleteNoteCard = noteCol.remove
+  const updateNoteText = useCallback((id, text) => noteCol.update(id, { text }), [noteCol])
+  const updateNoteDimensions = useCallback((id, width, height) => noteCol.update(id, { width, height }), [noteCol])
 
   // Timers
-  const updateTimerTitle = useCallback((id, v) => setTimers(p => p.map(t => t.id === id ? { ...t, title: v } : t)), [])
-  const updateTimerColor = useCallback((id, v) => setTimers(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
-  const toggleTimerMinimize = useCallback(generatorForToggleMinimize(setTimers), [])
-  const updateTimerRemainingSeconds = useCallback((id, sec) => setTimers(p => p.map(t => t.id === id ? { ...t, remainingSeconds: Math.max(0, Math.floor(sec || 0)) } : t)), [])
+  const updateTimerTitle = timerCol.updateTitle
+  const updateTimerColor = timerCol.updateColor
+  const toggleTimerMinimize = timerCol.toggleMinimize
+  const duplicateTimerCard = timerCol.duplicate
+  const archiveTimerCard = timerCol.archive
+  const deleteTimerCard = timerCol.remove
+  const updateTimerRemainingSeconds = useCallback((id, sec) => timerCol.update(id, { remainingSeconds: Math.max(0, Math.floor(sec || 0)) }), [timerCol])
   const updateTimerInitialSeconds = useCallback((id, sec) => {
     const s = Math.max(0, Math.floor(sec || 0))
-    setTimers(p => p.map(t => t.id === id ? { ...t, initialSeconds: s, remainingSeconds: s } : t))
-  }, [])
-  const updatePomodoroConfig = useCallback((id, fields) => setTimers(p => p.map(t => t.id === id ? { ...t, ...fields } : t)), [])
-  const duplicateTimerCard = useCallback((id) => {
-    setTimers(prev => {
-      const source = prev.find(t => t.id === id); if (!source) return prev
-      const dupId = `timer-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }]
-    })
-  }, [])
-  const archiveTimerCard = useCallback((id) => {
-    saveSnapshot()
-    setTimers(prev => { const src = prev.find(t => t.id === id); if (src) archiveCardSnapshot('timer', src); return prev.filter(t => t.id !== id) })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
-  const deleteTimerCard = useCallback((id) => {
-    saveSnapshot()
-    setTimers(prev => prev.filter(t => t.id !== id)); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+    timerCol.update(id, { initialSeconds: s, remainingSeconds: s })
+  }, [timerCol])
+  const updatePomodoroConfig = useCallback((id, fields) => timerCol.update(id, fields), [timerCol])
 
   // Counters
-  const updateCounterTitle = useCallback((id, v) => setCounters(p => p.map(t => t.id === id ? { ...t, title: v } : t)), [])
-  const updateCounterValue = useCallback((id, v) => setCounters(p => p.map(t => t.id === id ? { ...t, initialValue: v } : t)), [])
-  const updateCounterColor = useCallback((id, v) => setCounters(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
-  const toggleCounterMinimize = useCallback(generatorForToggleMinimize(setCounters), [])
-  const duplicateCounterCard = useCallback((id) => {
-    setCounters(prev => {
-      const source = prev.find(t => t.id === id); if (!source) return prev
-      const dupId = `counter-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }]
-    })
-  }, [])
-  const archiveCounterCard = useCallback((id) => {
-    saveSnapshot()
-    setCounters(prev => { const src = prev.find(t => t.id === id); if (src) archiveCardSnapshot('counter', src); return prev.filter(t => t.id !== id) })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
-  const deleteCounterCard = useCallback((id) => {
-    saveSnapshot()
-    setCounters(prev => prev.filter(t => t.id !== id)); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+  const updateCounterTitle = counterCol.updateTitle
+  const updateCounterColor = counterCol.updateColor
+  const toggleCounterMinimize = counterCol.toggleMinimize
+  const duplicateCounterCard = counterCol.duplicate
+  const archiveCounterCard = counterCol.archive
+  const deleteCounterCard = counterCol.remove
+  const updateCounterValue = useCallback((id, v) => counterCol.update(id, { initialValue: v }), [counterCol])
 
   // Stopwatches
-  const updateStopwatchTitle = useCallback((id, v) => setStopwatches(p => p.map(t => t.id === id ? { ...t, title: v } : t)), [])
-  const updateStopwatchColor = useCallback((id, v) => setStopwatches(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
-  const toggleStopwatchMinimize = useCallback(generatorForToggleMinimize(setStopwatches), [])
-  const updateStopwatchElapsedSeconds = useCallback((id, sec) => setStopwatches(p => p.map(t => t.id === id ? { ...t, elapsedSeconds: Math.max(0, Math.floor(sec || 0)) } : t)), [])
-  const duplicateStopwatchCard = useCallback((id) => {
-    setStopwatches(prev => {
-      const source = prev.find(t => t.id === id); if (!source) return prev
-      const dupId = `stopwatch-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }]
-    })
-  }, [])
-  const archiveStopwatchCard = useCallback((id) => {
-    saveSnapshot()
-    setStopwatches(prev => { const src = prev.find(t => t.id === id); if (src) archiveCardSnapshot('stopwatch', src); return prev.filter(t => t.id !== id) })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
-  const deleteStopwatchCard = useCallback((id) => {
-    saveSnapshot()
-    setStopwatches(prev => prev.filter(t => t.id !== id)); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+  const updateStopwatchTitle = stopwatchCol.updateTitle
+  const updateStopwatchColor = stopwatchCol.updateColor
+  const toggleStopwatchMinimize = stopwatchCol.toggleMinimize
+  const duplicateStopwatchCard = stopwatchCol.duplicate
+  const archiveStopwatchCard = stopwatchCol.archive
+  const deleteStopwatchCard = stopwatchCol.remove
+  const updateStopwatchElapsedSeconds = useCallback((id, sec) => stopwatchCol.update(id, { elapsedSeconds: Math.max(0, Math.floor(sec || 0)) }), [stopwatchCol])
 
   // Calendars
-  const updateCalendarTitle = useCallback((id, v) => setCalendars(p => p.map(t => t.id === id ? { ...t, title: v } : t)), [])
-  const updateCalendarColor = useCallback((id, v) => setCalendars(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
-  const toggleCalendarMinimize = useCallback(generatorForToggleMinimize(setCalendars), [])
-  const changeCalendarMonth = useCallback((id, delta) => setCalendars(p => p.map(c => {
-    if (c.id !== id) return c
-    const shiftedDate = new Date(c.year, c.month + delta, 1)
-    return { ...c, year: shiftedDate.getFullYear(), month: shiftedDate.getMonth() }
-  })), [])
-  const openCalendarDay = useCallback((id, dateKey) => setCalendars(p => p.map(c => c.id === id ? { ...c, selectedDate: dateKey } : c)), [])
-  const closeCalendarDay = useCallback((id) => setCalendars(p => p.map(c => c.id === id ? { ...c, selectedDate: null } : c)), [])
+  const updateCalendarTitle = calendarCol.updateTitle
+  const updateCalendarColor = calendarCol.updateColor
+  const toggleCalendarMinimize = calendarCol.toggleMinimize
+  const duplicateCalendarCard = calendarCol.duplicate
+  const archiveCalendarCard = calendarCol.archive
+  const deleteCalendarCard = calendarCol.remove
+  const changeCalendarMonth = useCallback((id, delta) => calendarCol.update(id, (c) => {
+    const shifted = new Date(c.year, c.month + delta, 1)
+    return { year: shifted.getFullYear(), month: shifted.getMonth() }
+  }), [calendarCol])
+  const openCalendarDay = useCallback((id, dateKey) => calendarCol.update(id, { selectedDate: dateKey }), [calendarCol])
+  const closeCalendarDay = useCallback((id) => calendarCol.update(id, { selectedDate: null }), [calendarCol])
   const updateCalendarEntry = useCallback((id, dateKey, value) => {
-    setCalendars(prev => prev.map(c => {
-      if (c.id !== id) return c
+    calendarCol.update(id, (c) => {
       const nextEnt = { ...c.entries }
       if (!value.trim()) delete nextEnt[dateKey]
       else nextEnt[dateKey] = value
-      return { ...c, entries: nextEnt }
-    }))
-  }, [])
-  const duplicateCalendarCard = useCallback((id) => {
-    setCalendars(prev => {
-      const source = prev.find(t => t.id === id); if (!source) return prev
-      const dupId = `calendar-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }]
+      return { entries: nextEnt }
     })
-  }, [])
-  const archiveCalendarCard = useCallback((id) => {
-    saveSnapshot()
-    setCalendars(prev => { const src = prev.find(t => t.id === id); if (src) archiveCardSnapshot('calendar', src); return prev.filter(t => t.id !== id) })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
-  const deleteCalendarCard = useCallback((id) => {
-    saveSnapshot()
-    setCalendars(prev => prev.filter(t => t.id !== id)); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+  }, [calendarCol])
 
   // Habits
-  const updateHabitTitle = useCallback((id, v) => setHabits(p => p.map(t => t.id === id ? { ...t, title: v } : t)), [])
-  const updateHabitIcon = useCallback((id, v) => setHabits(p => p.map(t => t.id === id ? { ...t, icon: normalizeHabitIconId(v) } : t)), [])
-  const updateHabitColor = useCallback((id, v) => setHabits(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
-  const toggleHabitMinimize = useCallback(generatorForToggleMinimize(setHabits), [])
-  const setHabitView = useCallback((id, v) => setHabits(p => p.map(t => t.id === id ? { ...t, view: v } : t)), [])
-  const changeHabitMonth = useCallback((id, delta) => setHabits(p => p.map(c => {
-    if (c.id !== id) return c
-    const shiftedDate = new Date(c.year, c.month + delta, 1)
-    return { ...c, year: shiftedDate.getFullYear(), month: shiftedDate.getMonth() }
-  })), [])
+  const updateHabitTitle = habitCol.updateTitle
+  const updateHabitColor = habitCol.updateColor
+  const toggleHabitMinimize = habitCol.toggleMinimize
+  const duplicateHabitCard = habitCol.duplicate
+  const archiveHabitCard = habitCol.archive
+  const deleteHabitCard = habitCol.remove
+  const updateHabitIcon = useCallback((id, v) => habitCol.update(id, { icon: normalizeHabitIconId(v) }), [habitCol])
+  const setHabitView = useCallback((id, v) => habitCol.update(id, { view: v }), [habitCol])
+  const changeHabitMonth = useCallback((id, delta) => habitCol.update(id, (c) => {
+    const shifted = new Date(c.year, c.month + delta, 1)
+    return { year: shifted.getFullYear(), month: shifted.getMonth() }
+  }), [habitCol])
   const toggleHabitDate = useCallback((id, dateKey) => {
-    setHabits(prev => prev.map(h => {
-      if (h.id !== id) return h
+    habitCol.update(id, (h) => {
       const parsedDate = parseDateKey(dateKey)
-      if (!parsedDate) return h
+      if (!parsedDate) return {}
       const targetDayStart = new Date(parsedDate.year, parsedDate.month, parsedDate.day)
-      const t = new Date(); const todayStart = new Date(t.getFullYear(), t.getMonth(), t.getDate())
-      if (targetDayStart > todayStart) return h
+      const t = new Date()
+      const todayStart = new Date(t.getFullYear(), t.getMonth(), t.getDate())
+      if (targetDayStart > todayStart) return {}
       const nextComp = { ...(h.completions || {}) }
       if (nextComp[dateKey]) delete nextComp[dateKey]
       else nextComp[dateKey] = true
-      return { ...h, completions: nextComp }
-    }))
-  }, [])
-  const duplicateHabitCard = useCallback((id) => {
-    setHabits(prev => {
-      const source = prev.find(t => t.id === id); if (!source) return prev
-      const dupId = `habit-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }]
+      return { completions: nextComp }
     })
-  }, [])
-  const archiveHabitCard = useCallback((id) => {
-    saveSnapshot()
-    setHabits(prev => { const src = prev.find(t => t.id === id); if (src) archiveCardSnapshot('habit', src); return prev.filter(t => t.id !== id) })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
-  const deleteHabitCard = useCallback((id) => {
-    saveSnapshot()
-    setHabits(prev => prev.filter(t => t.id !== id)); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+  }, [habitCol])
 
   // Pictures
-  const updatePictureTitle = useCallback((id, v) => setPictures(p => p.map(t => t.id === id ? { ...t, title: v } : t)), [])
-  const updatePictureColor = useCallback((id, v) => setPictures(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
-  const togglePictureMinimize = useCallback(generatorForToggleMinimize(setPictures), [])
-  const updatePictureImageId = useCallback((id, imageId) => setPictures(p => p.map(t => t.id === id ? { ...t, imageId } : t)), [])
-  const updatePictureDimensions = useCallback((id, width, height) => setPictures(p => p.map(t => t.id === id ? { ...t, width, height } : t)), [])
-  const duplicatePictureCard = useCallback((id) => {
-    setPictures(prev => {
-      const source = prev.find(t => t.id === id); if (!source) return prev
-      const dupId = `picture-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }]
-    })
-  }, [])
-  const archivePictureCard = useCallback((id) => {
-    saveSnapshot()
-    setPictures(prev => { const src = prev.find(t => t.id === id); if (src) archiveCardSnapshot('picture', src); return prev.filter(t => t.id !== id) })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+  const updatePictureTitle = picCol.updateTitle
+  const updatePictureColor = picCol.updateColor
+  const togglePictureMinimize = picCol.toggleMinimize
+  const duplicatePictureCard = picCol.duplicate
+  const archivePictureCard = picCol.archive
+  const updatePictureImageId = useCallback((id, imageId) => picCol.update(id, { imageId }), [picCol])
+  const updatePictureDimensions = useCallback((id, width, height) => picCol.update(id, { width, height }), [picCol])
   const deletePictureCard = useCallback((id) => {
-    saveSnapshot()
-    setPictures(prev => {
+    picCol.setItems(prev => {
       const card = prev.find(t => t.id === id)
       if (card?.imageId) deleteImageBlob(card.imageId).catch(() => {})
-      return prev.filter(t => t.id !== id)
+      return prev
     })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+    picCol.remove(id)
+  }, [picCol])
 
   // Quick Links
-  //new stuff
-  const updateQuickLinksTitle = useCallback((id, v) => setQuickLinks(p => p.map(t => t.id === id ? { ...t, title: v } : t)), [])
-  const updateQuickLinksColor = useCallback((id, v) => setQuickLinks(p => p.map(t => t.id === id ? { ...t, color: v } : t)), [])
-  const toggleQuickLinksMinimize = useCallback(generatorForToggleMinimize(setQuickLinks), [])
-  const addQuickLinkItem = useCallback((id, url, label) => setQuickLinks(p => p.map(t => t.id === id ? { ...t, links: [...(t.links || []), { id: `ql-item-${Date.now()}-${Math.floor(Math.random()*1000)}`, url, label }] } : t)), [])
-  const updateQuickLinkItem = useCallback((id, itemId, url, label) => setQuickLinks(p => p.map(t => t.id === id ? { ...t, links: (t.links || []).map(l => l.id === itemId ? { ...l, url, label } : l) } : t)), [])
-  const removeQuickLinkItem = useCallback((id, itemId) => setQuickLinks(p => p.map(t => t.id === id ? { ...t, links: (t.links || []).filter(l => l.id !== itemId) } : t)), [])
-  const reorderQuickLinkItems = useCallback((id, sourceIndex, destIndex) => setQuickLinks(p => p.map(t => {
-    if (t.id !== id) return t
-    const links = [...(t.links || [])]
-    const [removed] = links.splice(sourceIndex, 1)
-    links.splice(destIndex, 0, removed)
-    return { ...t, links }
-  })), [])
-  const duplicateQuickLinksCard = useCallback((id) => {
-    setQuickLinks(prev => {
-      const source = prev.find(t => t.id === id); if (!source) return prev
-      const dupId = `quick-links-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      return [...prev, { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }]
+  const updateQuickLinksTitle = qlCol.updateTitle
+  const updateQuickLinksColor = qlCol.updateColor
+  const toggleQuickLinksMinimize = qlCol.toggleMinimize
+  const duplicateQuickLinksCard = qlCol.duplicate
+  const archiveQuickLinksCard = qlCol.archive
+  const deleteQuickLinksCard = qlCol.remove
+  const addQuickLinkItem = useCallback((id, url, label) => {
+    qlCol.update(id, (t) => ({
+      links: [...(t.links || []), { id: `ql-item-${Date.now()}-${Math.floor(Math.random()*1000)}`, url, label }]
+    }))
+  }, [qlCol])
+  const updateQuickLinkItem = useCallback((id, itemId, url, label) => {
+    qlCol.update(id, (t) => ({
+      links: (t.links || []).map(l => l.id === itemId ? { ...l, url, label } : l)
+    }))
+  }, [qlCol])
+  const removeQuickLinkItem = useCallback((id, itemId) => {
+    qlCol.update(id, (t) => ({
+      links: (t.links || []).filter(l => l.id !== itemId)
+    }))
+  }, [qlCol])
+  const reorderQuickLinkItems = useCallback((id, sourceIndex, destIndex) => {
+    qlCol.update(id, (t) => {
+      const links = [...(t.links || [])]
+      const [removed] = links.splice(sourceIndex, 1)
+      links.splice(destIndex, 0, removed)
+      return { links }
     })
-  }, [])
-  const archiveQuickLinksCard = useCallback((id) => {
-    saveSnapshot()
-    setQuickLinks(prev => { const src = prev.find(t => t.id === id); if (src) archiveCardSnapshot('quick-links', src); return prev.filter(t => t.id !== id) })
-    removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
-  const deleteQuickLinksCard = useCallback((id) => {
-    saveSnapshot()
-    setQuickLinks(prev => prev.filter(t => t.id !== id)); removeCardPosition(id); setDraggingCard(c => c?.id === id ? null : c)
-  }, [removeCardPosition, saveSnapshot])
+  }, [qlCol])
 
   const readDragPayload = (event) => {
     const rawPayload = event.dataTransfer?.getData('text/plain')
@@ -892,6 +915,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [workspaceRef])
 
   const startPanning = useCallback((event) => {
+    if (window.innerWidth <= 1200) return
     if (event.button !== 2 && (event.type === 'mousedown' && event.button !== 1)) return
     event.preventDefault()
     panRef.current = { active: true, lastX: event.clientX, lastY: event.clientY }
@@ -1007,7 +1031,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
   // Long-press callbacks
   const startLongPress = useCallback((event) => {
-    if (event.button !== 1) return
+    if (event.button !== 1 && event.pointerType !== 'touch') return
     // Only trigger on empty canvas (not on cards)
     if (event.target !== event.currentTarget && !event.target.classList.contains('board-stage') && !event.target.classList.contains('board')) return
     const x = event.clientX
@@ -1060,7 +1084,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     actions: {
       setDraft, addItem, updateItemText, updateItemDetails, deleteItem,
       handleDragStartItem, handleDragEndItem, handleDragOverItem, handleDropOnItem, handleDropOnList,
-      handleCardMouseDown, handleWheel, startPanning, movePanning, endPanning,
+      handleCardPointerDown, handleWheel, startPanning, movePanning, endPanning,
       handleQuickAction, focusLabelCard, restoreArchivedCard, moveCardToTarget,
       handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,
       updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,

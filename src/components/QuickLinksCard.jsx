@@ -14,7 +14,7 @@ function getFaviconUrl(url) {
 export const QuickLinksCard = memo(function QuickLinksCard({
   quickLinkCard,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateColor,
   onMoveCard,
@@ -112,7 +112,7 @@ export const QuickLinksCard = memo(function QuickLinksCard({
         transform: `translate(${position?.x || 0}px, ${position?.y || 0}px)`,
         ...customStyle,
       }}
-      onMouseDown={onMouseDown}
+      onPointerDown={onPointerDown}
       data-card-id={quickLinkCard.id}
     >
       <header className="card-header">
@@ -182,7 +182,7 @@ export const QuickLinksCard = memo(function QuickLinksCard({
                     <GripVertical size={14} />
                   </div>
                   
-                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="ql-link-content" onMouseDown={(e) => e.stopPropagation()}>
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="ql-link-content" onPointerDown={(e) => e.stopPropagation()}>
                     {faviconUrl ? (
                       <img src={faviconUrl} alt="" className="ql-favicon" onError={(e) => e.target.style.display = 'none'} />
                     ) : (

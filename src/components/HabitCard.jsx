@@ -42,7 +42,7 @@ function HabitIcon({ iconId }) {
 export const HabitCard = memo(function HabitCard({
   habit,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateIcon,
   onUpdateColor,
@@ -146,7 +146,7 @@ export const HabitCard = memo(function HabitCard({
         backgroundColor: habit.color || undefined,
       }}
     >
-      <header className="card-header" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{habit.title || 'Habit'}</span>
         <CardContextMenu
           title={habit.title || 'Habit'}

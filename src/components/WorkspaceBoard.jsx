@@ -137,10 +137,10 @@ export function WorkspaceBoard({
         ref={workspaceRef}
         onContextMenu={(event) => event.preventDefault()}
         onWheel={actions.handleWheel}
-        onMouseDown={(e) => { actions.startPanning(e); actions.startLongPress(e) }}
-        onMouseMove={(e) => { actions.movePanning(e); actions.moveLongPress(e) }}
-        onMouseUp={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
-        onMouseLeave={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
+        onPointerDown={(e) => { actions.startPanning(e); actions.startLongPress(e) }}
+        onPointerMove={(e) => { actions.movePanning(e); actions.moveLongPress(e) }}
+        onPointerUp={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
+        onPointerLeave={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
       >
         <div className="board-stage" style={boardStageStyle}>
           <main className="board">
@@ -161,7 +161,7 @@ export function WorkspaceBoard({
                 onDragEndItem={actions.handleDragEndItem}
                 draggingItemId={dragState.columnId === column.id ? dragState.itemId : null}
                 position={cardPositions[column.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(column.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(column.id, e)}
                 onUpdateTitle={actions.updateTodoCardTitle}
                 onUpdateColor={actions.updateTodoCardColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -179,7 +179,7 @@ export function WorkspaceBoard({
                 label={label}
                 labelTextColor={theme.labelText}
                 position={cardPositions[label.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(label.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(label.id, e)}
                 onUpdateText={actions.updateLabelText}
                 onUpdateColor={actions.updateLabelColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -196,7 +196,7 @@ export function WorkspaceBoard({
                 key={note.id}
                 note={note}
                 position={cardPositions[note.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(note.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(note.id, e)}
                 onUpdateTitle={actions.updateNoteTitle}
                 onUpdateText={actions.updateNoteText}
                 onUpdateColor={actions.updateNoteColor}
@@ -216,7 +216,7 @@ export function WorkspaceBoard({
                 key={timer.id}
                 timer={timer}
                 position={cardPositions[timer.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(timer.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(timer.id, e)}
                 onUpdateTitle={actions.updateTimerTitle}
                 onUpdateColor={actions.updateTimerColor}
                 onUpdateRemainingSeconds={actions.updateTimerRemainingSeconds}
@@ -236,7 +236,7 @@ export function WorkspaceBoard({
                 key={counter.id}
                 counter={counter}
                 position={cardPositions[counter.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(counter.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(counter.id, e)}
                 onUpdateTitle={actions.updateCounterTitle}
                 onUpdateValue={actions.updateCounterValue}
                 onUpdateColor={actions.updateCounterColor}
@@ -254,7 +254,7 @@ export function WorkspaceBoard({
                 key={stopwatch.id}
                 stopwatch={stopwatch}
                 position={cardPositions[stopwatch.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(stopwatch.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(stopwatch.id, e)}
                 onUpdateTitle={actions.updateStopwatchTitle}
                 onUpdateColor={actions.updateStopwatchColor}
                 onUpdateElapsedSeconds={actions.updateStopwatchElapsedSeconds}
@@ -272,7 +272,7 @@ export function WorkspaceBoard({
                 key={calendar.id}
                 calendar={calendar}
                 position={cardPositions[calendar.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(calendar.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(calendar.id, e)}
                 onUpdateTitle={actions.updateCalendarTitle}
                 onUpdateColor={actions.updateCalendarColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -293,7 +293,7 @@ export function WorkspaceBoard({
                 key={habit.id}
                 habit={habit}
                 position={cardPositions[habit.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(habit.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(habit.id, e)}
                 onUpdateTitle={actions.updateHabitTitle}
                 onUpdateIcon={actions.updateHabitIcon}
                 onUpdateColor={actions.updateHabitColor}
@@ -314,7 +314,7 @@ export function WorkspaceBoard({
                 key={picture.id}
                 picture={picture}
                 position={cardPositions[picture.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(picture.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(picture.id, e)}
                 onUpdateTitle={actions.updatePictureTitle}
                 onUpdateColor={actions.updatePictureColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -334,7 +334,7 @@ export function WorkspaceBoard({
                 key={qlCard.id}
                 quickLinkCard={qlCard}
                 position={cardPositions[qlCard.id]}
-                onMouseDown={(e) => actions.handleCardMouseDown(qlCard.id, e)}
+                onPointerDown={(e) => actions.handleCardPointerDown(qlCard.id, e)}
                 onUpdateTitle={actions.updateQuickLinksTitle}
                 onUpdateColor={actions.updateQuickLinksColor}
                 onMoveCard={actions.moveCardToTarget}

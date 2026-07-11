@@ -17,7 +17,7 @@ export const TodoCard = memo(function TodoCard({
   onDragEndItem,
   draggingItemId,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateColor,
   onMoveCard,
@@ -87,7 +87,7 @@ export const TodoCard = memo(function TodoCard({
         backgroundColor: column.color || undefined,
       }}
     >
-      <header className="card-header" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{column.title}</span>
         <CardContextMenu
           title={column.title}

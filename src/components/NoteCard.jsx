@@ -4,7 +4,7 @@ import { CardContextMenu } from './CardContextMenu'
 export const NoteCard = memo(function NoteCard({
   note,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateColor,
   onMoveCard,
@@ -82,7 +82,7 @@ export const NoteCard = memo(function NoteCard({
         backgroundColor: note.color || undefined,
       }}
     >
-      <header className="card-header" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{note.title}</span>
         <CardContextMenu
           title={note.title}

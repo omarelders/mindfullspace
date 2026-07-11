@@ -5,7 +5,7 @@ import { CardContextMenu } from './CardContextMenu'
 export const CounterCard = memo(function CounterCard({
   counter,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateValue,
   onUpdateColor,
@@ -50,7 +50,7 @@ export const CounterCard = memo(function CounterCard({
         backgroundColor: counter.color || undefined,
       }}
     >
-      <header className="card-header counter-header" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <header className="card-header counter-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         {counter.title ? <span className="card-title">{counter.title}</span> : null}
         <CardContextMenu
           title={counter.title}

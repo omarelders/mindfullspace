@@ -6,7 +6,7 @@ import { formatSecondsToTimer } from '../utils/dateUtils'
 export const StopwatchCard = memo(function StopwatchCard({
   stopwatch,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateColor,
   onUpdateElapsedSeconds,
@@ -82,7 +82,7 @@ export const StopwatchCard = memo(function StopwatchCard({
         backgroundColor: stopwatch.color || '#86ECA0',
       }}
     >
-      <div className="stopwatch-drag-handle" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <div className="stopwatch-drag-handle" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <CardContextMenu
           title={stopwatch.title || 'Stopwatch'}
           minimized={Boolean(stopwatch.minimized)}

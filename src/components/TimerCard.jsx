@@ -13,7 +13,7 @@ const POMODORO_STAGES = {
 export const TimerCard = memo(function TimerCard({
   timer,
   position,
-  onMouseDown,
+  onPointerDown,
   onUpdateTitle,
   onUpdateColor,
   onUpdateRemainingSeconds,
@@ -253,13 +253,13 @@ export const TimerCard = memo(function TimerCard({
         backgroundColor: timer.color || undefined,
       }}
     >
-      <header className="card-header" onMouseDown={onMouseDown} style={{ cursor: onMouseDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{timer.title}</span>
         <button
           type="button"
           className={`pomodoro-toggle-btn ${isPomodoroMode ? 'is-active' : ''}`}
           onClick={(e) => { e.stopPropagation(); togglePomodoroMode() }}
-          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           aria-label={isPomodoroMode ? 'Disable Pomodoro mode' : 'Enable Pomodoro mode'}
           title={isPomodoroMode ? 'Disable Pomodoro' : 'Enable Pomodoro'}
         >
