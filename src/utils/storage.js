@@ -100,9 +100,7 @@ export function getInitialAppState() {
   return { workspaces, activeWorkspaceId }
 }
 
-export function getInitialWorkspaceState(workspaceId) {
-  const stored = readJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`)
-
+export function validateWorkspaceState(stored) {
   return {
     columns: Array.isArray(stored?.columns) ? stored.columns : createDefaultColumns(),
     drafts:
@@ -132,4 +130,9 @@ export function getInitialWorkspaceState(workspaceId) {
         ? { ...createDefaultCardPositions(), ...stored.cardPositions }
         : createDefaultCardPositions(),
   }
+}
+
+export function getInitialWorkspaceState(workspaceId) {
+  const stored = readJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`)
+  return validateWorkspaceState(stored)
 }

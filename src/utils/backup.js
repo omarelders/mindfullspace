@@ -1,5 +1,5 @@
 import { getImage, saveImage } from './imageStore'
-import { readJsonStorage, writeJsonStorage } from './storage'
+import { readJsonStorage, writeJsonStorage, validateWorkspaceState } from './storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX } from './constants'
 
 function blobToBase64(blob) {
@@ -94,32 +94,7 @@ export async function importWorkspace(workspaceId, file) {
         const rawWorkspace = data.workspace
         
         // Basic shape validation (similar to getInitialWorkspaceState guards)
-        const sanitizedWorkspace = {
-          columns: Array.isArray(rawWorkspace.columns) ? rawWorkspace.columns : [],
-          drafts: rawWorkspace.drafts && typeof rawWorkspace.drafts === 'object' ? rawWorkspace.drafts : {},
-          viewport:
-            rawWorkspace.viewport &&
-            Number.isFinite(rawWorkspace.viewport.x) &&
-            Number.isFinite(rawWorkspace.viewport.y) &&
-            Number.isFinite(rawWorkspace.viewport.scale)
-              ? rawWorkspace.viewport
-              : { x: 0, y: 0, scale: 1 },
-          themeMode: rawWorkspace.themeMode === 'day' ? 'day' : 'night',
-          notes: Array.isArray(rawWorkspace.notes) ? rawWorkspace.notes : [],
-          timers: Array.isArray(rawWorkspace.timers) ? rawWorkspace.timers : [],
-          counters: Array.isArray(rawWorkspace.counters) ? rawWorkspace.counters : [],
-          stopwatches: Array.isArray(rawWorkspace.stopwatches) ? rawWorkspace.stopwatches : [],
-          calendars: Array.isArray(rawWorkspace.calendars) ? rawWorkspace.calendars : [],
-          habits: Array.isArray(rawWorkspace.habits) ? rawWorkspace.habits : [],
-          pictures: Array.isArray(rawWorkspace.pictures) ? rawWorkspace.pictures : [],
-          quickLinks: Array.isArray(rawWorkspace.quickLinks) ? rawWorkspace.quickLinks : [],
-          archivedCards: Array.isArray(rawWorkspace.archivedCards) ? rawWorkspace.archivedCards : [],
-          customLabels: Array.isArray(rawWorkspace.customLabels) ? rawWorkspace.customLabels : [],
-          cardPositions:
-            rawWorkspace.cardPositions && typeof rawWorkspace.cardPositions === 'object'
-              ? rawWorkspace.cardPositions
-              : {},
-        }
+        const sanitizedWorkspace = validateWorkspaceState(rawWorkspace)
 
         // Restore images into IndexedDB
         if (data.images && typeof data.images === 'object') {

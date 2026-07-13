@@ -1162,7 +1162,8 @@ html:-webkit-full-screen .app-shell {
 
 .todo-card {
   width: 280px;
-  height: 359px;
+  min-height: 359px;
+  height: fit-content;
   display: flex;
   flex-direction: column;
   padding: 0 8px 8px;
@@ -1170,7 +1171,9 @@ html:-webkit-full-screen .app-shell {
 
 .todo-card.is-minimized {
   height: 44px;
+  min-height: 44px;
   padding-bottom: 4px;
+  overflow: hidden;
 }
 
 .tone-charcoal {
@@ -1963,6 +1966,15 @@ html:-webkit-full-screen .app-shell {
   gap: 10px;
 }
 
+/* Clip container hides the sliding digit outside its bounds */
+.counter-value-clip {
+  overflow: hidden;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .counter-large-value {
   text-align: center;
   font-size: 62px;
@@ -1970,6 +1982,39 @@ html:-webkit-full-screen .app-shell {
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: #121216;
+  will-change: transform, opacity;
+}
+
+/* Slide in from below (increment ↑) */
+.counter-slide-up {
+  animation: counter-slide-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Slide in from above (decrement ↓) */
+.counter-slide-down {
+  animation: counter-slide-down 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes counter-slide-up {
+  from {
+    transform: translateY(60%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes counter-slide-down {
+  from {
+    transform: translateY(-60%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .counter-chevron-btn {
@@ -1984,6 +2029,7 @@ html:-webkit-full-screen .app-shell {
   align-items: center;
   justify-content: center;
   padding: 0;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
 .counter-chevron-btn svg {
@@ -1993,7 +2039,28 @@ html:-webkit-full-screen .app-shell {
 }
 
 .counter-chevron-btn:hover {
-  background: rgba(0, 0, 0, 0.16);
+  background: rgba(0, 0, 0, 0.22);
+  transform: scale(1.12);
+}
+
+.counter-chevron-btn:active {
+  transform: scale(0.9);
+}
+
+/* Pulse burst on increment button */
+.counter-btn-pulse-up {
+  animation: counter-btn-pop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Pulse burst on decrement button */
+.counter-btn-pulse-down {
+  animation: counter-btn-pop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes counter-btn-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.35); background: rgba(0, 0, 0, 0.22); }
+  100% { transform: scale(1); }
 }
 
 .card-stopwatch {
@@ -2682,25 +2749,16 @@ html:-webkit-full-screen .app-shell {
   z-index: 60;
 }
 
+/* ── Rail Items Container ── */
 .rail-items {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(8px);
   pointer-events: none;
-  transition: max-height 0.2s ease, opacity 0.15s ease, transform 0.2s ease;
+  margin-bottom: 0;
 }
 
-.rail-items.open {
-  max-height: 560px;
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-  margin-bottom: 8px;
-}
-
+/* ── Individual Rail Button ── */
 .rail-button {
   width: 44px;
   height: 44px;
@@ -2714,12 +2772,61 @@ html:-webkit-full-screen .app-shell {
   cursor: pointer;
   box-shadow: 0 5px 14px rgba(0, 0, 0, 0.25);
   position: relative;
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+
+  /* Hidden by default — animated in when open */
+  opacity: 0;
+  transform: translateY(18px) scale(0.6);
+  pointer-events: none;
 }
 
+/* Each button staggered by its index (set via --item-index inline style) */
+.rail-items.open .rail-button {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  animation: rail-item-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: calc(var(--item-index, 0) * 45ms);
+}
+
+/* Closing: reverse stagger (top items leave first) */
+.rail-items:not(.open) .rail-button {
+  animation: rail-item-out 0.25s cubic-bezier(0.55, 0, 1, 0.45) both;
+  animation-delay: calc((9 - var(--item-index, 0)) * 25ms);
+}
+
+@keyframes rail-item-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) scale(0.45);
+    filter: blur(4px);
+  }
+  60% {
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0px);
+  }
+}
+
+@keyframes rail-item-out {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.55);
+  }
+}
+
+/* Hover + tooltip caret */
 .rail-button:hover {
-  transform: scale(1.05);
+  transform: scale(1.1) translateY(-1px);
   background: #1c1d24;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38);
 }
 
 .rail-button svg {
@@ -2728,6 +2835,7 @@ html:-webkit-full-screen .app-shell {
   flex-shrink: 0;
 }
 
+/* ── Tooltip (label) ── */
 .rail-button::before {
   content: '';
   position: absolute;
@@ -2773,24 +2881,85 @@ html:-webkit-full-screen .app-shell {
 }
 
 .rail-button[aria-label="Stopwatch"]::after {
-  color: #ffffff; 
+  color: #ffffff;
 }
 
+/* ── Per-item chromatic glow accents ── */
+.rail-items.open .rail-button:nth-child(1)  { box-shadow: 0 4px 16px rgba(220, 38, 38,  0.35); }
+.rail-items.open .rail-button:nth-child(2)  { box-shadow: 0 4px 16px rgba(249, 115, 22, 0.35); }
+.rail-items.open .rail-button:nth-child(3)  { box-shadow: 0 4px 16px rgba(234, 179, 8,  0.35); }
+.rail-items.open .rail-button:nth-child(4)  { box-shadow: 0 4px 16px rgba(34, 197, 94,  0.35); }
+.rail-items.open .rail-button:nth-child(5)  { box-shadow: 0 4px 16px rgba(6, 182, 212,  0.35); }
+.rail-items.open .rail-button:nth-child(6)  { box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35); }
+.rail-items.open .rail-button:nth-child(7)  { box-shadow: 0 4px 16px rgba(168, 85, 247,  0.35); }
+.rail-items.open .rail-button:nth-child(8)  { box-shadow: 0 4px 16px rgba(236, 72, 153, 0.35); }
+.rail-items.open .rail-button:nth-child(9)  { box-shadow: 0 4px 16px rgba(20, 184, 166,  0.35); }
+.rail-items.open .rail-button:nth-child(10) { box-shadow: 0 4px 16px rgba(139, 92, 246,  0.35); }
+
+/* Keep margin only when items are visible */
+.rail-items.open {
+  pointer-events: auto;
+  margin-bottom: 8px;
+}
+
+/* ── Counter Glyph ── */
 .counter-glyph {
   font-size: 17px;
   font-weight: 800;
   line-height: 1;
 }
 
+/* ── Add / Toggle Button ── */
 .rail-add {
   width: 48px;
   height: 48px;
   margin-top: 0;
+  /* Override the item animation — add button always visible */
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: auto !important;
+  animation: none !important;
+  transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.2s ease,
+              box-shadow 0.2s ease !important;
 }
 
 .rail-add svg {
   width: 23px;
   height: 23px;
+  transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Plus → × rotation when open */
+.rail-add.is-open svg {
+  transform: rotate(135deg);
+}
+
+/* Glow pulse on open add button */
+.rail-add.is-open {
+  box-shadow:
+    0 0 0 0 rgba(255, 255, 255, 0.22),
+    0 5px 18px rgba(0, 0, 0, 0.3);
+  animation: rail-add-glow 1.6s ease-in-out infinite !important;
+}
+
+@keyframes rail-add-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0px rgba(255, 255, 255, 0.22),
+      0 5px 18px rgba(0, 0, 0, 0.3);
+  }
+  50% {
+    box-shadow:
+      0 0 0 7px rgba(255, 255, 255, 0.0),
+      0 5px 18px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Hide tooltip and broken ripple for the + button to avoid confusion */
+.rail-add::before,
+.rail-add::after {
+  display: none !important;
 }
 
 @media (max-width: 1200px) {
@@ -2908,23 +3077,48 @@ html:-webkit-full-screen .app-shell {
     overflow-x: auto;
   }
 
+  /* Mobile: per-button stagger goes left→right, translateX */
   .rail-items {
-    display: flex;
     flex-direction: row;
     gap: 6px;
     max-height: none;
+    overflow: hidden;
     max-width: 0;
-    opacity: 0;
-    transform: translateX(8px);
     margin-bottom: 0;
-    transition: max-width 0.2s ease, opacity 0.15s ease, transform 0.2s ease;
+    /* Clip the container while closed */
+    transition: max-width 0.35s cubic-bezier(0.34, 1.2, 0.64, 1);
   }
 
   .rail-items.open {
     max-width: 560px;
-    opacity: 1;
-    transform: translateX(0);
     margin-bottom: 0;
+  }
+
+  /* Mobile: override pop animation to slide horizontally */
+  .rail-items.open .rail-button {
+    animation: rail-item-pop-h 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation-delay: calc(var(--item-index, 0) * 40ms);
+  }
+
+  .rail-items:not(.open) .rail-button {
+    animation: rail-item-out-h 0.22s cubic-bezier(0.55, 0, 1, 0.45) both;
+    animation-delay: calc((9 - var(--item-index, 0)) * 22ms);
+  }
+
+  @keyframes rail-item-pop-h {
+    0% {
+      opacity: 0;
+      transform: translateX(-18px) scale(0.55);
+    }
+    100% {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+
+  @keyframes rail-item-out-h {
+    0%  { opacity: 1; transform: translateX(0) scale(1); }
+    100% { opacity: 0; transform: translateX(-12px) scale(0.6); }
   }
 
   .rail-button {
@@ -4128,3 +4322,208 @@ html:-webkit-full-screen .app-shell {
   opacity: 0.85;
   flex-shrink: 0;
 }
+
+/* =========================================================
+   ANIMATIONS (Appended & Self-Corrected)
+   ========================================================= */
+
+@media (prefers-reduced-motion: no-preference) {
+  /* 1. Card Entrances & Lifecycle */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .floating-card:not(.is-popping) {
+    animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+
+  .floating-card:nth-child(1) { animation-delay: 0.05s; }
+  .floating-card:nth-child(2) { animation-delay: 0.1s; }
+  .floating-card:nth-child(3) { animation-delay: 0.15s; }
+  .floating-card:nth-child(4) { animation-delay: 0.2s; }
+  .floating-card:nth-child(n+5) { animation-delay: 0.25s; }
+
+  /* 2. Card General & Hover */
+  .floating-card {
+    transition: transform 0.25s ease, box-shadow 0.25s ease, height 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .floating-card.is-minimized {
+    min-height: unset;
+  }
+
+  .workspace:not(.is-card-dragging) .floating-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+    z-index: 10;
+  }
+
+  .card-header {
+    transition: transform 0.15s ease;
+  }
+  
+  .workspace:not(.is-card-dragging) .card-header:active {
+    transform: scale(0.98);
+  }
+
+  /* 3. Card Menu Icon Hover */
+  .card-menu {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  
+  @media (hover: hover) {
+    .card-menu {
+      opacity: 0.4;
+    }
+    .floating-card:hover .card-menu {
+      opacity: 1;
+    }
+  }
+
+  .card-menu-panel {
+    transform-origin: top right;
+    animation: menu-slide-down 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* 4. Todo row and check bounce */
+  .todo-check {
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  
+  .todo-check:active {
+    transform: scale(0.8);
+  }
+  
+  @keyframes check-bounce {
+    0% { transform: scale(1); }
+    50% { transform: scale(0.8); }
+    75% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+  
+  .todo-check.checked {
+    animation: check-bounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .todo-row {
+    transition: opacity 0.3s ease, background-color 0.2s ease;
+  }
+  
+  .todo-row.is-done {
+    opacity: 0.6;
+  }
+
+  .drag-grid {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  
+  .drag-grid:hover {
+    opacity: 0.8;
+    transform: translateX(1px);
+  }
+
+  /* 5. TopBar elements */
+  .nav-box, .icon-box, .quick-box, .welcome-box, .workspace-action-btn {
+    transition: transform 0.15s ease, background-color 0.15s ease, filter 0.15s ease;
+  }
+  
+  .nav-box:hover, .icon-box:hover, .quick-box:hover, .welcome-box:hover, .workspace-action-btn:hover {
+    transform: scale(1.05);
+    filter: brightness(1.2);
+  }
+  
+  .nav-box:active, .icon-box:active, .quick-box:active, .welcome-box:active, .workspace-action-btn:active {
+    transform: scale(0.95);
+  }
+
+  /* 6. Menus entrances */
+  @keyframes menu-slide-down {
+    from { opacity: 0; transform: scaleY(0) translateY(-5px); }
+    to { opacity: 1; transform: scaleY(1) translateY(0); }
+  }
+
+  .workspace-menu-panel, .quick-menu, .account-panel {
+    transform-origin: top center;
+    animation: menu-slide-down 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* 7. Search shell */
+  .search-shell {
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  }
+  
+  .search-shell:focus-within {
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4);
+    border-color: rgba(56, 189, 248, 0.65);
+  }
+
+  /* 8. Theme switch transitions */
+  .app-shell, .workspace, .board-stage, .board, .top-bar {
+    transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+  }
+
+  /* Workspace Crossfade */
+  @keyframes workspace-fade-in {
+    from { opacity: 0; transform: scale(0.99); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .app-shell {
+    animation: workspace-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* 9. Rail buttons pulse and active */
+  .rail-button:active {
+    transform: scale(0.88) !important;
+  }
+
+  .rail-add:active {
+    transform: scale(0.9) !important;
+  }
+
+  /* 10. Modal close rotate */
+  .confirm-modal-close {
+    transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+  }
+
+  .confirm-modal-close:hover {
+    transform: rotate(90deg);
+  }
+
+  /* 11. Calendar & Habit specific */
+  .calendar-day {
+    transition: background-color 0.2s ease, transform 0.2s ease;
+  }
+  
+  .calendar-day:hover:not(.calendar-day-empty) {
+    transform: scale(1.1);
+    z-index: 10;
+  }
+
+  .habit-day {
+    transition: transform 0.2s ease, background-color 0.3s ease;
+  }
+  
+  .habit-day:active:not(:disabled) {
+    transform: scale(0.8);
+  }
+  
+  .habit-check-btn {
+    transition: transform 0.2s ease, background-color 0.3s ease;
+  }
+  
+  .habit-check-btn:active {
+    transform: scale(0.8);
+  }
+
+  /* Drag Card Visual Elevation (Applies when an item inside is dragged) */
+  .todo-row.dragging {
+    opacity: 0.9;
+    transform: scale(1.02) rotate(1deg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    z-index: 100;
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+

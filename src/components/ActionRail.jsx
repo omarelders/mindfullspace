@@ -31,11 +31,12 @@ export function ActionRail({ open, onToggle, quickActions, onQuickAction }) {
   return (
     <aside className="action-rail" aria-label="action rail">
       <div className={`rail-items ${open ? 'open' : ''}`}>
-        {quickActions.map((action) => (
+        {quickActions.map((action, index) => (
           <button
             key={action.id}
             className="rail-button"
             aria-label={action.title}
+            style={{ '--item-index': index }}
             onClick={() => onQuickAction(action.id)}
           >
             <ActionRailIcon kind={action.icon} />
@@ -43,7 +44,7 @@ export function ActionRail({ open, onToggle, quickActions, onQuickAction }) {
         ))}
       </div>
       <button
-        className="rail-button rail-add"
+        className={`rail-button rail-add ${open ? 'is-open' : ''}`}
         aria-label="toggle action menu"
         aria-expanded={open}
         onClick={onToggle}
