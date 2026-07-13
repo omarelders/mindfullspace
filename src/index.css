@@ -1358,7 +1358,7 @@ html:-webkit-full-screen .app-shell {
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22);
 }
 
-.card-color-submenu {
+.card-color-submenu .card-submenu-content {
   display: flex;
   flex-direction: column;
   gap: 4px;

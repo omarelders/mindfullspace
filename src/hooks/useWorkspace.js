@@ -916,7 +916,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
   const startPanning = useCallback((event) => {
     if (window.innerWidth <= 1200) return
-    if (event.button !== 2 && (event.type === 'mousedown' && event.button !== 1)) return
+    if (event.button !== 0) return
+    if (event.target.closest('.floating-card') || event.target.closest('.action-rail') || event.target.closest('.top-bar') || event.target.closest('.card-menu-wrap')) return
     event.preventDefault()
     panRef.current = { active: true, lastX: event.clientX, lastY: event.clientY }
     setIsPanning(true)
