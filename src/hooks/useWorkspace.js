@@ -243,10 +243,14 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
   // Refs that always hold current state for snapshot capture
   const stateRefsForSnapshot = useRef({})
-  stateRefsForSnapshot.current = {
-    columns, drafts, viewport, themeMode, notes, timers, counters,
-    stopwatches, calendars, habits, pictures, quickLinks, archivedCards, customLabels, cardPositions
-  }
+
+  useEffect(() => {
+    stateRefsForSnapshot.current = {
+      columns, drafts, viewport, themeMode, notes, timers, counters,
+      stopwatches, calendars, habits, pictures, quickLinks, archivedCards, customLabels, cardPositions
+    }
+  }, [columns, drafts, viewport, themeMode, notes, timers, counters,
+      stopwatches, calendars, habits, pictures, quickLinks, archivedCards, customLabels, cardPositions])
 
   const captureSnapshot = useCallback(() => {
     const s = stateRefsForSnapshot.current
@@ -285,7 +289,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setArchivedCards(snapshot.archivedCards)
     setCustomLabels(snapshot.customLabels)
     setCardPositions(snapshot.cardPositions)
-  }, [])
+  }, [setColumns, setDrafts, setViewport, setThemeMode, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setArchivedCards, setCustomLabels, setCardPositions])
 
   function saveSnapshot() {
     pushSnapshot(captureSnapshot())
@@ -414,9 +418,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [renderedCardIds])
 
   useEffect(() => {
+    const popCleanup = popCleanupTimeoutsRef.current
     return () => {
-      popCleanupTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId))
-      popCleanupTimeoutsRef.current.clear()
+      popCleanup.forEach((timeoutId) => window.clearTimeout(timeoutId))
+      popCleanup.clear()
     }
   }, [])
 
@@ -537,7 +542,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       },
     }))
     showToast('Image pasted!')
-  }, [viewport, showToast])
+  }, [viewport, showToast, setPictures])
 
   // Ctrl+V clipboard paste → Picture Card
   useEffect(() => {
@@ -578,11 +583,11 @@ export function useWorkspace(workspaceId, workspaceRef) {
       }
     }))
     setDrafts((currentDrafts) => ({ ...currentDrafts, [columnId]: '' }))
-  }, [])
+  }, [setColumns])
 
   const deleteItem = useCallback((columnId, itemId) => {
     setColumns(current => current.map(col => col.id === columnId ? { ...col, items: col.items.filter(i => i.id !== itemId) } : col))
-  }, [])
+  }, [setColumns])
 
   const getRestorePosition = (cardType, archivedPosition) => {
     if (archivedPosition && Number.isFinite(archivedPosition.x) && Number.isFinite(archivedPosition.y)) return { x: archivedPosition.x + 24, y: archivedPosition.y + 24 }
@@ -867,7 +872,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       })
     })
     setDragState({ columnId: null, itemId: null })
-  }, [])
+  }, [setColumns])
 
   const handleDropOnList = useCallback((columnId, event) => {
     event.preventDefault()
@@ -895,7 +900,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       })
     })
     setDragState({ columnId: null, itemId: null })
-  }, [])
+  }, [setColumns])
 
   const handleWheel = useCallback((event) => {
     event.preventDefault()
@@ -959,50 +964,50 @@ export function useWorkspace(workspaceId, workspaceRef) {
     const id = `label-${Date.now()}`; const roles = ['routine', 'programming', 'english']
     setCustomLabels(p => [...p, { id, text: '', role: roles[Math.floor(Math.random() * roles.length)] }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setCustomLabels])
   const handleAddNote = useCallback((pos) => {
     const id = `note-${Date.now()}`
     setNotes(p => [...p, { id, text: '', title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 350 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setNotes])
   const handleAddTodoList = useCallback((pos) => {
     const id = `col-${Date.now()}`; const tones = ['charcoal', 'gold', 'violet', 'red', 'blue']
     setColumns(p => [...p, { id, tone: tones[Math.floor(Math.random() * tones.length)], positionClass: '', items: [], title: '', color: null, minimized: false }])
     setDrafts(p => ({ ...p, [id]: '' }))
     setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 200 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setColumns])
   const handleAddTimer = useCallback((pos) => {
     const id = `timer-${Date.now()}`; setTimers(p => [...p, { id, initialSeconds: 2700, remainingSeconds: 2700, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 600 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setTimers])
   const handleAddCounter = useCallback((pos) => {
     const id = `counter-${Date.now()}`; setCounters(p => [...p, { id, initialValue: 0, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 960 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setCounters])
   const handleAddStopwatch = useCallback((pos) => {
     const id = `stopwatch-${Date.now()}`; setStopwatches(p => [...p, { id, initialSeconds: 0, elapsedSeconds: 0, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1240 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setStopwatches])
   const handleAddCalendar = useCallback((pos) => {
     const id = `calendar-${Date.now()}`; const now = new Date()
     setCalendars(p => [...p, { id, year: now.getFullYear(), month: now.getMonth(), selectedDate: null, entries: {}, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1500 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setCalendars])
   const handleAddHabit = useCallback((pos) => {
     const id = `habit-${Date.now()}`; const now = new Date()
     setHabits(p => [...p, { id, icon: HABIT_ICON_OPTIONS[0].id, year: now.getFullYear(), month: now.getMonth(), view: 'summary', completions: {}, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1700 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setHabits])
   const handleAddPicture = useCallback((pos) => {
     const id = `picture-${Date.now()}`
     setPictures(p => [...p, { id, imageId: null, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 500 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setPictures])
   const handleAddQuickLinks = useCallback((pos) => {
     const id = `quick-links-${Date.now()}`
     setQuickLinks(p => [...p, { id, links: [], title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1000 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport])
+  }, [viewport, setQuickLinks])
 
   const handleQuickAction = useCallback((actionId, event, canvasPos) => {
     let pos = canvasPos || null
