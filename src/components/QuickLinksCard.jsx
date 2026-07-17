@@ -63,13 +63,31 @@ export const QuickLinksCard = memo(function QuickLinksCard({
     e.preventDefault()
     if (!formUrl.trim()) return
 
-    // Ensure URL has protocol
     let finalUrl = formUrl.trim()
-    if (!/^https?:\/\//i.test(finalUrl)) {
+
+    // Check if URL has a protocol
+    // Using URL parser to check for a protocol.
+    // If it throws, it doesn't have a valid protocol (like 'example.com'), so we prepend https://
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(finalUrl)
+      // Check if it's a known dangerous protocol or just restrict to http/https
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        // Specifically block dangerous protocols like javascript:
+        // We can just alert or return early. For simple UX, we will just reject.
+        return;
+      }
+    } catch {
+      // It doesn't have a protocol or is invalid, prepend https://
       finalUrl = `https://${finalUrl}`
+      try {
+        parsedUrl = new URL(finalUrl)
+      } catch {
+        return; // Still invalid after prepending https://
+      }
     }
 
-    const finalLabel = formLabel.trim() || new URL(finalUrl).hostname
+    const finalLabel = formLabel.trim() || parsedUrl.hostname
 
     if (isAdding) {
       onAddLink(quickLinkCard.id, finalUrl, finalLabel)
