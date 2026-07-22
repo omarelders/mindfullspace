@@ -1208,33 +1208,6 @@ html:-webkit-full-screen .app-shell {
   outline: none;
 }
 
-.quote-author-container {
-  width: 100%;
-  text-align: right;
-  z-index: 1;
-  margin-top: 1rem;
-}
-
-.quote-author {
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: text;
-  color: var(--card-ui-strong);
-  opacity: 0.9;
-}
-
-.quote-author-edit {
-  width: 100%;
-  text-align: right;
-  font-size: 0.95rem;
-  font-weight: 500;
-  border: none;
-  background: transparent;
-  color: var(--card-ui-strong);
-  outline: none;
-  border-bottom: 1px dashed var(--card-ui-mid);
-}
-
 .floating-card {
   position: absolute;
   border-radius: 0;

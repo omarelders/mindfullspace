@@ -123,6 +123,7 @@ export function validateWorkspaceState(stored) {
     habits: Array.isArray(stored?.habits) ? stored.habits : [],
     pictures: Array.isArray(stored?.pictures) ? stored.pictures : [],
     quickLinks: Array.isArray(stored?.quickLinks) ? stored.quickLinks : [],
+    quotes: Array.isArray(stored?.quotes) ? stored.quotes : [],
     archivedCards: Array.isArray(stored?.archivedCards) ? stored.archivedCards : [],
     customLabels: Array.isArray(stored?.customLabels) ? stored.customLabels : DETACHED_LABELS,
     cardPositions:

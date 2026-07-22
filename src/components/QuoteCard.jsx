@@ -20,10 +20,8 @@ export const QuoteCard = memo(function QuoteCard({
   isPopping,
 }) {
   const [isEditingText, setIsEditingText] = useState(false)
-  const [isEditingAuthor, setIsEditingAuthor] = useState(false)
 
   const [editText, setEditText] = useState(quote.text || '')
-  const [editAuthor, setEditAuthor] = useState(quote.author || '')
 
   const handleResizeStart = (e) => {
     e.preventDefault()
@@ -59,23 +57,10 @@ export const QuoteCard = memo(function QuoteCard({
     setIsEditingText(true)
   }
 
-  const handleStartEditAuthor = (e) => {
-    e.stopPropagation()
-    setEditAuthor(quote.author || '')
-    setIsEditingAuthor(true)
-  }
-
   const handleCommitText = () => {
     setIsEditingText(false)
     if (onUpdateText && editText !== quote.text) {
       onUpdateText(quote.id, editText)
-    }
-  }
-
-  const handleCommitAuthor = () => {
-    setIsEditingAuthor(false)
-    if (onUpdateAuthor && editAuthor !== quote.author) {
-      onUpdateAuthor(quote.id, editAuthor)
     }
   }
 
@@ -85,15 +70,6 @@ export const QuoteCard = memo(function QuoteCard({
       setEditText(quote.text || '')
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       handleCommitText()
-    }
-  }
-
-  const handleAuthorKeyDown = (e) => {
-    if (e.key === 'Escape') {
-      setIsEditingAuthor(false)
-      setEditAuthor(quote.author || '')
-    } else if (e.key === 'Enter') {
-      handleCommitAuthor()
     }
   }
 
@@ -146,24 +122,6 @@ export const QuoteCard = memo(function QuoteCard({
             )}
           </div>
 
-          <div className="quote-author-container">
-            {isEditingAuthor ? (
-              <input
-                type="text"
-                className="quote-author-edit"
-                value={editAuthor}
-                onChange={(e) => setEditAuthor(e.target.value)}
-                onBlur={handleCommitAuthor}
-                onKeyDown={handleAuthorKeyDown}
-                autoFocus
-                placeholder="Author name"
-              />
-            ) : (
-              <span className="quote-author" onClick={handleStartEditAuthor}>
-                {quote.author ? `- ${quote.author}` : '- Click to add author'}
-              </span>
-            )}
-          </div>
 
           <div
             className="card-resizer"
