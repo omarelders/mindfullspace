@@ -146,6 +146,7 @@ export const QUICK_CREATE_ACTIONS = [
   { id: 'quick-links', title: 'Quick Links', icon: 'quick-links' },
   { id: 'calendar', title: 'Calendar', icon: 'calendar' },
   { id: 'habit', title: 'Habit', icon: 'habit' },
+  { id: 'quote', title: 'Quote', icon: 'quote' },
 ]
 
 export const MIN_SCALE = 0.2

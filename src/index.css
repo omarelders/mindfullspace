@@ -1142,6 +1142,99 @@ html:-webkit-full-screen .app-shell {
   }
 }
 
+/* ------------- Quote Card ------------- */
+.quote-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.quote-content-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 1.5rem;
+  overflow: hidden;
+  height: calc(100% - 36px);
+}
+
+.quote-watermark {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: var(--card-ui-soft);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.quote-body-container {
+  width: 100%;
+  text-align: center;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quote-body {
+  font-size: 1.35rem;
+  font-style: italic;
+  font-family: 'Georgia', serif;
+  line-height: 1.4;
+  margin: 0;
+  cursor: text;
+  word-break: break-word;
+  white-space: pre-wrap;
+  color: var(--card-text);
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.quote-text-edit {
+  width: 100%;
+  height: 100%;
+  font-size: 1.35rem;
+  font-style: italic;
+  font-family: 'Georgia', serif;
+  line-height: 1.4;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--card-text);
+  resize: none;
+  outline: none;
+}
+
+.quote-author-container {
+  width: 100%;
+  text-align: right;
+  z-index: 1;
+  margin-top: 1rem;
+}
+
+.quote-author {
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: text;
+  color: var(--card-ui-strong);
+  opacity: 0.9;
+}
+
+.quote-author-edit {
+  width: 100%;
+  text-align: right;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--card-ui-strong);
+  outline: none;
+  border-bottom: 1px dashed var(--card-ui-mid);
+}
+
 .floating-card {
   position: absolute;
   border-radius: 0;

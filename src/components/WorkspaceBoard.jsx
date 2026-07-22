@@ -10,6 +10,7 @@ import { CalendarCard } from './CalendarCard'
 import { HabitCard } from './HabitCard'
 import { PictureCard } from './PictureCard'
 import { QuickLinksCard } from './QuickLinksCard'
+import { QuoteCard } from './QuoteCard'
 import { TopBar } from './TopBar'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { QUICK_CREATE_ACTIONS } from '../utils/constants'
@@ -32,7 +33,7 @@ export function WorkspaceBoard({
   const {
     state: {
       columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, theme,
-      dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks,
+      dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
       archivedCards, detachedLabels, cardPositions, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
@@ -347,6 +348,27 @@ export function WorkspaceBoard({
                 onRemoveLink={actions.removeQuickLinkItem}
                 onReorderLinks={actions.reorderQuickLinkItems}
                 isPopping={poppingCardIds.has(qlCard.id)}
+              />
+            ))}
+
+            {quotes.map((quote) => (
+              <QuoteCard
+                key={quote.id}
+                quote={quote}
+                position={cardPositions[quote.id]}
+                onPointerDown={(e) => actions.handleCardPointerDown(quote.id, e)}
+                onUpdateTitle={actions.updateQuoteTitle}
+                onUpdateText={actions.updateQuoteText}
+                onUpdateAuthor={actions.updateQuoteAuthor}
+                onUpdateColor={actions.updateQuoteColor}
+                onMoveCard={actions.moveCardToTarget}
+                onToggleMinimize={actions.toggleQuoteMinimize}
+                onDuplicateCard={actions.duplicateQuoteCard}
+                onArchiveCard={actions.archiveQuoteCard}
+                onDeleteCard={actions.deleteQuoteCard}
+                onUpdateDimensions={(width, height) => actions.updateQuoteDimensions(quote.id, width, height)}
+                scale={viewport.scale}
+                isPopping={poppingCardIds.has(quote.id)}
               />
             ))}
           </main>

@@ -1,4 +1,4 @@
-import { Plus, Tag, FileText, ListTodo, Hash, TimerReset, Timer, Link2, CalendarDays, CircleCheck, Image } from 'lucide-react'
+import { Plus, Tag, FileText, ListTodo, Hash, TimerReset, Timer, Link2, CalendarDays, CircleCheck, Image, Quote } from 'lucide-react'
 
 export function ActionRailIcon({ kind }) {
   switch (kind) {
@@ -22,6 +22,8 @@ export function ActionRailIcon({ kind }) {
       return <CircleCheck aria-hidden="true" />
     case 'picture':
       return <Image aria-hidden="true" />
+    case 'quote':
+      return <Quote aria-hidden="true" />
     default:
       return null
   }

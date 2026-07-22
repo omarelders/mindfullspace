@@ -140,6 +140,16 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
+  const quoteCol = useCardCollection({
+    initialItems: initialWorkspaceState.quotes || [],
+    idPrefix: 'quote',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+  })
+
   const timerCol = useCardCollection({
     initialItems: initialWorkspaceState.timers,
     idPrefix: 'timer',
@@ -241,16 +251,19 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const quickLinks = qlCol.items
   const setQuickLinks = qlCol.setItems
 
+  const quotes = quoteCol.items
+  const setQuotes = quoteCol.setItems
+
   // Refs that always hold current state for snapshot capture
   const stateRefsForSnapshot = useRef({})
 
   useEffect(() => {
     stateRefsForSnapshot.current = {
       columns, drafts, viewport, themeMode, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, archivedCards, customLabels, cardPositions
+      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions
     }
   }, [columns, drafts, viewport, themeMode, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, archivedCards, customLabels, cardPositions])
+      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions])
 
   const captureSnapshot = useCallback(() => {
     const s = stateRefsForSnapshot.current
@@ -267,6 +280,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       habits: s.habits,
       pictures: s.pictures,
       quickLinks: s.quickLinks,
+      quotes: s.quotes,
       archivedCards: s.archivedCards,
       customLabels: s.customLabels,
       cardPositions: s.cardPositions,
@@ -286,10 +300,11 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setHabits(snapshot.habits)
     setPictures(snapshot.pictures)
     setQuickLinks(snapshot.quickLinks || [])
+    setQuotes(snapshot.quotes || [])
     setArchivedCards(snapshot.archivedCards)
     setCustomLabels(snapshot.customLabels)
     setCardPositions(snapshot.cardPositions)
-  }, [setColumns, setDrafts, setViewport, setThemeMode, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setArchivedCards, setCustomLabels, setCardPositions])
+  }, [setColumns, setDrafts, setViewport, setThemeMode, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setCardPositions])
 
   function saveSnapshot() {
     pushSnapshot(captureSnapshot())
@@ -342,17 +357,18 @@ export function useWorkspace(workspaceId, workspaceRef) {
       ...habits.map((habit) => habit.id),
       ...pictures.map((pic) => pic.id),
       ...quickLinks.map((ql) => ql.id),
+      ...quotes.map((q) => q.id),
     ],
-    [columns, detachedLabels, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks],
+    [columns, detachedLabels, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes],
   )
 
   const workspaceStorageKey = `${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`
   const workspaceStorageSnapshot = useMemo(
     () => ({
       columns, drafts, viewport, themeMode, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, archivedCards, customLabels, cardPositions,
+      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions,
     }),
-    [columns, drafts, viewport, themeMode, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, archivedCards, customLabels, cardPositions]
+    [columns, drafts, viewport, themeMode, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions]
   )
 
   useEffect(() => {
@@ -544,7 +560,21 @@ export function useWorkspace(workspaceId, workspaceRef) {
     showToast('Image pasted!')
   }, [viewport, showToast, setPictures])
 
-  // Ctrl+V clipboard paste → Picture Card
+  const handlePasteText = useCallback((text) => {
+    if (!text || text.trim().length === 0) return
+    const id = `quote-${Date.now()}`
+    setQuotes(p => [...p, { id, text, author: '', title: '', color: null, minimized: false }])
+    setCardPositions(p => ({
+      ...p,
+      [id]: {
+        x: 400 - (viewport.x / viewport.scale),
+        y: 300 - (viewport.y / viewport.scale),
+      },
+    }))
+    showToast('Text pasted as Quote!')
+  }, [viewport, showToast, setQuotes])
+
+  // Ctrl+V clipboard paste → Picture Card or Quote Card
   useEffect(() => {
     const handlePaste = (e) => {
       const tag = document.activeElement?.tagName?.toLowerCase()
@@ -557,18 +587,28 @@ export function useWorkspace(workspaceId, workspaceRef) {
       const items = e.clipboardData?.items
       if (!items) return
 
+      let hasImage = false
       for (const item of items) {
         if (item.type.startsWith('image/')) {
           e.preventDefault()
           const blob = item.getAsFile()
           if (blob) handlePasteImage(blob)
+          hasImage = true
           break
+        }
+      }
+
+      if (!hasImage) {
+        const text = e.clipboardData?.getData('text/plain')
+        if (text) {
+          e.preventDefault()
+          handlePasteText(text)
         }
       }
     }
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
-  }, [handlePasteImage])
+  }, [handlePasteImage, handlePasteText])
 
   const setDraft = useCallback((columnId, value) => setDrafts(prev => ({ ...prev, [columnId]: value })), [])
 
@@ -602,6 +642,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     if (cardType === 'habit') return { x: 1700 - vx, y: 120 - vy }
     if (cardType === 'picture') return { x: 500 - vx, y: 300 - vy }
     if (cardType === 'quick-links') return { x: 1000 - vx, y: 300 - vy }
+    if (cardType === 'quote') return { x: 450 - vx, y: 300 - vy }
     return { x: 400 - vx, y: 260 - vy }
   }
 
@@ -652,6 +693,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
     } else if (archivedEntry.type === 'quick-links') {
       restoredCardId = `quick-links-${uniqueSeed}`
       setQuickLinks(current => [...current, { ...archivedData, id: restoredCardId, links: archivedData.links || [], title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+    } else if (archivedEntry.type === 'quote') {
+      restoredCardId = `quote-${uniqueSeed}`
+      setQuotes(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || '', author: archivedData.author || '', title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     }
 
     if (!restoredCardId) return
@@ -831,6 +875,17 @@ export function useWorkspace(workspaceId, workspaceRef) {
     })
   }, [qlCol])
 
+  // Quotes
+  const updateQuoteTitle = quoteCol.updateTitle
+  const updateQuoteColor = quoteCol.updateColor
+  const toggleQuoteMinimize = quoteCol.toggleMinimize
+  const duplicateQuoteCard = quoteCol.duplicate
+  const archiveQuoteCard = quoteCol.archive
+  const deleteQuoteCard = quoteCol.remove
+  const updateQuoteText = useCallback((id, text) => quoteCol.update(id, { text }), [quoteCol])
+  const updateQuoteAuthor = useCallback((id, author) => quoteCol.update(id, { author }), [quoteCol])
+  const updateQuoteDimensions = useCallback((id, width, height) => quoteCol.update(id, { width, height }), [quoteCol])
+
   const readDragPayload = (event) => {
     const rawPayload = event.dataTransfer?.getData('text/plain')
     if (rawPayload) {
@@ -1008,6 +1063,11 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setQuickLinks(p => [...p, { id, links: [], title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1000 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
   }, [viewport, setQuickLinks])
+  const handleAddQuote = useCallback((pos) => {
+    const id = `quote-${Date.now()}`
+    setQuotes(p => [...p, { id, text: '', author: '', title: '', color: null, minimized: false }])
+    setCardPositions(p => ({ ...p, [id]: pos || { x: 450 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+  }, [viewport, setQuotes])
 
   const handleQuickAction = useCallback((actionId, event, canvasPos) => {
     let pos = canvasPos || null
@@ -1030,8 +1090,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
     else if (actionId === 'habit') handleAddHabit(pos)
     else if (actionId === 'picture') handleAddPicture(pos)
     else if (actionId === 'quick-links') handleAddQuickLinks(pos)
+    else if (actionId === 'quote') handleAddQuote(pos)
     setIsRailOpen(false)
-  }, [viewport, workspaceRef, handleAddLabel, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks])
+  }, [viewport, workspaceRef, handleAddLabel, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks, handleAddQuote])
 
   // Long-press callbacks
   const startLongPress = useCallback((event) => {
@@ -1078,7 +1139,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   return {
     state: {
       columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, theme,
-      dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks,
+      dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
       archivedCards, detachedLabels, cardPositions, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
@@ -1100,7 +1161,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
       updateCalendarTitle, updateCalendarColor, toggleCalendarMinimize, changeCalendarMonth, openCalendarDay, closeCalendarDay, updateCalendarEntry, duplicateCalendarCard, archiveCalendarCard, deleteCalendarCard,
       updateHabitTitle, updateHabitIcon, updateHabitColor, toggleHabitMinimize, setHabitView, changeHabitMonth, toggleHabitDate, duplicateHabitCard, archiveHabitCard, deleteHabitCard,
       updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, duplicatePictureCard, archivePictureCard, deletePictureCard,
-      updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard
+      updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard,
+      updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard
     }
   }
 }
