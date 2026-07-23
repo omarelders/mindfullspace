@@ -72,10 +72,8 @@ export const PictureCard = memo(function PictureCard({
       await saveImage(newImageId, file)
       if (onUpdateImageId) onUpdateImageId(picture.id, newImageId)
       
-      // Cleanup old image from storage if it exists
-      if (oldImageId) {
-        deleteImage(oldImageId).catch(err => console.error('Failed to cleanup old image:', err))
-      }
+      // Notice: Ideally, we should check if the old image is used by other cards before deleting it.
+      // The deletion should be handled by a safe utility in useWorkspace like safeDeleteImageBlob(oldImageId).
     } catch (err) {
       setError(err.message || 'Failed to save image.')
     }
