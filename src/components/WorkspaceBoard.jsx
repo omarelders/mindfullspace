@@ -220,9 +220,7 @@ export function WorkspaceBoard({
                 onPointerDown={(e) => actions.handleCardPointerDown(timer.id, e)}
                 onUpdateTitle={actions.updateTimerTitle}
                 onUpdateColor={actions.updateTimerColor}
-                onUpdateRemainingSeconds={actions.updateTimerRemainingSeconds}
-                onUpdateInitialSeconds={actions.updateTimerInitialSeconds}
-                onUpdatePomodoroConfig={actions.updatePomodoroConfig}
+                onUpdateTimerState={actions.updateTimerState}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleTimerMinimize}
                 onDuplicateCard={actions.duplicateTimerCard}
@@ -258,7 +256,7 @@ export function WorkspaceBoard({
                 onPointerDown={(e) => actions.handleCardPointerDown(stopwatch.id, e)}
                 onUpdateTitle={actions.updateStopwatchTitle}
                 onUpdateColor={actions.updateStopwatchColor}
-                onUpdateElapsedSeconds={actions.updateStopwatchElapsedSeconds}
+                onUpdateStopwatchState={actions.updateStopwatchState}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleStopwatchMinimize}
                 onDuplicateCard={actions.duplicateStopwatchCard}
