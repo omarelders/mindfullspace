@@ -9,7 +9,7 @@ export const StopwatchCard = memo(function StopwatchCard({
   onPointerDown,
   onUpdateTitle,
   onUpdateColor,
-  onUpdateElapsedSeconds,
+  onUpdateStopwatchState,
   onMoveCard,
   onToggleMinimize,
   onDuplicateCard,
@@ -21,53 +21,64 @@ export const StopwatchCard = memo(function StopwatchCard({
   const persistedSeconds = Number.isFinite(stopwatch.elapsedSeconds)
     ? stopwatch.elapsedSeconds
     : initialSeconds
-  const [elapsedSeconds, setElapsedSeconds] = useState(persistedSeconds)
-  const [isRunning, setIsRunning] = useState(false)
-  const startTimeRef = useRef(null)
-  const baseSecondsRef = useRef(persistedSeconds)
 
+  const isRunning = Boolean(stopwatch.isRunning)
+  const lastStartTime = stopwatch.lastStartTime || null
+
+  const getElapsedSeconds = () => {
+    if (!isRunning || !lastStartTime) return persistedSeconds
+    const diff = Math.floor((Date.now() - lastStartTime) / 1000)
+    return persistedSeconds + diff
+  }
+
+  const [elapsedSeconds, setElapsedSeconds] = useState(getElapsedSeconds())
+
+  // Sync initial render and external updates when paused
   useEffect(() => {
     if (!isRunning) {
       setElapsedSeconds(persistedSeconds)
-      baseSecondsRef.current = persistedSeconds
     }
-  }, [stopwatch.id, persistedSeconds, isRunning])
+  }, [persistedSeconds, isRunning])
 
+  // Interval loop
   useEffect(() => {
-    if (!isRunning) return undefined
-
-    startTimeRef.current = Date.now()
-    baseSecondsRef.current = elapsedSeconds
+    if (!isRunning || !lastStartTime) return undefined
 
     const intervalId = window.setInterval(() => {
-      const now = Date.now()
-      const diffSeconds = Math.floor((now - startTimeRef.current) / 1000)
-      setElapsedSeconds(baseSecondsRef.current + diffSeconds)
+      setElapsedSeconds(getElapsedSeconds())
     }, 100) // update frequently for smooth logic without drifting
 
     return () => window.clearInterval(intervalId)
-  }, [isRunning]) // Only re-run when isRunning changes
-
-  // Auto save on pause
-  useEffect(() => {
-    if (!isRunning) {
-      onUpdateElapsedSeconds(stopwatch.id, elapsedSeconds)
-    }
-  }, [onUpdateElapsedSeconds, stopwatch.id, elapsedSeconds, isRunning])
+  }, [isRunning, lastStartTime, persistedSeconds])
 
   const toggleRunning = () => {
+    if (!onUpdateStopwatchState) return
+
     if (isRunning) {
-      // pause
-      onUpdateElapsedSeconds(stopwatch.id, elapsedSeconds) // save exact current
+      // Pause
+      onUpdateStopwatchState(stopwatch.id, {
+        isRunning: false,
+        elapsedSeconds,
+        lastStartTime: null,
+      })
+    } else {
+      // Start
+      onUpdateStopwatchState(stopwatch.id, {
+        isRunning: true,
+        lastStartTime: Date.now(),
+      })
     }
-    setIsRunning((running) => !running)
   }
 
   const resetStopwatch = () => {
-    setIsRunning(false)
-    setElapsedSeconds(0)
-    baseSecondsRef.current = 0
-    onUpdateElapsedSeconds(stopwatch.id, 0)
+    if (!onUpdateStopwatchState) return
+
+    onUpdateStopwatchState(stopwatch.id, {
+      isRunning: false,
+      elapsedSeconds: 0,
+      initialSeconds: 0,
+      lastStartTime: null,
+    })
   }
 
   const [h, m, s] = formatSecondsToTimer(elapsedSeconds).split(':')

@@ -3,7 +3,13 @@
 > vite
 
 
-  VITE v5.4.21  ready in 286 ms
+  VITE v5.4.21  ready in 328 ms
 
   ➜  Local:   http://localhost:3000/
   ➜  Network: use --host to expose
+6:50:48 PM [vite] hmr update /src/components/WorkspaceBoard.jsx
+6:50:56 PM [vite] hmr update /src/components/WorkspaceBoard.jsx
+6:51:44 PM [vite] hmr update /src/components/WorkspaceBoard.jsx
+6:52:38 PM [vite] hmr update /src/components/TimerCard.jsx
+6:53:32 PM [vite] hmr update /src/components/StopwatchCard.jsx
+6:58:05 PM [vite] hmr update /src/components/WorkspaceBoard.jsx

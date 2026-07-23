@@ -377,6 +377,22 @@ export function useWorkspace(workspaceId, workspaceRef) {
     return () => window.clearTimeout(persistTimeoutId)
   }, [workspaceStorageKey, workspaceStorageSnapshot, isPanning, draggingCard])
 
+  // Ensure state is saved immediately on beforeunload or visibilitychange
+  useEffect(() => {
+    const handleSave = () => {
+      writeJsonStorage(workspaceStorageKey, workspaceStorageSnapshot)
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') handleSave()
+    }
+    window.addEventListener('beforeunload', handleSave)
+    window.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      window.removeEventListener('beforeunload', handleSave)
+      window.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [workspaceStorageKey, workspaceStorageSnapshot])
+
   useEffect(() => {
     const currentCardIds = new Set(renderedCardIds)
 
@@ -752,12 +768,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const duplicateTimerCard = timerCol.duplicate
   const archiveTimerCard = timerCol.archive
   const deleteTimerCard = timerCol.remove
-  const updateTimerRemainingSeconds = useCallback((id, sec) => timerCol.update(id, { remainingSeconds: Math.max(0, Math.floor(sec || 0)) }), [timerCol])
-  const updateTimerInitialSeconds = useCallback((id, sec) => {
-    const s = Math.max(0, Math.floor(sec || 0))
-    timerCol.update(id, { initialSeconds: s, remainingSeconds: s })
-  }, [timerCol])
-  const updatePomodoroConfig = useCallback((id, fields) => timerCol.update(id, fields), [timerCol])
+  const updateTimerState = useCallback((id, patch) => timerCol.update(id, patch), [timerCol])
 
   // Counters
   const updateCounterTitle = counterCol.updateTitle
@@ -775,7 +786,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const duplicateStopwatchCard = stopwatchCol.duplicate
   const archiveStopwatchCard = stopwatchCol.archive
   const deleteStopwatchCard = stopwatchCol.remove
-  const updateStopwatchElapsedSeconds = useCallback((id, sec) => stopwatchCol.update(id, { elapsedSeconds: Math.max(0, Math.floor(sec || 0)) }), [stopwatchCol])
+  const updateStopwatchState = useCallback((id, patch) => stopwatchCol.update(id, patch), [stopwatchCol])
 
   // Calendars
   const updateCalendarTitle = calendarCol.updateTitle
@@ -1170,9 +1181,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
       updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,
       updateLabelText, updateLabelColor, toggleLabelMinimize, duplicateLabelCard, archiveLabelCard, deleteLabelCard,
       updateNoteTitle, updateNoteText, updateNoteColor, toggleNoteMinimize, updateNoteDimensions, duplicateNoteCard, archiveNoteCard, deleteNoteCard,
-      updateTimerTitle, updateTimerColor, toggleTimerMinimize, updateTimerRemainingSeconds, updateTimerInitialSeconds, updatePomodoroConfig, duplicateTimerCard, archiveTimerCard, deleteTimerCard,
+      updateTimerTitle, updateTimerColor, toggleTimerMinimize, updateTimerState, duplicateTimerCard, archiveTimerCard, deleteTimerCard,
       updateCounterTitle, updateCounterValue, updateCounterColor, toggleCounterMinimize, duplicateCounterCard, archiveCounterCard, deleteCounterCard,
-      updateStopwatchTitle, updateStopwatchColor, updateStopwatchElapsedSeconds, toggleStopwatchMinimize, duplicateStopwatchCard, archiveStopwatchCard, deleteStopwatchCard,
+      updateStopwatchTitle, updateStopwatchColor, updateStopwatchState, toggleStopwatchMinimize, duplicateStopwatchCard, archiveStopwatchCard, deleteStopwatchCard,
       updateCalendarTitle, updateCalendarColor, toggleCalendarMinimize, changeCalendarMonth, openCalendarDay, closeCalendarDay, updateCalendarEntry, duplicateCalendarCard, archiveCalendarCard, deleteCalendarCard,
       updateHabitTitle, updateHabitIcon, updateHabitColor, toggleHabitMinimize, setHabitView, changeHabitMonth, toggleHabitDate, duplicateHabitCard, archiveHabitCard, deleteHabitCard,
       updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, updatePictureFitMode, duplicatePictureCard, archivePictureCard, deletePictureCard,
