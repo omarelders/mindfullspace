@@ -1,34 +1,35 @@
 ﻿import { useState, useCallback, useEffect } from 'react'
-import { readJsonStorage, writeJsonStorage } from './utils/storage'
+import { getInitialAppState, writeJsonStorage, readJsonStorage } from './utils/storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX, APP_STORAGE_KEY } from './utils/constants'
 import { WorkspaceBoard } from './components/WorkspaceBoard'
 import { InstallPrompt } from './components/InstallPrompt'
 
 const WORKSPACES_LIST_KEY = 'mindfulspace_workspaces'
-const DEFAULT_WORKSPACES = [{ id: 'default', name: 'Main Workspace' }]
 
 function generateId() {
   return `ws-${Date.now()}-${Math.floor(Math.random() * 100000)}`
 }
 
 function App() {
-  const [allWorkspaces, setAllWorkspaces] = useState(() => {
-    const stored = readJsonStorage(WORKSPACES_LIST_KEY)
-    return Array.isArray(stored) && stored.length > 0 ? stored : DEFAULT_WORKSPACES
-  })
-
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState(() => {
-    const stored = readJsonStorage('mindfulspace_activeWorkspace')
-    return typeof stored === 'string' ? stored : DEFAULT_WORKSPACES[0].id
-  })
+  const [allWorkspaces, setAllWorkspaces] = useState(() => getInitialAppState().workspaces)
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(() => getInitialAppState().activeWorkspaceId)
 
   useEffect(() => {
-    writeJsonStorage(WORKSPACES_LIST_KEY, allWorkspaces)
-  }, [allWorkspaces])
+    // Cleanup legacy keys
+    try {
+      localStorage.removeItem(WORKSPACES_LIST_KEY)
+      localStorage.removeItem('mindfulspace_activeWorkspace')
+    } catch {
+      // ignore
+    }
+  }, [])
 
   useEffect(() => {
-    writeJsonStorage('mindfulspace_activeWorkspace', activeWorkspaceId)
-  }, [activeWorkspaceId])
+    writeJsonStorage(APP_STORAGE_KEY, {
+      workspaces: allWorkspaces,
+      activeWorkspaceId: activeWorkspaceId
+    })
+  }, [allWorkspaces, activeWorkspaceId])
 
   const handleSwitchWorkspace = useCallback((id) => {
     setActiveWorkspaceId(id)

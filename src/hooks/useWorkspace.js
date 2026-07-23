@@ -835,14 +835,29 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const archivePictureCard = picCol.archive
   const updatePictureImageId = useCallback((id, imageId) => picCol.update(id, { imageId }), [picCol])
   const updatePictureDimensions = useCallback((id, width, height) => picCol.update(id, { width, height }), [picCol])
+  const updatePictureFitMode = useCallback((id, fitMode) => picCol.update(id, { fitMode }), [picCol])
   const deletePictureCard = useCallback((id) => {
+    let imageIdToDelete = null;
     picCol.setItems(prev => {
-      const card = prev.find(t => t.id === id)
-      if (card?.imageId) deleteImageBlob(card.imageId).catch(() => {})
-      return prev
-    })
-    picCol.remove(id)
-  }, [picCol])
+      const card = prev.find(t => t.id === id);
+      if (card?.imageId) {
+        // Check if other active picture cards share this imageId
+        const isReferencedByActive = prev.some(c => c.id !== id && c.imageId === card.imageId);
+
+        // Check if other archived cards share this imageId
+        const isReferencedByArchived = archivedCards.some(a => a.type === 'picture' && a.data?.imageId === card.imageId);
+
+        if (!isReferencedByActive && !isReferencedByArchived) {
+          imageIdToDelete = card.imageId;
+        }
+      }
+      return prev;
+    });
+    picCol.remove(id);
+    if (imageIdToDelete) {
+      deleteImageBlob(imageIdToDelete).catch(() => {});
+    }
+  }, [picCol, archivedCards])
 
   // Quick Links
   const updateQuickLinksTitle = qlCol.updateTitle
@@ -1160,7 +1175,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       updateStopwatchTitle, updateStopwatchColor, updateStopwatchElapsedSeconds, toggleStopwatchMinimize, duplicateStopwatchCard, archiveStopwatchCard, deleteStopwatchCard,
       updateCalendarTitle, updateCalendarColor, toggleCalendarMinimize, changeCalendarMonth, openCalendarDay, closeCalendarDay, updateCalendarEntry, duplicateCalendarCard, archiveCalendarCard, deleteCalendarCard,
       updateHabitTitle, updateHabitIcon, updateHabitColor, toggleHabitMinimize, setHabitView, changeHabitMonth, toggleHabitDate, duplicateHabitCard, archiveHabitCard, deleteHabitCard,
-      updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, duplicatePictureCard, archivePictureCard, deletePictureCard,
+      updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, updatePictureFitMode, duplicatePictureCard, archivePictureCard, deletePictureCard,
       updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard,
       updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard
     }

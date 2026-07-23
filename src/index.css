@@ -3526,8 +3526,40 @@ html:-webkit-full-screen .app-shell {
   width: 100%;
   height: 100%;
   max-height: none;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 8px;
+}
+
+.picture-fit-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.65);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+  z-index: 5;
+}
+
+.picture-preview:hover .picture-fit-btn {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.picture-fit-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
+  transform: translateY(0) scale(1.02);
 }
 
 .picture-resizer {
@@ -3538,6 +3570,7 @@ html:-webkit-full-screen .app-shell {
   height: 20px;
   cursor: nwse-resize;
   z-index: 10;
+  touch-action: none;
 }
 
 .picture-resizer::after {
