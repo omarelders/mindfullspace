@@ -4,6 +4,7 @@ import {
   Menu,
   Search,
   Settings,
+  AlertCircle,
   User,
   UserRound,
   ChevronDown,
@@ -65,6 +66,20 @@ export function TopBar({
   const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const fileInputRef = useRef(null)
+
+  const [storageUsage, setStorageUsage] = useState(0)
+  const [storageQuota, setStorageQuota] = useState(0)
+
+  useEffect(() => {
+    if (isAccountMenuOpen && activeAccountTab === 'settings') {
+      if (navigator.storage && navigator.storage.estimate) {
+        navigator.storage.estimate().then((estimate) => {
+          setStorageUsage(estimate.usage || 0)
+          setStorageQuota(estimate.quota || 0)
+        }).catch(() => {})
+      }
+    }
+  }, [isAccountMenuOpen, activeAccountTab])
 
   const handleExportClick = () => {
     exportWorkspace(workspace.id, workspace.name).catch((err) => {
@@ -392,6 +407,21 @@ export function TopBar({
                       <span>Labels</span>
                       <strong>{labelOptions.length}</strong>
                     </div>
+                    {storageQuota > 0 && (
+                      <div className="account-setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px', marginTop: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '12px', color: 'var(--text-muted)' }}>
+                          <span>Storage Usage</span>
+                          <span>{(storageUsage / 1024 / 1024).toFixed(2)} MB / {(storageQuota / 1024 / 1024).toFixed(2)} MB</span>
+                        </div>
+                        <div style={{ width: '100%', height: '6px', background: 'var(--panel-border)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.min(100, (storageUsage / storageQuota) * 100)}%`, background: 'var(--switch-track)', transition: 'width 0.3s ease' }} />
+                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--tone-gold)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                          <AlertCircle size={12} />
+                          <span>All your data is stored locally. Remember to export your workspace to back it up!</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

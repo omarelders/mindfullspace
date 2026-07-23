@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, memo, useCallback } from 'react'
-import { ImagePlus, Upload } from 'lucide-react'
+import { ImagePlus, Upload, Maximize, Minimize } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
 import { getImage, saveImage, deleteImage, MAX_IMAGE_SIZE } from '../utils/imageStore'
 
@@ -16,12 +16,14 @@ export const PictureCard = memo(function PictureCard({
   onDeleteCard,
   onUpdateImageId,
   onUpdateDimensions,
+  onUpdateFitMode,
   scale = 1,
   isPopping,
 }) {
   const [objectUrl, setObjectUrl] = useState(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
+  const [resizedDimensions, setResizedDimensions] = useState(null)
   const [error, setError] = useState(null)
   const fileInputRef = useRef(null)
   const resizerRef = useRef(null)
@@ -107,49 +109,70 @@ export const PictureCard = memo(function PictureCard({
     fileInputRef.current?.click()
   }, [])
 
-  const handleResizeStart = useCallback((e) => {
+  const resizeState = useRef(null)
+
+  const handlePointerDown = useCallback((e) => {
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
     
+    e.target.setPointerCapture(e.pointerId)
     setIsResizing(true)
-    const startX = e.clientX
-    const startY = e.clientY
+
     const startWidth = picture.width || 280
     const startHeight = picture.height || (resizerRef.current?.closest('.picture-card')?.offsetHeight || 200)
 
-    const handleMouseMove = (moveEvent) => {
-      const dx = (moveEvent.clientX - startX) / scale
-      const dy = (moveEvent.clientY - startY) / scale
-      const newWidth = Math.max(160, startWidth + dx)
-      const newHeight = Math.max(80, startHeight + dy)
-      
-      // Update visually during drag
-      const card = resizerRef.current?.closest('.picture-card')
-      if (card) {
-        card.style.width = `${newWidth}px`
-        card.style.height = `${newHeight}px`
-      }
+    resizeState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth,
+      startHeight
     }
 
-    const handleMouseUp = (upEvent) => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-      setIsResizing(false)
-      
-      const dx = (upEvent.clientX - startX) / scale
-      const dy = (upEvent.clientY - startY) / scale
-      const finalWidth = Math.max(160, startWidth + dx)
-      const finalHeight = Math.max(80, startHeight + dy)
-      
-      if (onUpdateDimensions) {
-        onUpdateDimensions(finalWidth, finalHeight)
-      }
+    setResizedDimensions({ width: startWidth, height: startHeight })
+  }, [picture.width, picture.height])
+
+  const handlePointerMove = useCallback((e) => {
+    if (!isResizing || !resizeState.current) return
+
+    const { startX, startY, startWidth, startHeight } = resizeState.current
+    const dx = (e.clientX - startX) / scale
+    const dy = (e.clientY - startY) / scale
+
+    const newWidth = Math.max(180, startWidth + dx)
+    const newHeight = Math.max(120, startHeight + dy)
+
+    setResizedDimensions({ width: newWidth, height: newHeight })
+  }, [isResizing, scale])
+
+  const handlePointerUp = useCallback((e) => {
+    if (!isResizing) return
+
+    e.target.releasePointerCapture(e.pointerId)
+    setIsResizing(false)
+
+    if (resizedDimensions && onUpdateDimensions) {
+      onUpdateDimensions(resizedDimensions.width, resizedDimensions.height)
     }
 
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-  }, [picture.width, picture.height, scale, onUpdateDimensions])
+    resizeState.current = null
+    setResizedDimensions(null)
+  }, [isResizing, resizedDimensions, onUpdateDimensions])
+
+  const handlePointerCancel = useCallback((e) => {
+    if (!isResizing) return
+    e.target.releasePointerCapture(e.pointerId)
+    setIsResizing(false)
+    resizeState.current = null
+    setResizedDimensions(null)
+  }, [isResizing])
+
+  const fitMode = picture.fitMode || 'contain'
+  const toggleFitMode = useCallback(() => {
+    if (onUpdateFitMode) {
+      onUpdateFitMode(picture.id, fitMode === 'contain' ? 'cover' : 'contain')
+    }
+  }, [fitMode, onUpdateFitMode, picture.id])
 
   return (
     <section
@@ -158,8 +181,8 @@ export const PictureCard = memo(function PictureCard({
       style={{
         left: position?.x,
         top: position?.y,
-        width: picture.width || undefined,
-        height: picture.height || undefined,
+        width: resizedDimensions?.width || picture.width || undefined,
+        height: resizedDimensions?.height || picture.height || undefined,
         margin: position ? 0 : undefined,
         backgroundColor: picture.color || undefined,
         zIndex: isResizing ? 1000 : undefined,
@@ -184,7 +207,16 @@ export const PictureCard = memo(function PictureCard({
         <div className="picture-body">
           {objectUrl ? (
             <div className="picture-preview">
-              <img src={objectUrl} alt={picture.title || 'Uploaded picture'} className="picture-img" />
+              <img
+                src={objectUrl}
+                alt={picture.title || 'Uploaded picture'}
+                className="picture-img"
+                style={{ objectFit: fitMode }}
+              />
+              <button type="button" className="picture-fit-btn" onClick={toggleFitMode} aria-label="Toggle fit mode">
+                {fitMode === 'contain' ? <Maximize size={14} /> : <Minimize size={14} />}
+                {fitMode === 'contain' ? 'Cover' : 'Contain'}
+              </button>
               <button type="button" className="picture-replace-btn" onClick={openFilePicker} aria-label="Replace image">
                 <Upload size={14} />
                 Replace
@@ -219,7 +251,10 @@ export const PictureCard = memo(function PictureCard({
         <div 
           ref={resizerRef}
           className="picture-resizer" 
-          onPointerDown={handleResizeStart}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
         />
       )}
     </section>

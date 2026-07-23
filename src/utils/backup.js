@@ -68,7 +68,7 @@ export async function exportWorkspace(workspaceId, workspaceName) {
     images,
   }
 
-  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   const cleanName = (workspaceName || 'workspace').replace(/[^a-z0-9_-]/gi, '_')
@@ -117,6 +117,6 @@ export async function importWorkspace(workspaceId, file) {
       }
     }
     reader.onerror = () => reject(new Error('Failed to read file.'))
-    reader.readAsText(file)
+    reader.readAsText(file, 'UTF-8')
   })
 }
