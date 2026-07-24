@@ -1,10 +1,12 @@
 import { memo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
+import { HabitIcon } from './HabitCard'
 import { buildDateKey, formatCalendarMonthLabel, formatCalendarEntryLabel } from '../utils/dateUtils'
 
 export const CalendarCard = memo(function CalendarCard({
   calendar,
+  allHabits = [],
   position,
   onPointerDown,
   onUpdateTitle,
@@ -68,6 +70,26 @@ export const CalendarCard = memo(function CalendarCard({
                 </button>
                 <div className="calendar-entry-date">{formatCalendarEntryLabel(calendar.selectedDate)}</div>
               </div>
+
+              {allHabits?.length > 0 && (
+                <div className="calendar-entry-habits">
+                  <div className="calendar-entry-habits-title">Habits</div>
+                  <div className="calendar-entry-habits-list">
+                    {allHabits.map((habit) => {
+                      const isDone = Boolean(habit.completions?.[calendar.selectedDate])
+                      return (
+                        <div key={habit.id} className={`calendar-entry-habit-item ${isDone ? 'is-done' : ''}`} title={habit.title || 'Habit'}>
+                          <div className="calendar-entry-habit-icon">
+                            <HabitIcon iconId={habit.icon} />
+                          </div>
+                          <span className="calendar-entry-habit-name">{habit.title || 'Habit'}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               <textarea
                 className="calendar-entry-input"
                 value={currentEntry}

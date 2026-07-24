@@ -2465,6 +2465,69 @@ html:-webkit-full-screen .app-shell {
   color: var(--card-ui-mid);
 }
 
+.calendar-entry-habits {
+  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calendar-entry-habits-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--card-ui-mid);
+  letter-spacing: 0.6px;
+}
+
+.calendar-entry-habits-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.calendar-entry-habit-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--card-text);
+  opacity: 0.5;
+  border: 1px solid var(--card-ui-soft);
+  transition: all 0.2s ease;
+}
+
+.calendar-entry-habit-item.is-done {
+  opacity: 1;
+  background: var(--card-ui-soft);
+  color: var(--card-ui-strong);
+  border-color: var(--card-ui-mid);
+}
+
+.calendar-entry-habit-icon {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendar-entry-habit-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.calendar-entry-habit-name {
+  max-width: 80px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .card-habit {
   left: 1700px;
   top: 120px;
@@ -3589,10 +3652,17 @@ html:-webkit-full-screen .app-shell {
   border-color: var(--card-ui-strong);
 }
 
-.picture-replace-btn {
+.picture-actions {
   position: absolute;
   bottom: 8px;
   right: 8px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.picture-action-btn {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3604,12 +3674,10 @@ html:-webkit-full-screen .app-shell {
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.2s;
   backdrop-filter: blur(4px);
 }
 
-.picture-preview:hover .picture-replace-btn {
+.picture-preview:hover .picture-actions {
   opacity: 1;
 }
 

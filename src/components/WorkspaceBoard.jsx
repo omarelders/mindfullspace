@@ -270,6 +270,7 @@ export function WorkspaceBoard({
               <CalendarCard
                 key={calendar.id}
                 calendar={calendar}
+                allHabits={habits}
                 position={cardPositions[calendar.id]}
                 onPointerDown={(e) => actions.handleCardPointerDown(calendar.id, e)}
                 onUpdateTitle={actions.updateCalendarTitle}
@@ -323,6 +324,7 @@ export function WorkspaceBoard({
                 onDeleteCard={actions.deletePictureCard}
                 onUpdateImageId={actions.updatePictureImageId}
                 onUpdateDimensions={(width, height) => actions.updatePictureDimensions(picture.id, width, height)}
+                onUpdateObjectFit={(objectFit) => actions.updatePictureObjectFit(picture.id, objectFit)}
                 scale={viewport.scale}
                 isPopping={poppingCardIds.has(picture.id)}
               />

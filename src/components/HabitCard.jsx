@@ -4,7 +4,7 @@ import { CardContextMenu } from './CardContextMenu'
 import { buildDateKey, formatCalendarMonthLabel } from '../utils/dateUtils'
 import { HABIT_ICON_OPTIONS, HABIT_ICON_EMOJI_FALLBACKS } from '../utils/constants'
 
-function normalizeHabitIconId(iconId) {
+export function normalizeHabitIconId(iconId) {
   if (HABIT_ICON_OPTIONS.some((option) => option.id === iconId)) {
     return iconId
   }
@@ -16,7 +16,7 @@ function normalizeHabitIconId(iconId) {
   return HABIT_ICON_OPTIONS[0].id
 }
 
-function HabitIcon({ iconId }) {
+export function HabitIcon({ iconId }) {
   const normalizedIconId = normalizeHabitIconId(iconId)
 
   switch (normalizedIconId) {
