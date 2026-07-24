@@ -213,14 +213,16 @@ export const PictureCard = memo(function PictureCard({
                 className="picture-img"
                 style={{ objectFit: fitMode }}
               />
-              <button type="button" className="picture-fit-btn" onClick={toggleFitMode} aria-label="Toggle fit mode">
-                {fitMode === 'contain' ? <Maximize size={14} /> : <Minimize size={14} />}
-                {fitMode === 'contain' ? 'Cover' : 'Contain'}
-              </button>
-              <button type="button" className="picture-replace-btn" onClick={openFilePicker} aria-label="Replace image">
-                <Upload size={14} />
-                Replace
-              </button>
+              <div className="picture-actions">
+                <button type="button" className="picture-action-btn" onClick={toggleFitMode} aria-label="Toggle fit mode">
+                  {fitMode === 'contain' ? <Maximize size={14} /> : <Minimize size={14} />}
+                  {fitMode === 'contain' ? 'Cover' : 'Contain'}
+                </button>
+                <button type="button" className="picture-action-btn" onClick={openFilePicker} aria-label="Replace image">
+                  <Upload size={14} />
+                  Replace
+                </button>
+              </div>
             </div>
           ) : (
             <div
