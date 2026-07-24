@@ -124,6 +124,7 @@ export function TopBar({
   }, [labels, searchQuery])
 
   const habitOptions = useMemo(() => (Array.isArray(habits) ? habits : []), [habits])
+  const archiveOptions = useMemo(() => (Array.isArray(archivedCards) ? archivedCards : []), [archivedCards])
 
   const { streakDays, streakTimeline } = useMemo(() => {
     if (habitOptions.length === 0) {
