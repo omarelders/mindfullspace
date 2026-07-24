@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useCallback } from 'react'
 import { ActionRail, ActionRailIcon } from './ActionRail'
 import { TodoCard } from './TodoCard'
 import { LabelCard } from './LabelCard'
@@ -41,6 +41,34 @@ export function WorkspaceBoard({
     actions
   } = useWorkspace(workspace.id, workspaceRef)
 
+  const handleToggleThemeMode = useCallback(() => setThemeMode((mode) => (mode === 'night' ? 'day' : 'night')), [setThemeMode])
+  const handleToggleFocusMode = useCallback(() => setIsFocusMode((active) => !active), [setIsFocusMode])
+  const handleToggleRail = useCallback(() => setIsRailOpen((isOpen) => !isOpen), [setIsRailOpen])
+
+  const noteDimensionsCallbacks = useRef({})
+  const getUpdateNoteDimensions = useCallback((id) => {
+    if (!noteDimensionsCallbacks.current[id]) {
+      noteDimensionsCallbacks.current[id] = (w, h) => actions.updateNoteDimensions(id, w, h)
+    }
+    return noteDimensionsCallbacks.current[id]
+  }, [actions.updateNoteDimensions])
+
+  const pictureDimensionsCallbacks = useRef({})
+  const getUpdatePictureDimensions = useCallback((id) => {
+    if (!pictureDimensionsCallbacks.current[id]) {
+      pictureDimensionsCallbacks.current[id] = (w, h) => actions.updatePictureDimensions(id, w, h)
+    }
+    return pictureDimensionsCallbacks.current[id]
+  }, [actions.updatePictureDimensions])
+
+  const quoteDimensionsCallbacks = useRef({})
+  const getUpdateQuoteDimensions = useCallback((id) => {
+    if (!quoteDimensionsCallbacks.current[id]) {
+      quoteDimensionsCallbacks.current[id] = (w, h) => actions.updateQuoteDimensions(id, w, h)
+    }
+    return quoteDimensionsCallbacks.current[id]
+  }, [actions.updateQuoteDimensions])
+
   const boardStageStyle = supportsNativeZoom
     ? {
         left: viewport.x / viewport.scale,
@@ -52,14 +80,6 @@ export function WorkspaceBoard({
         top: 0,
         transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
       }
-
-  if (!isVisible) {
-    return (
-      <div className={`app-shell theme-${themeMode} ${isFocusMode ? 'is-focus-mode' : ''}`} style={{ display: 'none' }}>
-        <div ref={workspaceRef} />
-      </div>
-    )
-  }
 
   return (
     <div
@@ -110,9 +130,9 @@ export function WorkspaceBoard({
     >
       <TopBar 
         mode={themeMode} 
-        onToggleMode={() => setThemeMode((mode) => (mode === 'night' ? 'day' : 'night'))} 
+        onToggleMode={handleToggleThemeMode} 
         isFocusMode={isFocusMode}
-        onToggleFocusMode={() => setIsFocusMode((active) => !active)}
+        onToggleFocusMode={handleToggleFocusMode}
         workspace={workspace}
         allWorkspaces={allWorkspaces}
         onSwitchWorkspace={onSwitchWorkspace}
@@ -148,6 +168,7 @@ export function WorkspaceBoard({
             {columns.map((column) => (
               <TodoCard
                 key={column.id}
+                cardId={column.id}
                 column={column}
                 draft={drafts[column.id]}
                 onDraftChange={actions.setDraft}
@@ -162,7 +183,7 @@ export function WorkspaceBoard({
                 onDragEndItem={actions.handleDragEndItem}
                 draggingItemId={dragState.columnId === column.id ? dragState.itemId : null}
                 position={cardPositions[column.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(column.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateTodoCardTitle}
                 onUpdateColor={actions.updateTodoCardColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -177,10 +198,11 @@ export function WorkspaceBoard({
             {detachedLabels.map((label) => (
               <LabelCard
                 key={label.id}
+                cardId={label.id}
                 label={label}
                 labelTextColor={theme.labelText}
                 position={cardPositions[label.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(label.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateText={actions.updateLabelText}
                 onUpdateColor={actions.updateLabelColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -195,9 +217,10 @@ export function WorkspaceBoard({
             {notes.map((note) => (
               <NoteCard
                 key={note.id}
+                cardId={note.id}
                 note={note}
                 position={cardPositions[note.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(note.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateNoteTitle}
                 onUpdateText={actions.updateNoteText}
                 onUpdateColor={actions.updateNoteColor}
@@ -206,7 +229,7 @@ export function WorkspaceBoard({
                 onDuplicateCard={actions.duplicateNoteCard}
                 onArchiveCard={actions.archiveNoteCard}
                 onDeleteCard={actions.deleteNoteCard}
-                onUpdateDimensions={(width, height) => actions.updateNoteDimensions(note.id, width, height)}
+                onUpdateDimensions={getUpdateNoteDimensions(note.id)}
                 scale={viewport.scale}
                 isPopping={poppingCardIds.has(note.id)}
               />
@@ -215,9 +238,10 @@ export function WorkspaceBoard({
             {timers.map((timer) => (
               <TimerCard
                 key={timer.id}
+                cardId={timer.id}
                 timer={timer}
                 position={cardPositions[timer.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(timer.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateTimerTitle}
                 onUpdateColor={actions.updateTimerColor}
                 onUpdateTimerState={actions.updateTimerState}
@@ -233,9 +257,10 @@ export function WorkspaceBoard({
             {counters.map((counter) => (
               <CounterCard
                 key={counter.id}
+                cardId={counter.id}
                 counter={counter}
                 position={cardPositions[counter.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(counter.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateCounterTitle}
                 onUpdateValue={actions.updateCounterValue}
                 onUpdateColor={actions.updateCounterColor}
@@ -251,9 +276,10 @@ export function WorkspaceBoard({
             {stopwatches.map((stopwatch) => (
               <StopwatchCard
                 key={stopwatch.id}
+                cardId={stopwatch.id}
                 stopwatch={stopwatch}
                 position={cardPositions[stopwatch.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(stopwatch.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateStopwatchTitle}
                 onUpdateColor={actions.updateStopwatchColor}
                 onUpdateStopwatchState={actions.updateStopwatchState}
@@ -269,10 +295,11 @@ export function WorkspaceBoard({
             {calendars.map((calendar) => (
               <CalendarCard
                 key={calendar.id}
+                cardId={calendar.id}
                 calendar={calendar}
                 allHabits={habits}
                 position={cardPositions[calendar.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(calendar.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateCalendarTitle}
                 onUpdateColor={actions.updateCalendarColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -291,9 +318,10 @@ export function WorkspaceBoard({
             {habits.map((habit) => (
               <HabitCard
                 key={habit.id}
+                cardId={habit.id}
                 habit={habit}
                 position={cardPositions[habit.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(habit.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateHabitTitle}
                 onUpdateIcon={actions.updateHabitIcon}
                 onUpdateColor={actions.updateHabitColor}
@@ -312,9 +340,10 @@ export function WorkspaceBoard({
             {pictures.map((picture) => (
               <PictureCard
                 key={picture.id}
+                cardId={picture.id}
                 picture={picture}
                 position={cardPositions[picture.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(picture.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updatePictureTitle}
                 onUpdateColor={actions.updatePictureColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -323,7 +352,7 @@ export function WorkspaceBoard({
                 onArchiveCard={actions.archivePictureCard}
                 onDeleteCard={actions.deletePictureCard}
                 onUpdateImageId={actions.updatePictureImageId}
-                onUpdateDimensions={(width, height) => actions.updatePictureDimensions(picture.id, width, height)}
+                onUpdateDimensions={getUpdatePictureDimensions(picture.id)}
                 onUpdateFitMode={actions.updatePictureFitMode}
                 scale={viewport.scale}
                 isPopping={poppingCardIds.has(picture.id)}
@@ -333,9 +362,10 @@ export function WorkspaceBoard({
             {quickLinks.map((qlCard) => (
               <QuickLinksCard
                 key={qlCard.id}
+                cardId={qlCard.id}
                 quickLinkCard={qlCard}
                 position={cardPositions[qlCard.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(qlCard.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateQuickLinksTitle}
                 onUpdateColor={actions.updateQuickLinksColor}
                 onMoveCard={actions.moveCardToTarget}
@@ -354,9 +384,10 @@ export function WorkspaceBoard({
             {quotes.map((quote) => (
               <QuoteCard
                 key={quote.id}
+                cardId={quote.id}
                 quote={quote}
                 position={cardPositions[quote.id]}
-                onPointerDown={(e) => actions.handleCardPointerDown(quote.id, e)}
+                onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateQuoteTitle}
                 onUpdateText={actions.updateQuoteText}
                 onUpdateAuthor={actions.updateQuoteAuthor}
@@ -366,7 +397,7 @@ export function WorkspaceBoard({
                 onDuplicateCard={actions.duplicateQuoteCard}
                 onArchiveCard={actions.archiveQuoteCard}
                 onDeleteCard={actions.deleteQuoteCard}
-                onUpdateDimensions={(width, height) => actions.updateQuoteDimensions(quote.id, width, height)}
+                onUpdateDimensions={getUpdateQuoteDimensions(quote.id)}
                 scale={viewport.scale}
                 isPopping={poppingCardIds.has(quote.id)}
               />
@@ -376,7 +407,7 @@ export function WorkspaceBoard({
 
         <ActionRail
           open={isRailOpen}
-          onToggle={() => setIsRailOpen((isOpen) => !isOpen)}
+          onToggle={handleToggleRail}
           quickActions={QUICK_CREATE_ACTIONS}
           onQuickAction={actions.handleQuickAction}
         />

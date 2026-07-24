@@ -1,8 +1,10 @@
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
 import { HabitIcon } from './HabitCard'
 import { buildDateKey, formatCalendarMonthLabel, formatCalendarEntryLabel } from '../utils/dateUtils'
+
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export const CalendarCard = memo(function CalendarCard({
   calendar,
@@ -21,17 +23,23 @@ export const CalendarCard = memo(function CalendarCard({
   onCloseDay,
   onUpdateEntry,
   isPopping,
+  cardId,
 }) {
-  const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  const firstDayOfMonth = new Date(calendar.year, calendar.month, 1)
-  const firstWeekday = (firstDayOfMonth.getDay() + 6) % 7
-  const daysInMonth = new Date(calendar.year, calendar.month + 1, 0).getDate()
-  const today = new Date()
-  const todayKey = buildDateKey(today.getFullYear(), today.getMonth(), today.getDate())
+  const { firstWeekday, daysInMonth, todayKey } = useMemo(() => {
+    const firstDayOfMonth = new Date(calendar.year, calendar.month, 1)
+    const fWeekday = (firstDayOfMonth.getDay() + 6) % 7
+    const dInMonth = new Date(calendar.year, calendar.month + 1, 0).getDate()
+    const today = new Date()
+    const tKey = buildDateKey(today.getFullYear(), today.getMonth(), today.getDate())
+    return { firstWeekday: fWeekday, daysInMonth: dInMonth, todayKey: tKey }
+  }, [calendar.year, calendar.month])
+
+  const weekdayLabels = WEEKDAY_LABELS
   const currentEntry = calendar.selectedDate ? calendar.entries?.[calendar.selectedDate] || '' : ''
 
   return (
     <section
+      data-card-id={cardId}
       className={`floating-card calendar-card card-calendar ${calendar.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
         left: position?.x,
@@ -40,7 +48,7 @@ export const CalendarCard = memo(function CalendarCard({
         backgroundColor: calendar.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{calendar.title || 'Calendar'}</span>
         <CardContextMenu
           title={calendar.title || 'Calendar'}

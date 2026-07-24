@@ -38,6 +38,7 @@ function normalizeHabitIconId(iconId) {
   return HABIT_ICON_OPTIONS[0].id
 }
 
+const supportsNativeZoom = 'zoom' in document.createElement('div').style
 
 export function useWorkspace(workspaceId, workspaceRef) {
   const initialWorkspaceState = useMemo(() => getInitialWorkspaceState(workspaceId), [workspaceId])
@@ -58,6 +59,14 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const popCleanupTimeoutsRef = useRef(new Map())
   const panRef = useRef({ active: false, lastX: 0, lastY: 0 })
   const toastTimerRef = useRef(null)
+  // Ref-based drag state for zero-React-overhead pointer moves
+  const draggingCardRef = useRef(null)
+  // Ref-based viewport for zero-React-overhead panning
+  const viewportRef = useRef(initialWorkspaceState.viewport)
+  // rAF handle for drag
+  const dragRafRef = useRef(null)
+  // rAF handle for pan
+  const panRafRef = useRef(null)
 
   // Long-press context menu state
   const [longPressMenu, setLongPressMenu] = useState({ visible: false, x: 0, y: 0, canvasX: 0, canvasY: 0 })
@@ -363,24 +372,32 @@ export function useWorkspace(workspaceId, workspaceRef) {
   )
 
   const workspaceStorageKey = `${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`
-  const workspaceStorageSnapshot = useMemo(
-    () => ({
-      columns, drafts, viewport, themeMode, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions,
-    }),
-    [columns, drafts, viewport, themeMode, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions]
-  )
 
   useEffect(() => {
     if (isPanning || draggingCard) return undefined
-    const persistTimeoutId = window.setTimeout(() => writeJsonStorage(workspaceStorageKey, workspaceStorageSnapshot), 500)
-    return () => window.clearTimeout(persistTimeoutId)
-  }, [workspaceStorageKey, workspaceStorageSnapshot, isPanning, draggingCard])
+    let idleId = null
+    const timerId = window.setTimeout(() => {
+      if ('requestIdleCallback' in window) {
+        idleId = window.requestIdleCallback(() => {
+          writeJsonStorage(workspaceStorageKey, captureSnapshot())
+        }, { timeout: 2000 })
+      } else {
+        writeJsonStorage(workspaceStorageKey, captureSnapshot())
+      }
+    }, 1000)
+
+    return () => {
+      window.clearTimeout(timerId)
+      if (idleId !== null && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleId)
+      }
+    }
+  }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions, captureSnapshot])
 
   // Ensure state is saved immediately on beforeunload or visibilitychange
   useEffect(() => {
     const handleSave = () => {
-      writeJsonStorage(workspaceStorageKey, workspaceStorageSnapshot)
+      writeJsonStorage(workspaceStorageKey, captureSnapshot())
     }
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') handleSave()
@@ -391,7 +408,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       window.removeEventListener('beforeunload', handleSave)
       window.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [workspaceStorageKey, workspaceStorageSnapshot])
+  }, [workspaceStorageKey, captureSnapshot])
 
   useEffect(() => {
     const currentCardIds = new Set(renderedCardIds)
@@ -457,24 +474,55 @@ export function useWorkspace(workspaceId, workspaceRef) {
     }
   }, [])
 
+  // Keep viewportRef in sync with viewport React state
+  useEffect(() => {
+    viewportRef.current = viewport
+  }, [viewport])
+
   useEffect(() => {
     if (!draggingCard) return
     const previousUserSelect = document.body.style.userSelect
     document.body.style.userSelect = 'none'
     window.getSelection()?.removeAllRanges()
 
+    // Store drag start info in ref so the pointermove handler is stable
+    draggingCardRef.current = draggingCard
+
+    // Find the dragging card's DOM element
+    const cardEl = workspaceRef.current?.querySelector(`[data-card-id="${draggingCard.id}"]`)
+
     const handlePointerMove = (e) => {
-      if (draggingCard.pointerId !== undefined && e.pointerId !== draggingCard.pointerId) return
-      const scale = viewport.scale || 1
-      const dx = (e.clientX - draggingCard.startX) / scale
-      const dy = (e.clientY - draggingCard.startY) / scale
-      setCardPositions(prev => ({
-        ...prev,
-        [draggingCard.id]: { x: draggingCard.initialX + dx, y: draggingCard.initialY + dy }
-      }))
+      const dc = draggingCardRef.current
+      if (!dc) return
+      if (dc.pointerId !== undefined && e.pointerId !== dc.pointerId) return
+      const scale = viewportRef.current.scale || 1
+      const dx = (e.clientX - dc.startX) / scale
+      const dy = (e.clientY - dc.startY) / scale
+      const nextX = dc.initialX + dx
+      const nextY = dc.initialY + dy
+      // Apply directly to DOM via rAF — no React state update during motion
+      if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current)
+      dragRafRef.current = requestAnimationFrame(() => {
+        if (cardEl) {
+          cardEl.style.left = nextX + 'px'
+          cardEl.style.top = nextY + 'px'
+        }
+        // Keep a lightweight pending position so we can commit on pointerup
+        draggingCardRef.current._pendingX = nextX
+        draggingCardRef.current._pendingY = nextY
+      })
     }
     const handlePointerUp = (e) => {
-      if (draggingCard.pointerId !== undefined && e.pointerId !== draggingCard.pointerId) return
+      if (draggingCardRef.current?.pointerId !== undefined && e.pointerId !== draggingCardRef.current?.pointerId) return
+      const dc = draggingCardRef.current
+      if (dc && dc._pendingX !== undefined) {
+        // Commit final position to React state only once, on release
+        setCardPositions(prev => ({
+          ...prev,
+          [dc.id]: { x: dc._pendingX, y: dc._pendingY }
+        }))
+      }
+      draggingCardRef.current = null
       setDraggingCard(null)
     }
     window.addEventListener('pointermove', handlePointerMove)
@@ -482,18 +530,24 @@ export function useWorkspace(workspaceId, workspaceRef) {
     window.addEventListener('pointercancel', handlePointerUp)
     return () => {
       document.body.style.userSelect = previousUserSelect
+      if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current)
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
     }
-  }, [draggingCard, viewport.scale])
+  }, [draggingCard, workspaceRef])
 
-  const handleCardPointerDown = (cardId, e) => {
+  // Stable handleCardPointerDown via ref — never creates new function reference,
+  // so it won't defeat React.memo on card components
+  const cardPositionsRef = useRef(cardPositions)
+  useEffect(() => { cardPositionsRef.current = cardPositions }, [cardPositions])
+
+  const handleCardPointerDown = useCallback((cardId, e) => {
     if (window.innerWidth <= 1200) return
     if (e.button !== 0 && e.pointerType === 'mouse') return
     if (!e.target.closest('.card-header') && !e.target.closest('.label-drag-handle') && !e.target.closest('.stopwatch-drag-handle')) return
     if (e.target.closest('.card-menu-wrap')) return
-    const cardPosition = cardPositions[cardId]
+    const cardPosition = cardPositionsRef.current[cardId]
     if (!cardPosition) return
     e.preventDefault()
     e.stopPropagation()
@@ -511,7 +565,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       initialX: cardPosition.x,
       initialY: cardPosition.y
     })
-  }
+  }, [])
 
   useEffect(() => {
     const stopPanning = () => {
@@ -1010,15 +1064,37 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const movePanning = useCallback((event) => {
     if (!panRef.current.active) return
     event.preventDefault()
-    const deltaX = event.clientX - panRef.current.lastX; const deltaY = event.clientY - panRef.current.lastY
-    panRef.current.lastX = event.clientX; panRef.current.lastY = event.clientY
-    setViewport((v) => ({ ...v, x: v.x + deltaX, y: v.y + deltaY }))
-  }, [])
+    const deltaX = event.clientX - panRef.current.lastX
+    const deltaY = event.clientY - panRef.current.lastY
+    panRef.current.lastX = event.clientX
+    panRef.current.lastY = event.clientY
+    // Update ref immediately for downstream calculations
+    const v = viewportRef.current
+    const nextViewport = { ...v, x: v.x + deltaX, y: v.y + deltaY }
+    viewportRef.current = nextViewport
+    // Apply to DOM via rAF — no React state update during motion
+    if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
+    panRafRef.current = requestAnimationFrame(() => {
+      const boardStage = workspaceRef.current?.querySelector('.board-stage')
+      if (boardStage) {
+        const vr = viewportRef.current
+        if (supportsNativeZoom) {
+          boardStage.style.left = (vr.x / vr.scale) + 'px'
+          boardStage.style.top = (vr.y / vr.scale) + 'px'
+        } else {
+          boardStage.style.transform = `translate(${vr.x}px, ${vr.y}px) scale(${vr.scale})`
+        }
+      }
+    })
+  }, [workspaceRef])
 
-  const endPanning = useCallback(() => {
+  const endPanning = useCallback((event) => {
     if (!panRef.current.active) return
     panRef.current.active = false
     setIsPanning(false)
+    if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
+    // Commit final viewport to React state once on release
+    setViewport(viewportRef.current)
   }, [])
 
   const focusLabelCard = useCallback((labelId) => {

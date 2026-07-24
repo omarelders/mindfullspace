@@ -23,6 +23,7 @@ export const TimerCard = memo(function TimerCard({
   onArchiveCard,
   onDeleteCard,
   isPopping,
+  cardId,
 }) {
   const initialSeconds = Number.isFinite(timer.initialSeconds) ? timer.initialSeconds : 2700
   const persistedSeconds = Number.isFinite(timer.remainingSeconds) ? timer.remainingSeconds : initialSeconds
@@ -62,7 +63,7 @@ export const TimerCard = memo(function TimerCard({
 
   const hasFinishedRef = useRef(false)
 
-  // Interval loop
+  // Animation loop updating display only when visible second changes
   useEffect(() => {
     if (!isRunning || !endTime) return undefined
 
@@ -71,9 +72,10 @@ export const TimerCard = memo(function TimerCard({
       hasFinishedRef.current = false
     }
 
-    const intervalId = window.setInterval(() => {
+    let animationFrameId
+    const tick = () => {
       const left = getSecondsLeft()
-      setSecondsLeft(left)
+      setSecondsLeft((prev) => (prev !== left ? left : prev))
 
       // Timer has hit zero — fire once
       if (left <= 0 && !hasFinishedRef.current) {
@@ -122,10 +124,13 @@ export const TimerCard = memo(function TimerCard({
              })
            }
         }
+      } else {
+        animationFrameId = requestAnimationFrame(tick)
       }
-    }, 200) // 200ms — smooth display, no per-second drift
+    }
 
-    return () => window.clearInterval(intervalId)
+    animationFrameId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(animationFrameId)
   }, [isRunning, endTime, isPomodoroMode, pomodoroStage, pomodoroRound, pomodoroWork, pomodoroShortBreak, pomodoroLongBreak, timer.id, timer.title, onUpdateTimerState])
 
   const toggleRunning = () => {
@@ -226,6 +231,7 @@ export const TimerCard = memo(function TimerCard({
 
   return (
     <section
+      data-card-id={cardId}
       className={`floating-card timer-card card-timer ${timer.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''} ${isPomodoroMode ? 'pomodoro-active' : ''}`}
       style={{
         left: position?.x,
@@ -234,7 +240,7 @@ export const TimerCard = memo(function TimerCard({
         backgroundColor: timer.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{timer.title}</span>
         <button
           type="button"

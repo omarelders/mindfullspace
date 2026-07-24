@@ -14,11 +14,12 @@ export const LabelCard = memo(function LabelCard({
   onArchiveCard,
   onDeleteCard,
   isPopping,
+  cardId,
 }) {
   return (
     <div
       className={`floating-card label-card card-label ${label.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
-      data-card-id={label.id}
+      data-card-id={cardId}
       style={{
         left: position?.x,
         top: position?.y,
@@ -27,7 +28,7 @@ export const LabelCard = memo(function LabelCard({
         color: labelTextColor,
       }}
     >
-      <div className="label-drag-handle" onPointerDown={onPointerDown} style={{ flex: 1, cursor: onPointerDown ? 'grab' : 'default', paddingRight: '4px' }}>
+      <div className="label-drag-handle" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ flex: 1, cursor: onPointerDown ? 'grab' : 'default', paddingRight: '4px' }}>
         {label.text}
       </div>
       <CardContextMenu

@@ -1,8 +1,10 @@
-import { useState, memo } from 'react'
+import { useState, memo, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, Zap, GraduationCap, Code2, BookOpen, Dumbbell, Droplets, Sparkles, Check } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
 import { buildDateKey, formatCalendarMonthLabel } from '../utils/dateUtils'
 import { HABIT_ICON_OPTIONS, HABIT_ICON_EMOJI_FALLBACKS } from '../utils/constants'
+
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
 export function normalizeHabitIconId(iconId) {
   if (HABIT_ICON_OPTIONS.some((option) => option.id === iconId)) {
@@ -24,18 +26,18 @@ export function HabitIcon({ iconId }) {
       return <Zap className="habit-icon-svg" aria-hidden="true" />
     case 'studying':
       return <GraduationCap className="habit-icon-svg" aria-hidden="true" />
-    case 'coding':
+    case 'programming':
       return <Code2 className="habit-icon-svg" aria-hidden="true" />
     case 'reading':
       return <BookOpen className="habit-icon-svg" aria-hidden="true" />
-    case 'workout':
+    case 'exercise':
       return <Dumbbell className="habit-icon-svg" aria-hidden="true" />
-    case 'hydration':
+    case 'water':
       return <Droplets className="habit-icon-svg" aria-hidden="true" />
     case 'meditation':
       return <Sparkles className="habit-icon-svg" aria-hidden="true" />
     default:
-      return null
+      return <Zap className="habit-icon-svg" aria-hidden="true" />
   }
 }
 
@@ -55,22 +57,73 @@ export const HabitCard = memo(function HabitCard({
   onChangeMonth,
   onToggleDate,
   isPopping,
+  cardId,
 }) {
-  const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-  const firstDayOfMonth = new Date(habit.year, habit.month, 1)
-  const firstWeekday = (firstDayOfMonth.getDay() + 6) % 7
-  const daysInMonth = new Date(habit.year, habit.month + 1, 0).getDate()
-  const today = new Date()
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  const currentYear = todayStart.getFullYear()
-  const currentMonth = todayStart.getMonth()
-  const currentDayOfMonth = todayStart.getDate()
-  const todayKey = buildDateKey(today.getFullYear(), today.getMonth(), today.getDate())
+  const weekdayLabels = WEEKDAY_LABELS
+
+  const {
+    firstWeekday,
+    daysInMonth,
+    todayStart,
+    todayKey,
+    isViewingCurrentMonth,
+    doneInViewedMonth,
+    missingInViewedMonth,
+    doneInCurrentMonth,
+  } = useMemo(() => {
+    const firstDayOfMonth = new Date(habit.year, habit.month, 1)
+    const fWeekday = (firstDayOfMonth.getDay() + 6) % 7
+    const dInMonth = new Date(habit.year, habit.month + 1, 0).getDate()
+    const t = new Date()
+    const tStart = new Date(t.getFullYear(), t.getMonth(), t.getDate())
+    const curYear = tStart.getFullYear()
+    const curMonth = tStart.getMonth()
+    const curDay = tStart.getDate()
+    const tKey = buildDateKey(t.getFullYear(), t.getMonth(), t.getDate())
+    const viewingCurrent = habit.year === curYear && habit.month === curMonth
+
+    let doneViewed = 0
+    for (let day = 1; day <= dInMonth; day += 1) {
+      const dateKey = buildDateKey(habit.year, habit.month, day)
+      if (habit.completions?.[dateKey]) {
+        doneViewed += 1
+      }
+    }
+
+    let missingViewed = 0
+    if (viewingCurrent) {
+      for (let day = 1; day < curDay; day += 1) {
+        const dateKey = buildDateKey(habit.year, habit.month, day)
+        if (!habit.completions?.[dateKey]) {
+          missingViewed += 1
+        }
+      }
+    }
+
+    let doneCurrent = 0
+    for (let day = 1; day <= curDay; day += 1) {
+      const dateKey = buildDateKey(curYear, curMonth, day)
+      if (habit.completions?.[dateKey]) {
+        doneCurrent += 1
+      }
+    }
+
+    return {
+      firstWeekday: fWeekday,
+      daysInMonth: dInMonth,
+      todayStart: tStart,
+      todayKey: tKey,
+      isViewingCurrentMonth: viewingCurrent,
+      doneInViewedMonth: doneViewed,
+      missingInViewedMonth: missingViewed,
+      doneInCurrentMonth: doneCurrent,
+    }
+  }, [habit.year, habit.month, habit.completions])
+
   const todayIsDone = Boolean(habit.completions?.[todayKey])
   const hasHabitTitle = Boolean((habit.title || '').trim())
   const selectedIconId = normalizeHabitIconId(habit.icon)
   const selectedIconIndex = HABIT_ICON_OPTIONS.findIndex((option) => option.id === selectedIconId)
-  const isViewingCurrentMonth = habit.year === currentYear && habit.month === currentMonth
   const [editingName, setEditingName] = useState(false)
   const [editingNameValue, setEditingNameValue] = useState('')
 
@@ -109,35 +162,9 @@ export const HabitCard = memo(function HabitCard({
     onUpdateIcon(habit.id, HABIT_ICON_OPTIONS[nextIndex].id)
   }
 
-  let doneInViewedMonth = 0
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const dateKey = buildDateKey(habit.year, habit.month, day)
-    if (habit.completions?.[dateKey]) {
-      doneInViewedMonth += 1
-    }
-  }
-
-  let missingInViewedMonth = 0
-  if (isViewingCurrentMonth) {
-    for (let day = 1; day < currentDayOfMonth; day += 1) {
-      const dateKey = buildDateKey(habit.year, habit.month, day)
-      if (!habit.completions?.[dateKey]) {
-        missingInViewedMonth += 1
-      }
-    }
-  }
-
-  let doneInCurrentMonth = 0
-  for (let day = 1; day <= currentDayOfMonth; day += 1) {
-    const dateKey = buildDateKey(currentYear, currentMonth, day)
-    const isDone = Boolean(habit.completions?.[dateKey])
-    if (isDone) {
-      doneInCurrentMonth += 1
-    }
-  }
-
   return (
     <section
+      data-card-id={cardId}
       className={`floating-card habit-card card-habit ${habit.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
         left: position?.x,
@@ -146,7 +173,7 @@ export const HabitCard = memo(function HabitCard({
         backgroundColor: habit.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{habit.title || 'Habit'}</span>
         <CardContextMenu
           title={habit.title || 'Habit'}

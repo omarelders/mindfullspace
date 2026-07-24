@@ -18,6 +18,7 @@ export const QuoteCard = memo(function QuoteCard({
   onUpdateDimensions,
   scale,
   isPopping,
+  cardId,
 }) {
   const [isEditingText, setIsEditingText] = useState(false)
   const [isEditingAuthor, setIsEditingAuthor] = useState(false)
@@ -29,24 +30,38 @@ export const QuoteCard = memo(function QuoteCard({
     e.preventDefault()
     e.stopPropagation()
 
+    const cardEl = e.currentTarget.closest('.quote-card')
     const startX = e.clientX
     const startY = e.clientY
     const startWidth = quote.width || 320
     const startHeight = quote.height || 200
+    let currentWidth = startWidth
+    let currentHeight = startHeight
+    let rafId = null
 
     const handlePointerMove = (moveEvent) => {
       const deltaX = (moveEvent.clientX - startX) / scale
       const deltaY = (moveEvent.clientY - startY) / scale
 
-      const newWidth = Math.max(220, startWidth + deltaX)
-      const newHeight = Math.max(120, startHeight + deltaY)
+      currentWidth = Math.max(220, startWidth + deltaX)
+      currentHeight = Math.max(120, startHeight + deltaY)
 
-      onUpdateDimensions(newWidth, newHeight)
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        if (cardEl) {
+          cardEl.style.width = `${currentWidth}px`
+          cardEl.style.height = `${currentHeight}px`
+        }
+      })
     }
 
     const handlePointerUp = () => {
+      if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
+      if (onUpdateDimensions && (currentWidth !== startWidth || currentHeight !== startHeight)) {
+        onUpdateDimensions(currentWidth, currentHeight)
+      }
     }
 
     document.addEventListener('pointermove', handlePointerMove)
@@ -99,6 +114,7 @@ export const QuoteCard = memo(function QuoteCard({
 
   return (
     <section
+      data-card-id={cardId}
       className={`floating-card quote-card ${quote.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
         left: position?.x,
@@ -109,7 +125,7 @@ export const QuoteCard = memo(function QuoteCard({
         backgroundColor: quote.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{quote.title}</span>
         <CardContextMenu
           title={quote.title}

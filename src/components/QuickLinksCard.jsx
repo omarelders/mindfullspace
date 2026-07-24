@@ -26,7 +26,8 @@ export const QuickLinksCard = memo(function QuickLinksCard({
   onUpdateLink,
   onRemoveLink,
   onReorderLinks,
-  isPopping
+  isPopping,
+  cardId
 }) {
   const customStyle = quickLinkCard.color ? { '--card-custom-bg': quickLinkCard.color } : {}
   const [isAdding, setIsAdding] = useState(false)
@@ -130,8 +131,8 @@ export const QuickLinksCard = memo(function QuickLinksCard({
         transform: `translate(${position?.x || 0}px, ${position?.y || 0}px)`,
         ...customStyle,
       }}
-      onPointerDown={onPointerDown}
-      data-card-id={quickLinkCard.id}
+      onPointerDown={(e) => onPointerDown(cardId, e)}
+      data-card-id={cardId}
     >
       <header className="card-header">
         <input

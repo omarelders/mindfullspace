@@ -16,6 +16,7 @@ export const StopwatchCard = memo(function StopwatchCard({
   onArchiveCard,
   onDeleteCard,
   isPopping,
+  cardId,
 }) {
   const initialSeconds = Number.isFinite(stopwatch.initialSeconds) ? stopwatch.initialSeconds : 0
   const persistedSeconds = Number.isFinite(stopwatch.elapsedSeconds)
@@ -40,15 +41,19 @@ export const StopwatchCard = memo(function StopwatchCard({
     }
   }, [persistedSeconds, isRunning])
 
-  // Interval loop
+  // Animation loop updating display only when visible second changes
   useEffect(() => {
     if (!isRunning || !lastStartTime) return undefined
 
-    const intervalId = window.setInterval(() => {
-      setElapsedSeconds(getElapsedSeconds())
-    }, 100) // update frequently for smooth logic without drifting
+    let animationFrameId
+    const tick = () => {
+      const current = getElapsedSeconds()
+      setElapsedSeconds((prev) => (prev !== current ? current : prev))
+      animationFrameId = requestAnimationFrame(tick)
+    }
 
-    return () => window.clearInterval(intervalId)
+    animationFrameId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(animationFrameId)
   }, [isRunning, lastStartTime, persistedSeconds])
 
   const toggleRunning = () => {
@@ -85,6 +90,7 @@ export const StopwatchCard = memo(function StopwatchCard({
 
   return (
     <section
+      data-card-id={cardId}
       className={`floating-card stopwatch-card card-stopwatch ${stopwatch.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
         left: position?.x,
@@ -93,7 +99,7 @@ export const StopwatchCard = memo(function StopwatchCard({
         backgroundColor: stopwatch.color || '#86ECA0',
       }}
     >
-      <div className="stopwatch-drag-handle" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <div className="stopwatch-drag-handle" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <CardContextMenu
           title={stopwatch.title || 'Stopwatch'}
           minimized={Boolean(stopwatch.minimized)}

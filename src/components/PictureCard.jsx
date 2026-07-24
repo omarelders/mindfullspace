@@ -19,6 +19,7 @@ export const PictureCard = memo(function PictureCard({
   onUpdateFitMode,
   scale = 1,
   isPopping,
+  cardId,
 }) {
   const [objectUrl, setObjectUrl] = useState(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -177,7 +178,7 @@ export const PictureCard = memo(function PictureCard({
   return (
     <section
       className={`floating-card picture-card ${picture.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
-      data-card-id={picture.id}
+      data-card-id={cardId}
       style={{
         left: position?.x,
         top: position?.y,
@@ -188,7 +189,7 @@ export const PictureCard = memo(function PictureCard({
         zIndex: isResizing ? 1000 : undefined,
       }}
     >
-      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{picture.title}</span>
         <CardContextMenu
           title={picture.title}

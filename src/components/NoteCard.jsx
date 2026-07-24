@@ -16,6 +16,7 @@ export const NoteCard = memo(function NoteCard({
   onUpdateDimensions,
   scale,
   isPopping,
+  cardId,
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(note.text)
@@ -24,24 +25,38 @@ export const NoteCard = memo(function NoteCard({
     e.preventDefault()
     e.stopPropagation()
 
+    const cardEl = e.currentTarget.closest('.note-card')
     const startX = e.clientX
     const startY = e.clientY
     const startWidth = note.width || 280
     const startHeight = note.height || 220
+    let currentWidth = startWidth
+    let currentHeight = startHeight
+    let rafId = null
 
     const handlePointerMove = (moveEvent) => {
       const deltaX = (moveEvent.clientX - startX) / scale
       const deltaY = (moveEvent.clientY - startY) / scale
       
-      const newWidth = Math.max(180, startWidth + deltaX)
-      const newHeight = Math.max(100, startHeight + deltaY)
+      currentWidth = Math.max(180, startWidth + deltaX)
+      currentHeight = Math.max(100, startHeight + deltaY)
       
-      onUpdateDimensions(newWidth, newHeight)
+      if (rafId) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        if (cardEl) {
+          cardEl.style.width = `${currentWidth}px`
+          cardEl.style.height = `${currentHeight}px`
+        }
+      })
     }
 
     const handlePointerUp = () => {
+      if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
+      if (onUpdateDimensions && (currentWidth !== startWidth || currentHeight !== startHeight)) {
+        onUpdateDimensions(currentWidth, currentHeight)
+      }
     }
 
     document.addEventListener('pointermove', handlePointerMove)
@@ -72,6 +87,7 @@ export const NoteCard = memo(function NoteCard({
 
   return (
     <section
+      data-card-id={cardId}
       className={`floating-card note-card card-note ${note.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
         left: position?.x,
@@ -82,7 +98,7 @@ export const NoteCard = memo(function NoteCard({
         backgroundColor: note.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{note.title}</span>
         <CardContextMenu
           title={note.title}

@@ -15,6 +15,7 @@ export const CounterCard = memo(function CounterCard({
   onArchiveCard,
   onDeleteCard,
   isPopping,
+  cardId,
 }) {
   const initialValue = counter.initialValue ?? 0
   const [value, setValue] = useState(initialValue)
@@ -62,6 +63,7 @@ export const CounterCard = memo(function CounterCard({
 
   return (
     <section
+      data-card-id={cardId}
       className={`floating-card counter-card card-counter ${counter.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
         left: position?.x,
@@ -70,7 +72,7 @@ export const CounterCard = memo(function CounterCard({
         backgroundColor: counter.color || undefined,
       }}
     >
-      <header className="card-header counter-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <header className="card-header counter-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         {counter.title ? <span className="card-title">{counter.title}</span> : null}
         <CardContextMenu
           title={counter.title}

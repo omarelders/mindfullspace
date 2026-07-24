@@ -27,6 +27,7 @@ export const TodoCard = memo(function TodoCard({
   onDeleteCard,
   onUpdateItemDetails,
   isPopping,
+  cardId,
 }) {
   const [editingItemId, setEditingItemId] = useState(null)
   const [editingValue, setEditingValue] = useState('')
@@ -79,6 +80,7 @@ export const TodoCard = memo(function TodoCard({
 
   return (
     <section
+      data-card-id={cardId}
       className={`floating-card todo-card tone-${column.tone} ${column.positionClass} ${column.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
         left: position?.x,
@@ -87,7 +89,7 @@ export const TodoCard = memo(function TodoCard({
         backgroundColor: column.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={onPointerDown} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
+      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{column.title}</span>
         <CardContextMenu
           title={column.title}

@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { getInitialAppState, writeJsonStorage, readJsonStorage } from './utils/storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX, APP_STORAGE_KEY } from './utils/constants'
 import { WorkspaceBoard } from './components/WorkspaceBoard'
@@ -73,13 +73,15 @@ function App() {
     })
   }, [])
 
+  const activeWorkspace = allWorkspaces.find(ws => ws.id === activeWorkspaceId)
+
   return (
     <>
-      {allWorkspaces.map(ws => (
+      {activeWorkspace && (
         <WorkspaceBoard
-          key={ws.id}
-          workspace={ws}
-          isVisible={ws.id === activeWorkspaceId}
+          key={activeWorkspace.id}
+          workspace={activeWorkspace}
+          isVisible={true}
           allWorkspaces={allWorkspaces}
           onSwitchWorkspace={handleSwitchWorkspace}
           onUpdateName={handleUpdateWorkspaceName}
@@ -87,7 +89,7 @@ function App() {
           onDeleteWorkspace={handleDeleteWorkspace}
           onCreateWorkspace={handleCreateWorkspace}
         />
-      ))}
+      )}
       <InstallPrompt />
     </>
   )

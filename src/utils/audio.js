@@ -1,6 +1,22 @@
+let audioCtx = null
+
+function getAudioContext() {
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext
+    if (AudioContextClass) {
+      audioCtx = new AudioContextClass()
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {})
+  }
+  return audioCtx
+}
+
 export function playBeep(frequency = 880, duration = 1.0) {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const ctx = getAudioContext()
+    if (!ctx) return
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain)
@@ -11,7 +27,6 @@ export function playBeep(frequency = 880, duration = 1.0) {
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration)
     osc.start(ctx.currentTime)
     osc.stop(ctx.currentTime + duration)
-    osc.onended = () => { try { ctx.close() } catch {} }
   } catch {}
 }
 
