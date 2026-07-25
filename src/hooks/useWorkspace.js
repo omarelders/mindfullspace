@@ -16,6 +16,7 @@ import {
 } from '../utils/constants'
 import { parseDateKey, buildDateKey } from '../utils/dateUtils'
 import { saveImage, deleteImage as deleteImageBlob, MAX_IMAGE_SIZE } from '../utils/imageStore'
+import { parseImportedCards } from '../utils/backup'
 import { useUndoRedo } from './useUndoRedo'
 import { useCardCollection } from './useCardCollection'
 
@@ -1237,6 +1238,179 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setLongPressMenu(prev => ({ ...prev, visible: false }))
   }, [])
 
+  const importCardsFromJson = useCallback(async (file) => {
+    try {
+      const rawWorkspace = await parseImportedCards(file)
+      
+      const batchSeed = `${Date.now()}-${Math.floor(Math.random() * 10000)}`
+      const newPositions = {}
+      const newDrafts = {}
+      let totalImported = 0
+
+      const vx = viewport.x / (viewport.scale || 1)
+      const vy = viewport.y / (viewport.scale || 1)
+
+      const processCard = (card, idx, defaultX, defaultY) => {
+        totalImported++
+        const oldId = card.id || `card-${idx}`
+        const newId = `${oldId}-imp-${batchSeed}-${idx}`
+        const oldPos = rawWorkspace.cardPositions?.[oldId]
+        if (oldPos && Number.isFinite(oldPos.x) && Number.isFinite(oldPos.y)) {
+          newPositions[newId] = { x: oldPos.x + 40, y: oldPos.y + 40 }
+        } else {
+          newPositions[newId] = { x: defaultX - vx + (idx * 24), y: defaultY - vy + (idx * 24) }
+        }
+        return { card: { ...card, id: newId }, newId, oldId }
+      }
+
+      const importedColumns = []
+      if (Array.isArray(rawWorkspace.columns)) {
+        rawWorkspace.columns.forEach((col, idx) => {
+          const { card, newId, oldId } = processCard(col, idx, 350, 200)
+          const newItems = (col.items || []).map((item, itemIdx) => ({
+            ...item,
+            id: `${newId}-item-${itemIdx}-${Date.now()}`
+          }))
+          importedColumns.push({ ...card, items: newItems, minimized: false })
+          if (rawWorkspace.drafts?.[oldId]) {
+            newDrafts[newId] = rawWorkspace.drafts[oldId]
+          } else {
+            newDrafts[newId] = ''
+          }
+        })
+      }
+
+      const importedLabels = []
+      if (Array.isArray(rawWorkspace.customLabels)) {
+        rawWorkspace.customLabels.forEach((label, idx) => {
+          const { card } = processCard(label, idx, 350, 300)
+          importedLabels.push({ ...card, text: card.text || 'LABEL', role: card.role || 'routine', minimized: false })
+        })
+      }
+
+      const importedNotes = []
+      if (Array.isArray(rawWorkspace.notes)) {
+        rawWorkspace.notes.forEach((note, idx) => {
+          const { card } = processCard(note, idx, 400, 300)
+          importedNotes.push({ ...card, text: card.text || '', title: card.title || '', minimized: false })
+        })
+      }
+
+      const importedTimers = []
+      if (Array.isArray(rawWorkspace.timers)) {
+        rawWorkspace.timers.forEach((timer, idx) => {
+          const { card } = processCard(timer, idx, 600, 300)
+          const initialSeconds = Number.isFinite(card.initialSeconds) ? card.initialSeconds : 2700
+          const remainingSeconds = Number.isFinite(card.remainingSeconds) ? card.remainingSeconds : initialSeconds
+          importedTimers.push({ ...card, initialSeconds, remainingSeconds, title: card.title || '', minimized: false })
+        })
+      }
+
+      const importedCounters = []
+      if (Array.isArray(rawWorkspace.counters)) {
+        rawWorkspace.counters.forEach((counter, idx) => {
+          const { card } = processCard(counter, idx, 800, 260)
+          importedCounters.push({ ...card, initialValue: Number.isFinite(card.initialValue) ? card.initialValue : 0, title: card.title || '', minimized: false })
+        })
+      }
+
+      const importedStopwatches = []
+      if (Array.isArray(rawWorkspace.stopwatches)) {
+        rawWorkspace.stopwatches.forEach((stopwatch, idx) => {
+          const { card } = processCard(stopwatch, idx, 1000, 260)
+          const initialSeconds = Number.isFinite(card.initialSeconds) ? card.initialSeconds : 0
+          const elapsedSeconds = Number.isFinite(card.elapsedSeconds) ? card.elapsedSeconds : initialSeconds
+          importedStopwatches.push({ ...card, initialSeconds, elapsedSeconds, title: card.title || '', minimized: false })
+        })
+      }
+
+      const importedCalendars = []
+      if (Array.isArray(rawWorkspace.calendars)) {
+        const now = new Date()
+        rawWorkspace.calendars.forEach((calendar, idx) => {
+          const { card } = processCard(calendar, idx, 1200, 120)
+          importedCalendars.push({
+            ...card,
+            year: Number.isFinite(card.year) ? card.year : now.getFullYear(),
+            month: Number.isFinite(card.month) ? card.month : now.getMonth(),
+            selectedDate: null,
+            entries: { ...(card.entries || {}) },
+            title: card.title || '',
+            minimized: false
+          })
+        })
+      }
+
+      const importedHabits = []
+      if (Array.isArray(rawWorkspace.habits)) {
+        const now = new Date()
+        rawWorkspace.habits.forEach((habit, idx) => {
+          const { card } = processCard(habit, idx, 1400, 120)
+          importedHabits.push({
+            ...card,
+            icon: normalizeHabitIconId(card.icon),
+            year: Number.isFinite(card.year) ? card.year : now.getFullYear(),
+            month: Number.isFinite(card.month) ? card.month : now.getMonth(),
+            view: 'summary',
+            completions: { ...(card.completions || {}) },
+            title: card.title || '',
+            minimized: false
+          })
+        })
+      }
+
+      const importedPictures = []
+      if (Array.isArray(rawWorkspace.pictures)) {
+        rawWorkspace.pictures.forEach((pic, idx) => {
+          const { card } = processCard(pic, idx, 500, 300)
+          importedPictures.push({ ...card, title: card.title || '', minimized: false })
+        })
+      }
+
+      const importedQuickLinks = []
+      if (Array.isArray(rawWorkspace.quickLinks)) {
+        rawWorkspace.quickLinks.forEach((ql, idx) => {
+          const { card } = processCard(ql, idx, 900, 300)
+          importedQuickLinks.push({ ...card, links: card.links || [], title: card.title || '', minimized: false })
+        })
+      }
+
+      const importedQuotes = []
+      if (Array.isArray(rawWorkspace.quotes)) {
+        rawWorkspace.quotes.forEach((quote, idx) => {
+          const { card } = processCard(quote, idx, 450, 300)
+          importedQuotes.push({ ...card, text: card.text || '', author: card.author || '', title: card.title || '', minimized: false })
+        })
+      }
+
+      if (totalImported === 0) {
+        showToast('No cards found in JSON file.')
+        return
+      }
+
+      saveSnapshot()
+
+      if (importedColumns.length > 0) setColumns(c => [...c, ...importedColumns])
+      if (importedLabels.length > 0) setCustomLabels(c => [...c, ...importedLabels])
+      if (importedNotes.length > 0) setNotes(c => [...c, ...importedNotes])
+      if (importedTimers.length > 0) setTimers(c => [...c, ...importedTimers])
+      if (importedCounters.length > 0) setCounters(c => [...c, ...importedCounters])
+      if (importedStopwatches.length > 0) setStopwatches(c => [...c, ...importedStopwatches])
+      if (importedCalendars.length > 0) setCalendars(c => [...c, ...importedCalendars])
+      if (importedHabits.length > 0) setHabits(c => [...c, ...importedHabits])
+      if (importedPictures.length > 0) setPictures(c => [...c, ...importedPictures])
+      if (importedQuickLinks.length > 0) setQuickLinks(c => [...c, ...importedQuickLinks])
+      if (importedQuotes.length > 0) setQuotes(c => [...c, ...importedQuotes])
+
+      setCardPositions(prev => ({ ...prev, ...newPositions }))
+      setDrafts(prev => ({ ...prev, ...newDrafts }))
+
+      showToast(`Successfully imported ${totalImported} card${totalImported === 1 ? '' : 's'}!`)
+    } catch (err) {
+      showToast(err.message || 'Failed to import cards.')
+    }
+  }, [viewport, showToast, saveSnapshot, setColumns, setCustomLabels, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setCardPositions, setDrafts])
+
 
   return {
     state: {
@@ -1264,7 +1438,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       updateHabitTitle, updateHabitIcon, updateHabitColor, toggleHabitMinimize, setHabitView, changeHabitMonth, toggleHabitDate, duplicateHabitCard, archiveHabitCard, deleteHabitCard,
       updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, updatePictureFitMode, duplicatePictureCard, archivePictureCard, deletePictureCard,
       updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard,
-      updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard
+      updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard, importCardsFromJson
     }
   }
 }

@@ -40,5 +40,16 @@ describe('TopBar', () => {
     // Verify settings rows render
     expect(screen.getByText('Theme')).toBeInTheDocument()
     expect(screen.getByText('Labels')).toBeInTheDocument()
+    expect(screen.getByText('Import Cards')).toBeInTheDocument()
+  })
+
+  it('renders Import Cards button in quick create menu', () => {
+    render(<TopBar {...defaultProps} />)
+
+    const quickCreateButton = screen.getByRole('button', { name: /quick create/i })
+    fireEvent.click(quickCreateButton)
+
+    expect(screen.getByText('Import Cards from JSON')).toBeInTheDocument()
   })
 })
+

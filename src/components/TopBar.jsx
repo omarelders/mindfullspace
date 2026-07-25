@@ -53,6 +53,7 @@ export function TopBar({
   archivedCards,
   habits,
   onRestoreArchivedCard,
+  onImportCards,
 }) {
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -66,6 +67,10 @@ export function TopBar({
   const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const fileInputRef = useRef(null)
+
+  const [isImportCardsConfirmOpen, setIsImportCardsConfirmOpen] = useState(false)
+  const [selectedCardsFile, setSelectedCardsFile] = useState(null)
+  const importCardsInputRef = useRef(null)
 
   const [storageUsage, setStorageUsage] = useState(0)
   const [storageQuota, setStorageQuota] = useState(0)
@@ -110,6 +115,28 @@ export function TopBar({
           setIsImportConfirmOpen(false)
           setAlertMessage(err.message || 'Import failed.')
         })
+    }
+  }
+
+  const handleImportCardsClick = () => {
+    importCardsInputRef.current?.click()
+  }
+
+  const handleImportCardsFileChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setSelectedCardsFile(file)
+      setIsImportCardsConfirmOpen(true)
+    }
+    e.target.value = ''
+  }
+
+  const handleConfirmImportCards = () => {
+    if (selectedCardsFile && onImportCards) {
+      onImportCards(selectedCardsFile)
+      setIsImportCardsConfirmOpen(false)
+      setSelectedCardsFile(null)
+      setIsAccountMenuOpen(false)
     }
   }
   const menuRef = useRef(null)
@@ -399,6 +426,12 @@ export function TopBar({
                       </button>
                     </div>
                     <div className="account-setting-row">
+                      <span>Import Cards</span>
+                      <button type="button" className="account-setting-btn" onClick={handleImportCardsClick}>
+                        Import Cards JSON
+                      </button>
+                    </div>
+                    <div className="account-setting-row">
                       <span>Archived cards</span>
                       <strong>{archivedItems.length}</strong>
                     </div>
@@ -557,6 +590,18 @@ export function TopBar({
                   {action.title}
                 </button>
               ))}
+              <div style={{ height: '1px', background: 'var(--surface-border)', margin: '4px 0' }} />
+              <button
+                type="button"
+                className="quick-menu-item"
+                onClick={() => {
+                  handleImportCardsClick()
+                  setIsQuickMenuOpen(false)
+                }}
+              >
+                <FilePlus2 aria-hidden="true" style={{ width: 16, height: 16 }} />
+                Import Cards from JSON
+              </button>
             </div>
           )}
         </div>
@@ -683,11 +728,31 @@ export function TopBar({
         }}
       />
 
+      <ConfirmModal
+        isOpen={isImportCardsConfirmOpen}
+        title="Import Cards"
+        message="Are you sure you want to import cards from this file? The imported cards will be added to your current screen without replacing any existing cards."
+        confirmText="Import Cards"
+        onConfirm={handleConfirmImportCards}
+        onCancel={() => {
+          setIsImportCardsConfirmOpen(false)
+          setSelectedCardsFile(null)
+        }}
+      />
+
       <input
         type="file"
         ref={fileInputRef}
         accept="application/json"
         onChange={handleFileChange}
+        style={{ display: 'none' }}
+      />
+
+      <input
+        type="file"
+        ref={importCardsInputRef}
+        accept="application/json"
+        onChange={handleImportCardsFileChange}
         style={{ display: 'none' }}
       />
     </header>

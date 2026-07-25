@@ -132,4 +132,29 @@ describe('useWorkspace hook', () => {
     const { result: resultWs2 } = renderHook(() => useWorkspace('ws-2', workspaceRef))
     expect(resultWs2.current.state.notes[0].title).toBe('Workspace 2 Note')
   })
+
+  it('imports cards from json without replacing existing workspace cards', async () => {
+    vi.useRealTimers()
+    const { result } = renderHook(() => useWorkspace('ws-default', workspaceRef))
+    const initialNoteCount = result.current.state.notes.length
+
+    const importedCards = [
+      { type: 'note', title: 'Imported Note 1', text: 'Content 1' },
+      { type: 'note', title: 'Imported Note 2', text: 'Content 2' },
+      { type: 'todo', title: 'Imported Todo', items: [{ text: 'task 1' }] }
+    ]
+    const file = new File([JSON.stringify(importedCards)], 'import.json', { type: 'application/json' })
+
+    await act(async () => {
+      await result.current.actions.importCardsFromJson(file)
+    })
+
+    expect(result.current.state.notes.length).toBe(initialNoteCount + 2)
+    expect(result.current.state.columns.length).toBeGreaterThan(0)
+    const titles = result.current.state.notes.map(n => n.title)
+    expect(titles).toContain('Imported Note 1')
+    expect(titles).toContain('Imported Note 2')
+    vi.useFakeTimers()
+  })
 })
+
