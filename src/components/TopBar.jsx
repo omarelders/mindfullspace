@@ -115,13 +115,13 @@ export function TopBar({
   const menuRef = useRef(null)
   const searchRef = useRef(null)
   const accountRef = useRef(null)
+  const labelOptions = useMemo(() => (Array.isArray(labels) ? labels : []), [labels])
   const filteredLabels = useMemo(() => {
-    const labelOptions = Array.isArray(labels) ? labels : []
     const normalizedQuery = searchQuery.trim().toLowerCase()
     return labelOptions.filter((label) =>
       !normalizedQuery || (label.text && label.text.toLowerCase().includes(normalizedQuery)),
     )
-  }, [labels, searchQuery])
+  }, [labelOptions, searchQuery])
 
   const habitOptions = useMemo(() => (Array.isArray(habits) ? habits : []), [habits])
   const archiveOptions = useMemo(() => (Array.isArray(archivedCards) ? archivedCards : []), [archivedCards])
