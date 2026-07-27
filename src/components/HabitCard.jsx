@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Zap, GraduationCap, Code2, BookOpen, Dumbbel
 import { CardContextMenu } from './CardContextMenu'
 import { buildDateKey, formatCalendarMonthLabel } from '../utils/dateUtils'
 import { HABIT_ICON_OPTIONS, HABIT_ICON_EMOJI_FALLBACKS } from '../utils/constants'
+import { playTaskCompleteSound } from '../utils/audio'
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -48,6 +49,7 @@ export const HabitCard = memo(function HabitCard({
   onUpdateTitle,
   onUpdateIcon,
   onUpdateColor,
+  onUpdateFontSize,
   onMoveCard,
   onToggleMinimize,
   onDuplicateCard,
@@ -59,6 +61,7 @@ export const HabitCard = memo(function HabitCard({
   isPopping,
   cardId,
 }) {
+  const customStyle = habit.fontSize ? { fontSize: `${habit.fontSize}px` } : undefined
   const weekdayLabels = WEEKDAY_LABELS
 
   const {
@@ -127,6 +130,14 @@ export const HabitCard = memo(function HabitCard({
   const [editingName, setEditingName] = useState(false)
   const [editingNameValue, setEditingNameValue] = useState('')
 
+  const handleToggleDate = (dateKey) => {
+    const isDone = Boolean(habit.completions?.[dateKey])
+    if (!isDone) {
+      playTaskCompleteSound()
+    }
+    if (onToggleDate) onToggleDate(habit.id, dateKey)
+  }
+
   const startEditingName = () => {
     setEditingName(true)
     setEditingNameValue(habit.title || '')
@@ -178,8 +189,10 @@ export const HabitCard = memo(function HabitCard({
         <CardContextMenu
           title={habit.title || 'Habit'}
           minimized={Boolean(habit.minimized)}
+          fontSize={habit.fontSize || 42}
           onTitleChange={(nextTitle) => onUpdateTitle(habit.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(habit.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(habit.id, nextSize)}
           onMove={(targetId) => onMoveCard(habit.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(habit.id)}
           onDuplicate={() => onDuplicateCard(habit.id)}
@@ -248,7 +261,7 @@ export const HabitCard = memo(function HabitCard({
                       key={dateKey}
                       type="button"
                       className={`habit-day ${isDone ? 'is-done' : ''} ${isMissed ? 'is-missed' : ''} ${isFuture ? 'is-future' : ''} ${isToday ? 'is-today' : ''}`}
-                      onClick={() => onToggleDate(habit.id, dateKey)}
+                      onClick={() => handleToggleDate(dateKey)}
                       disabled={!canToggle}
                       aria-label={`toggle habit for day ${dayNumber}`}
                     >
@@ -294,6 +307,7 @@ export const HabitCard = memo(function HabitCard({
                   <input
                     type="text"
                     className="habit-name-edit"
+                    style={customStyle}
                     value={editingNameValue}
                     onChange={(event) => setEditingNameValue(event.target.value)}
                     onBlur={commitEditingName}
@@ -312,6 +326,7 @@ export const HabitCard = memo(function HabitCard({
                   <button
                     type="button"
                     className={`habit-name habit-name-btn ${hasHabitTitle ? 'is-custom' : ''}`}
+                    style={customStyle}
                     onClick={startEditingName}
                     aria-label="edit habit name"
                   >
@@ -332,7 +347,7 @@ export const HabitCard = memo(function HabitCard({
               <button
                 type="button"
                 className={`habit-check-btn ${todayIsDone ? 'is-done' : ''}`}
-                onClick={() => onToggleDate(habit.id, todayKey)}
+                onClick={() => handleToggleDate(todayKey)}
                 aria-label="toggle today habit done"
               >
                 <Check aria-hidden="true" />

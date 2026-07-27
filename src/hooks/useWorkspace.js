@@ -783,6 +783,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   // Labels
   const updateLabelText = useCallback((id, text) => labelCol.update(id, { text: text.toUpperCase() }), [labelCol])
   const updateLabelColor = useCallback((id, color) => labelCol.update(id, { customColor: color }), [labelCol])
+  const updateLabelFontSize = useCallback((id, fontSize) => labelCol.update(id, { fontSize }), [labelCol])
   const toggleLabelMinimize = labelCol.toggleMinimize
   const duplicateLabelCard = labelCol.duplicate
   const archiveLabelCard = labelCol.archive
@@ -802,6 +803,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       items: c.items.map(i => i.id === itemId ? { ...i, text } : i)
     }))
   }, [colCol])
+  const updateTodoCardFontSize = useCallback((id, fontSize) => colCol.update(id, { fontSize }), [colCol])
   const duplicateTodoCard = colCol.duplicate
   const archiveTodoCard = colCol.archive
   const deleteTodoCard = colCol.remove
@@ -825,6 +827,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const archiveTimerCard = timerCol.archive
   const deleteTimerCard = timerCol.remove
   const updateTimerState = useCallback((id, patch) => timerCol.update(id, patch), [timerCol])
+  const updateTimerFontSize = useCallback((id, fontSize) => timerCol.update(id, { fontSize }), [timerCol])
 
   // Counters
   const updateCounterTitle = counterCol.updateTitle
@@ -834,6 +837,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const archiveCounterCard = counterCol.archive
   const deleteCounterCard = counterCol.remove
   const updateCounterValue = useCallback((id, v) => counterCol.update(id, { initialValue: v }), [counterCol])
+  const updateCounterFontSize = useCallback((id, fontSize) => counterCol.update(id, { fontSize }), [counterCol])
 
   // Stopwatches
   const updateStopwatchTitle = stopwatchCol.updateTitle
@@ -843,6 +847,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const archiveStopwatchCard = stopwatchCol.archive
   const deleteStopwatchCard = stopwatchCol.remove
   const updateStopwatchState = useCallback((id, patch) => stopwatchCol.update(id, patch), [stopwatchCol])
+  const updateStopwatchFontSize = useCallback((id, fontSize) => stopwatchCol.update(id, { fontSize }), [stopwatchCol])
 
   // Calendars
   const updateCalendarTitle = calendarCol.updateTitle
@@ -865,6 +870,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       return { entries: nextEnt }
     })
   }, [calendarCol])
+  const updateCalendarFontSize = useCallback((id, fontSize) => calendarCol.update(id, { fontSize }), [calendarCol])
 
   // Habits
   const updateHabitTitle = habitCol.updateTitle
@@ -893,6 +899,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       return { completions: nextComp }
     })
   }, [habitCol])
+  const updateHabitFontSize = useCallback((id, fontSize) => habitCol.update(id, { fontSize }), [habitCol])
 
   // Pictures
   const updatePictureTitle = picCol.updateTitle
@@ -903,6 +910,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const updatePictureImageId = useCallback((id, imageId) => picCol.update(id, { imageId }), [picCol])
   const updatePictureDimensions = useCallback((id, width, height) => picCol.update(id, { width, height }), [picCol])
   const updatePictureFitMode = useCallback((id, fitMode) => picCol.update(id, { fitMode }), [picCol])
+  const updatePictureFontSize = useCallback((id, fontSize) => picCol.update(id, { fontSize }), [picCol])
   const deletePictureCard = useCallback((id) => {
     let imageIdToDelete = null;
     picCol.setItems(prev => {
@@ -956,6 +964,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       return { links }
     })
   }, [qlCol])
+  const updateQuickLinksFontSize = useCallback((id, fontSize) => qlCol.update(id, { fontSize }), [qlCol])
 
   // Quotes
   const updateQuoteTitle = quoteCol.updateTitle
@@ -967,6 +976,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const updateQuoteText = useCallback((id, text) => quoteCol.update(id, { text }), [quoteCol])
   const updateQuoteAuthor = useCallback((id, author) => quoteCol.update(id, { author }), [quoteCol])
   const updateQuoteDimensions = useCallback((id, width, height) => quoteCol.update(id, { width, height }), [quoteCol])
+  const updateQuoteFontSize = useCallback((id, fontSize) => quoteCol.update(id, { fontSize }), [quoteCol])
 
   const readDragPayload = (event) => {
     const rawPayload = event.dataTransfer?.getData('text/plain')
@@ -1429,17 +1439,17 @@ export function useWorkspace(workspaceId, workspaceRef) {
       handleCardPointerDown, handleWheel, startPanning, movePanning, endPanning,
       handleQuickAction, focusLabelCard, restoreArchivedCard, moveCardToTarget,
       handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,
-      updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,
-      updateLabelText, updateLabelColor, toggleLabelMinimize, duplicateLabelCard, archiveLabelCard, deleteLabelCard,
+      updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, updateTodoCardFontSize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,
+      updateLabelText, updateLabelColor, toggleLabelMinimize, updateLabelFontSize, duplicateLabelCard, archiveLabelCard, deleteLabelCard,
       updateNoteTitle, updateNoteText, updateNoteColor, toggleNoteMinimize, updateNoteDimensions, updateNoteFontSize, duplicateNoteCard, archiveNoteCard, deleteNoteCard,
-      updateTimerTitle, updateTimerColor, toggleTimerMinimize, updateTimerState, duplicateTimerCard, archiveTimerCard, deleteTimerCard,
-      updateCounterTitle, updateCounterValue, updateCounterColor, toggleCounterMinimize, duplicateCounterCard, archiveCounterCard, deleteCounterCard,
-      updateStopwatchTitle, updateStopwatchColor, updateStopwatchState, toggleStopwatchMinimize, duplicateStopwatchCard, archiveStopwatchCard, deleteStopwatchCard,
-      updateCalendarTitle, updateCalendarColor, toggleCalendarMinimize, changeCalendarMonth, openCalendarDay, closeCalendarDay, updateCalendarEntry, duplicateCalendarCard, archiveCalendarCard, deleteCalendarCard,
-      updateHabitTitle, updateHabitIcon, updateHabitColor, toggleHabitMinimize, setHabitView, changeHabitMonth, toggleHabitDate, duplicateHabitCard, archiveHabitCard, deleteHabitCard,
-      updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, updatePictureFitMode, duplicatePictureCard, archivePictureCard, deletePictureCard,
-      updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard,
-      updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard, importCardsFromJson
+      updateTimerTitle, updateTimerColor, toggleTimerMinimize, updateTimerState, updateTimerFontSize, duplicateTimerCard, archiveTimerCard, deleteTimerCard,
+      updateCounterTitle, updateCounterValue, updateCounterColor, toggleCounterMinimize, updateCounterFontSize, duplicateCounterCard, archiveCounterCard, deleteCounterCard,
+      updateStopwatchTitle, updateStopwatchColor, updateStopwatchState, toggleStopwatchMinimize, updateStopwatchFontSize, duplicateStopwatchCard, archiveStopwatchCard, deleteStopwatchCard,
+      updateCalendarTitle, updateCalendarColor, toggleCalendarMinimize, changeCalendarMonth, openCalendarDay, closeCalendarDay, updateCalendarEntry, updateCalendarFontSize, duplicateCalendarCard, archiveCalendarCard, deleteCalendarCard,
+      updateHabitTitle, updateHabitIcon, updateHabitColor, toggleHabitMinimize, setHabitView, changeHabitMonth, toggleHabitDate, updateHabitFontSize, duplicateHabitCard, archiveHabitCard, deleteHabitCard,
+      updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, updatePictureFitMode, updatePictureFontSize, duplicatePictureCard, archivePictureCard, deletePictureCard,
+      updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, updateQuickLinksFontSize, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard,
+      updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, updateQuoteFontSize, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard, importCardsFromJson
     }
   }
 }

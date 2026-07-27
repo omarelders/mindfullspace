@@ -17,10 +17,12 @@ export const PictureCard = memo(function PictureCard({
   onUpdateImageId,
   onUpdateDimensions,
   onUpdateFitMode,
+  onUpdateFontSize,
   scale = 1,
   isPopping,
   cardId,
 }) {
+  const customStyle = picture.fontSize ? { fontSize: `${picture.fontSize}px` } : undefined
   const [objectUrl, setObjectUrl] = useState(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
@@ -194,8 +196,10 @@ export const PictureCard = memo(function PictureCard({
         <CardContextMenu
           title={picture.title}
           minimized={Boolean(picture.minimized)}
+          fontSize={picture.fontSize || 13}
           onTitleChange={(nextTitle) => onUpdateTitle(picture.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(picture.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(picture.id, nextSize)}
           onMove={(targetId) => onMoveCard(picture.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(picture.id)}
           onDuplicate={() => onDuplicateCard(picture.id)}
@@ -215,11 +219,11 @@ export const PictureCard = memo(function PictureCard({
                 style={{ objectFit: fitMode }}
               />
               <div className="picture-actions">
-                <button type="button" className="picture-action-btn" onClick={toggleFitMode} aria-label="Toggle fit mode">
+                <button type="button" className="picture-action-btn" style={customStyle} onClick={toggleFitMode} aria-label="Toggle fit mode">
                   {fitMode === 'contain' ? <Maximize size={14} /> : <Minimize size={14} />}
                   {fitMode === 'contain' ? 'Cover' : 'Contain'}
                 </button>
-                <button type="button" className="picture-action-btn" onClick={openFilePicker} aria-label="Replace image">
+                <button type="button" className="picture-action-btn" style={customStyle} onClick={openFilePicker} aria-label="Replace image">
                   <Upload size={14} />
                   Replace
                 </button>
@@ -234,7 +238,7 @@ export const PictureCard = memo(function PictureCard({
               onDragLeave={handleDragLeave}
             >
               <ImagePlus className="picture-dropzone-icon" />
-              <span className="picture-dropzone-text">Click or drop an image</span>
+              <span className="picture-dropzone-text" style={customStyle}>Click or drop an image</span>
               <span className="picture-dropzone-hint">Max 5MB • JPG, PNG, GIF, WebP</span>
             </div>
           )}

@@ -15,11 +15,14 @@ export const QuoteCard = memo(function QuoteCard({
   onDeleteCard,
   onUpdateText,
   onUpdateAuthor,
+  onUpdateFontSize,
   onUpdateDimensions,
   scale,
   isPopping,
   cardId,
 }) {
+  const customStyle = quote.fontSize ? { fontSize: `${quote.fontSize}px` } : undefined
+  const authorStyle = quote.fontSize ? { fontSize: `${Math.max(10, Math.round(quote.fontSize * 0.7))}px` } : undefined
   const [isEditingText, setIsEditingText] = useState(false)
   const [isEditingAuthor, setIsEditingAuthor] = useState(false)
 
@@ -130,8 +133,10 @@ export const QuoteCard = memo(function QuoteCard({
         <CardContextMenu
           title={quote.title}
           minimized={Boolean(quote.minimized)}
+          fontSize={quote.fontSize || 22}
           onTitleChange={(nextTitle) => onUpdateTitle(quote.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(quote.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(quote.id, nextSize)}
           onMove={(targetId) => onMoveCard(quote.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(quote.id)}
           onDuplicate={() => onDuplicateCard(quote.id)}
@@ -148,6 +153,7 @@ export const QuoteCard = memo(function QuoteCard({
             {isEditingText ? (
               <textarea
                 className="quote-text-edit"
+                style={customStyle}
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 onBlur={handleCommitText}
@@ -156,7 +162,7 @@ export const QuoteCard = memo(function QuoteCard({
                 placeholder="Enter quote here..."
               />
             ) : (
-              <p className="quote-body" onClick={handleStartEditText}>
+              <p className="quote-body" style={customStyle} onClick={handleStartEditText}>
                 {quote.text ? `"${quote.text}"` : '"Click to edit quote..."'}
               </p>
             )}
@@ -167,6 +173,7 @@ export const QuoteCard = memo(function QuoteCard({
               <input
                 type="text"
                 className="quote-author-edit"
+                style={authorStyle}
                 value={editAuthor}
                 onChange={(e) => setEditAuthor(e.target.value)}
                 onBlur={handleCommitAuthor}
@@ -175,7 +182,7 @@ export const QuoteCard = memo(function QuoteCard({
                 placeholder="Author name"
               />
             ) : (
-              <span className="quote-author" onClick={handleStartEditAuthor}>
+              <span className="quote-author" style={authorStyle} onClick={handleStartEditAuthor}>
                 {quote.author ? `- ${quote.author}` : '- Click to add author'}
               </span>
             )}

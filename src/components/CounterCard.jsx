@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, memo } from 'react'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
+import { playAchievementSound } from '../utils/audio'
 
 export const CounterCard = memo(function CounterCard({
   counter,
@@ -9,6 +10,7 @@ export const CounterCard = memo(function CounterCard({
   onUpdateTitle,
   onUpdateValue,
   onUpdateColor,
+  onUpdateFontSize,
   onMoveCard,
   onToggleMinimize,
   onDuplicateCard,
@@ -17,6 +19,7 @@ export const CounterCard = memo(function CounterCard({
   isPopping,
   cardId,
 }) {
+  const customStyle = counter.fontSize ? { fontSize: `${counter.fontSize}px` } : undefined
   const initialValue = counter.initialValue ?? 0
   const [value, setValue] = useState(initialValue)
   const [animKey, setAnimKey] = useState(0)
@@ -44,6 +47,7 @@ export const CounterCard = memo(function CounterCard({
     setValue(nextVal)
     triggerValueAnim('up')
     triggerBtnAnim('inc')
+    playAchievementSound()
     if (onUpdateValue) onUpdateValue(counter.id, nextVal)
   }
 
@@ -77,8 +81,10 @@ export const CounterCard = memo(function CounterCard({
         <CardContextMenu
           title={counter.title}
           minimized={Boolean(counter.minimized)}
+          fontSize={counter.fontSize || 62}
           onTitleChange={(nextTitle) => onUpdateTitle(counter.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(counter.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(counter.id, nextSize)}
           onMove={(targetId) => onMoveCard(counter.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(counter.id)}
           onDuplicate={() => onDuplicateCard(counter.id)}
@@ -101,6 +107,7 @@ export const CounterCard = memo(function CounterCard({
             <div
               key={animKey}
               className={`counter-large-value${direction === 'up' ? ' counter-slide-up' : direction === 'down' ? ' counter-slide-down' : ''}`}
+              style={customStyle}
               onDoubleClick={resetCounter}
               title="Double-click to reset to 0"
             >

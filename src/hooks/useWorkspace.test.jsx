@@ -8,6 +8,8 @@ import { WORKSPACE_STORAGE_KEY_PREFIX } from '../utils/constants'
 vi.mock('../utils/audio', () => ({
   playTimerCompleteSound: vi.fn(),
   playTimerTickSound: vi.fn(),
+  playAchievementSound: vi.fn(),
+  playTaskCompleteSound: vi.fn(),
 }))
 
 describe('useWorkspace hook', () => {

@@ -1,6 +1,7 @@
 import { useState, memo } from 'react'
 import { GripVertical, Check, Clock3, Pencil, ChevronDown, Trash2 } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
+import { playTaskCompleteSound } from '../utils/audio'
 
 export const TodoCard = memo(function TodoCard({
   column,
@@ -20,6 +21,7 @@ export const TodoCard = memo(function TodoCard({
   onPointerDown,
   onUpdateTitle,
   onUpdateColor,
+  onUpdateFontSize,
   onMoveCard,
   onToggleMinimize,
   onDuplicateCard,
@@ -29,6 +31,7 @@ export const TodoCard = memo(function TodoCard({
   isPopping,
   cardId,
 }) {
+  const customStyle = column.fontSize ? { fontSize: `${column.fontSize}px` } : undefined
   const [editingItemId, setEditingItemId] = useState(null)
   const [editingValue, setEditingValue] = useState('')
   const [expandedItems, setExpandedItems] = useState(new Set())
@@ -52,6 +55,9 @@ export const TodoCard = memo(function TodoCard({
   }
 
   const updateItemStatus = (itemId, status) => {
+    if (status === 'Done') {
+      playTaskCompleteSound()
+    }
     if (onUpdateItemDetails) {
       onUpdateItemDetails(column.id, itemId, { status, completed: status === 'Done' })
     }
@@ -94,8 +100,10 @@ export const TodoCard = memo(function TodoCard({
         <CardContextMenu
           title={column.title}
           minimized={Boolean(column.minimized)}
+          fontSize={column.fontSize || 13}
           onTitleChange={(nextTitle) => onUpdateTitle(column.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(column.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(column.id, nextSize)}
           onMove={(targetId) => onMoveCard(column.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(column.id)}
           onDuplicate={() => onDuplicateCard(column.id)}
@@ -152,6 +160,7 @@ export const TodoCard = memo(function TodoCard({
                     <input
                       type="text"
                       className="todo-text-edit"
+                      style={customStyle}
                       value={editingValue}
                       onChange={(event) => setEditingValue(event.target.value)}
                       onBlur={() => commitEditingItem(item.id)}
@@ -170,6 +179,7 @@ export const TodoCard = memo(function TodoCard({
                     <button
                       type="button"
                       className={`todo-text ${item.completed ? 'completed' : ''}`}
+                      style={customStyle}
                       onClick={() => startEditingItem(item)}
                       aria-label={`edit ${item.text}`}
                     >

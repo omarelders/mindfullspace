@@ -26,10 +26,12 @@ export const QuickLinksCard = memo(function QuickLinksCard({
   onUpdateLink,
   onRemoveLink,
   onReorderLinks,
+  onUpdateFontSize,
   isPopping,
   cardId
 }) {
-  const customStyle = quickLinkCard.color ? { '--card-custom-bg': quickLinkCard.color } : {}
+  const cardStyle = quickLinkCard.color ? { '--card-custom-bg': quickLinkCard.color } : {}
+  const fontStyle = quickLinkCard.fontSize ? { fontSize: `${quickLinkCard.fontSize}px` } : undefined
   const [isAdding, setIsAdding] = useState(false)
   const [editingItemId, setEditingItemId] = useState(null)
   
@@ -129,7 +131,8 @@ export const QuickLinksCard = memo(function QuickLinksCard({
       className={`floating-card quick-links-card ${quickLinkCard.color ? 'has-custom-color' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
         transform: `translate(${position?.x || 0}px, ${position?.y || 0}px)`,
-        ...customStyle,
+        ...cardStyle,
+        ...fontStyle,
       }}
       onPointerDown={(e) => onPointerDown(cardId, e)}
       data-card-id={cardId}
@@ -145,7 +148,9 @@ export const QuickLinksCard = memo(function QuickLinksCard({
         <CardContextMenu
           showTitleInput={false}
           minimized={quickLinkCard.minimized}
+          fontSize={quickLinkCard.fontSize || 13}
           onColorChange={(color) => onUpdateColor(quickLinkCard.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(quickLinkCard.id, nextSize)}
           onMove={(targetId) => onMoveCard(quickLinkCard.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(quickLinkCard.id)}
           onDuplicate={() => onDuplicateCard(quickLinkCard.id)}
@@ -207,7 +212,7 @@ export const QuickLinksCard = memo(function QuickLinksCard({
                     ) : (
                       <Link2 size={14} className="ql-favicon-fallback" />
                     )}
-                    <span className="ql-label" title={link.url}>{link.label}</span>
+                    <span className="ql-label" style={fontStyle} title={link.url}>{link.label}</span>
                   </a>
 
                   <div className="ql-item-actions">

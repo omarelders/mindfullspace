@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Pencil, Palette, MoveRight, Minimize2, Maximize2, Copy, Archive, Trash2 } from 'lucide-react'
+import { Pencil, Palette, MoveRight, Minimize2, Maximize2, Copy, Archive, Trash2, Type, Minus, Plus } from 'lucide-react'
 import { CARD_MENU_COLORS, CARD_MOVE_TARGETS } from '../utils/constants'
 import { ConfirmModal } from './ConfirmModal'
 
@@ -9,6 +9,10 @@ export function CardContextMenu({
   showTitleInput = true,
   onTitleChange,
   onColorChange,
+  fontSize,
+  onFontSizeChange,
+  minFontSize = 10,
+  maxFontSize = 96,
   onMove,
   onToggleMinimize,
   onDuplicate,
@@ -77,6 +81,44 @@ export function CardContextMenu({
                 placeholder="Write your title..."
                 onChange={(event) => onTitleChange(event.target.value)}
               />
+            </div>
+          )}
+
+          {onFontSizeChange && (
+            <div className="card-menu-item card-menu-font-row" onPointerDown={(event) => event.stopPropagation()}>
+              <span className="card-menu-item-label">
+                <Type aria-hidden="true" />
+                Font size
+              </span>
+              <div className="card-menu-font-actions">
+                <button
+                  type="button"
+                  className="card-font-btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onFontSizeChange(Math.max(minFontSize, (fontSize || 14) - 2))
+                  }}
+                  disabled={(fontSize || 14) <= minFontSize}
+                  title="Decrease font size"
+                  aria-label="Decrease font size"
+                >
+                  <Minus size={13} />
+                </button>
+                <span className="card-font-value">{fontSize || 14}px</span>
+                <button
+                  type="button"
+                  className="card-font-btn"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onFontSizeChange(Math.min(maxFontSize, (fontSize || 14) + 2))
+                  }}
+                  disabled={(fontSize || 14) >= maxFontSize}
+                  title="Increase font size"
+                  aria-label="Increase font size"
+                >
+                  <Plus size={13} />
+                </button>
+              </div>
             </div>
           )}
 

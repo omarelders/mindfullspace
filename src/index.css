@@ -1870,43 +1870,53 @@ html:-webkit-full-screen .app-shell {
   border-radius: 4px;
 }
 
-/* Note Font Size Controls */
-.note-font-controls {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-right: 2px;
+/* Card Menu Font Size Controls */
+.card-menu-font-row {
+  cursor: default;
 }
 
-.note-font-btn {
-  width: 26px;
-  height: 26px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+.card-menu-font-row:hover {
   background: transparent;
+}
+
+.card-menu-font-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-font-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.5);
+  color: inherit;
   cursor: pointer;
-  color: var(--card-text);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.6;
-  transition: opacity 0.15s, background-color 0.15s;
-  flex-shrink: 0;
+  transition: background-color 0.15s, opacity 0.15s;
   padding: 0;
-  font-family: inherit;
+  flex-shrink: 0;
 }
 
-.note-font-btn:hover:not(:disabled) {
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.18);
+.card-font-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 0, 0, 0.28);
 }
 
-.note-font-btn:disabled {
-  opacity: 0.25;
+.card-font-btn:disabled {
+  opacity: 0.35;
   cursor: not-allowed;
+}
+
+.card-font-value {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 34px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .note-resizer {

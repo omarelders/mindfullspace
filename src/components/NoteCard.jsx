@@ -22,24 +22,6 @@ export const NoteCard = memo(function NoteCard({
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(note.text)
 
-  const currentFontSize = note.fontSize || 14
-
-  const handleDecreaseFont = (e) => {
-    e.stopPropagation()
-    const nextSize = Math.max(10, currentFontSize - 2)
-    if (onUpdateFontSize && nextSize !== currentFontSize) {
-      onUpdateFontSize(note.id, nextSize)
-    }
-  }
-
-  const handleIncreaseFont = (e) => {
-    e.stopPropagation()
-    const nextSize = Math.min(48, currentFontSize + 2)
-    if (onUpdateFontSize && nextSize !== currentFontSize) {
-      onUpdateFontSize(note.id, nextSize)
-    }
-  }
-
   const handleResizeStart = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -119,35 +101,14 @@ export const NoteCard = memo(function NoteCard({
     >
       <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{note.title}</span>
-        {!note.minimized && (
-          <div className="note-font-controls" onPointerDown={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className="note-font-btn"
-              onClick={handleDecreaseFont}
-              disabled={currentFontSize <= 10}
-              title="Decrease font size"
-              aria-label="Decrease font size"
-            >
-              A-
-            </button>
-            <button
-              type="button"
-              className="note-font-btn"
-              onClick={handleIncreaseFont}
-              disabled={currentFontSize >= 48}
-              title="Increase font size"
-              aria-label="Increase font size"
-            >
-              A+
-            </button>
-          </div>
-        )}
         <CardContextMenu
           title={note.title}
           minimized={Boolean(note.minimized)}
+          fontSize={note.fontSize || 14}
+          maxFontSize={48}
           onTitleChange={(nextTitle) => onUpdateTitle(note.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(note.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize(note.id, nextSize)}
           onMove={(targetId) => onMoveCard(note.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(note.id)}
           onDuplicate={() => onDuplicateCard(note.id)}

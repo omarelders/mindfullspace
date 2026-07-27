@@ -13,6 +13,7 @@ export const CalendarCard = memo(function CalendarCard({
   onPointerDown,
   onUpdateTitle,
   onUpdateColor,
+  onUpdateFontSize,
   onMoveCard,
   onToggleMinimize,
   onDuplicateCard,
@@ -25,6 +26,8 @@ export const CalendarCard = memo(function CalendarCard({
   isPopping,
   cardId,
 }) {
+  const customStyle = calendar.fontSize ? { fontSize: `${calendar.fontSize}px` } : undefined
+  const entryStyle = calendar.fontSize ? { fontSize: `${Math.max(10, Math.round(calendar.fontSize * 0.85))}px` } : undefined
   const { firstWeekday, daysInMonth, todayKey } = useMemo(() => {
     const firstDayOfMonth = new Date(calendar.year, calendar.month, 1)
     const fWeekday = (firstDayOfMonth.getDay() + 6) % 7
@@ -53,8 +56,10 @@ export const CalendarCard = memo(function CalendarCard({
         <CardContextMenu
           title={calendar.title || 'Calendar'}
           minimized={Boolean(calendar.minimized)}
+          fontSize={calendar.fontSize || 16}
           onTitleChange={(nextTitle) => onUpdateTitle(calendar.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(calendar.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(calendar.id, nextSize)}
           onMove={(targetId) => onMoveCard(calendar.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(calendar.id)}
           onDuplicate={() => onDuplicateCard(calendar.id)}
@@ -100,6 +105,7 @@ export const CalendarCard = memo(function CalendarCard({
 
               <textarea
                 className="calendar-entry-input"
+                style={entryStyle}
                 value={currentEntry}
                 onChange={(event) => onUpdateEntry(calendar.id, calendar.selectedDate, event.target.value)}
                 placeholder="Write your journal entry..."
@@ -148,6 +154,7 @@ export const CalendarCard = memo(function CalendarCard({
                       key={dateKey}
                       type="button"
                       className={`calendar-day ${isToday ? 'is-today' : ''} ${hasEntry ? 'has-entry' : ''}`}
+                      style={customStyle}
                       onClick={() => onOpenDay(calendar.id, dateKey)}
                       aria-label={`open day ${dayNumber}`}
                     >

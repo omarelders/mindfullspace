@@ -187,6 +187,7 @@ export function WorkspaceBoard({
                 onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateTodoCardTitle}
                 onUpdateColor={actions.updateTodoCardColor}
+                onUpdateFontSize={actions.updateTodoCardFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleTodoCardMinimize}
                 onDuplicateCard={actions.duplicateTodoCard}
@@ -206,6 +207,7 @@ export function WorkspaceBoard({
                 onPointerDown={actions.handleCardPointerDown}
                 onUpdateText={actions.updateLabelText}
                 onUpdateColor={actions.updateLabelColor}
+                onUpdateFontSize={actions.updateLabelFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleLabelMinimize}
                 onDuplicateCard={actions.duplicateLabelCard}
@@ -246,6 +248,7 @@ export function WorkspaceBoard({
                 onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateTimerTitle}
                 onUpdateColor={actions.updateTimerColor}
+                onUpdateFontSize={actions.updateTimerFontSize}
                 onUpdateTimerState={actions.updateTimerState}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleTimerMinimize}
@@ -266,6 +269,7 @@ export function WorkspaceBoard({
                 onUpdateTitle={actions.updateCounterTitle}
                 onUpdateValue={actions.updateCounterValue}
                 onUpdateColor={actions.updateCounterColor}
+                onUpdateFontSize={actions.updateCounterFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleCounterMinimize}
                 onDuplicateCard={actions.duplicateCounterCard}
@@ -284,6 +288,7 @@ export function WorkspaceBoard({
                 onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateStopwatchTitle}
                 onUpdateColor={actions.updateStopwatchColor}
+                onUpdateFontSize={actions.updateStopwatchFontSize}
                 onUpdateStopwatchState={actions.updateStopwatchState}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleStopwatchMinimize}
@@ -304,6 +309,7 @@ export function WorkspaceBoard({
                 onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateCalendarTitle}
                 onUpdateColor={actions.updateCalendarColor}
+                onUpdateFontSize={actions.updateCalendarFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleCalendarMinimize}
                 onDuplicateCard={actions.duplicateCalendarCard}
@@ -327,6 +333,7 @@ export function WorkspaceBoard({
                 onUpdateTitle={actions.updateHabitTitle}
                 onUpdateIcon={actions.updateHabitIcon}
                 onUpdateColor={actions.updateHabitColor}
+                onUpdateFontSize={actions.updateHabitFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleHabitMinimize}
                 onDuplicateCard={actions.duplicateHabitCard}
@@ -348,6 +355,7 @@ export function WorkspaceBoard({
                 onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updatePictureTitle}
                 onUpdateColor={actions.updatePictureColor}
+                onUpdateFontSize={actions.updatePictureFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.togglePictureMinimize}
                 onDuplicateCard={actions.duplicatePictureCard}
@@ -370,6 +378,7 @@ export function WorkspaceBoard({
                 onPointerDown={actions.handleCardPointerDown}
                 onUpdateTitle={actions.updateQuickLinksTitle}
                 onUpdateColor={actions.updateQuickLinksColor}
+                onUpdateFontSize={actions.updateQuickLinksFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleQuickLinksMinimize}
                 onDuplicateCard={actions.duplicateQuickLinksCard}
@@ -394,6 +403,7 @@ export function WorkspaceBoard({
                 onUpdateText={actions.updateQuoteText}
                 onUpdateAuthor={actions.updateQuoteAuthor}
                 onUpdateColor={actions.updateQuoteColor}
+                onUpdateFontSize={actions.updateQuoteFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleQuoteMinimize}
                 onDuplicateCard={actions.duplicateQuoteCard}

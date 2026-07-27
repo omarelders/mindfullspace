@@ -10,6 +10,7 @@ export const StopwatchCard = memo(function StopwatchCard({
   onUpdateTitle,
   onUpdateColor,
   onUpdateStopwatchState,
+  onUpdateFontSize,
   onMoveCard,
   onToggleMinimize,
   onDuplicateCard,
@@ -18,6 +19,7 @@ export const StopwatchCard = memo(function StopwatchCard({
   isPopping,
   cardId,
 }) {
+  const customStyle = stopwatch.fontSize ? { fontSize: `${stopwatch.fontSize}px` } : undefined
   const initialSeconds = Number.isFinite(stopwatch.initialSeconds) ? stopwatch.initialSeconds : 0
   const persistedSeconds = Number.isFinite(stopwatch.elapsedSeconds)
     ? stopwatch.elapsedSeconds
@@ -104,8 +106,10 @@ export const StopwatchCard = memo(function StopwatchCard({
           title={stopwatch.title || 'Stopwatch'}
           minimized={Boolean(stopwatch.minimized)}
           showTitleInput={false}
+          fontSize={stopwatch.fontSize || 42}
           onTitleChange={(nextTitle) => onUpdateTitle(stopwatch.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(stopwatch.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(stopwatch.id, nextSize)}
           onMove={(targetId) => onMoveCard(stopwatch.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(stopwatch.id)}
           onDuplicate={() => onDuplicateCard(stopwatch.id)}
@@ -116,7 +120,7 @@ export const StopwatchCard = memo(function StopwatchCard({
 
       {!stopwatch.minimized && (
         <div className="stopwatch-panel">
-          <div className="stopwatch-value">
+          <div className="stopwatch-value" style={customStyle}>
             {h} <span className="stopwatch-colon">:</span> {m} <span className="stopwatch-colon">:</span> {s}
           </div>
           <div className="stopwatch-controls">

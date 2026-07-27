@@ -17,6 +17,7 @@ export const TimerCard = memo(function TimerCard({
   onUpdateTitle,
   onUpdateColor,
   onUpdateTimerState,
+  onUpdateFontSize,
   onMoveCard,
   onToggleMinimize,
   onDuplicateCard,
@@ -25,6 +26,7 @@ export const TimerCard = memo(function TimerCard({
   isPopping,
   cardId,
 }) {
+  const customStyle = timer.fontSize ? { fontSize: `${timer.fontSize}px` } : undefined
   const initialSeconds = Number.isFinite(timer.initialSeconds) ? timer.initialSeconds : 2700
   const persistedSeconds = Number.isFinite(timer.remainingSeconds) ? timer.remainingSeconds : initialSeconds
   const isRunning = Boolean(timer.isRunning)
@@ -255,8 +257,10 @@ export const TimerCard = memo(function TimerCard({
         <CardContextMenu
           title={timer.title}
           minimized={Boolean(timer.minimized)}
+          fontSize={timer.fontSize || 38}
           onTitleChange={(nextTitle) => onUpdateTitle(timer.id, nextTitle)}
           onColorChange={(color) => onUpdateColor(timer.id, color)}
+          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(timer.id, nextSize)}
           onMove={(targetId) => onMoveCard(timer.id, targetId)}
           onToggleMinimize={() => onToggleMinimize(timer.id)}
           onDuplicate={() => onDuplicateCard(timer.id)}
@@ -342,7 +346,7 @@ export const TimerCard = memo(function TimerCard({
                 background: 'transparent',
                 border: 'none',
                 color: 'inherit',
-                fontSize: '2rem',
+                fontSize: timer.fontSize ? `${timer.fontSize}px` : '2rem',
                 fontWeight: '600',
                 textAlign: 'center',
                 width: '100%',
@@ -351,7 +355,7 @@ export const TimerCard = memo(function TimerCard({
             />
           ) : (
             <>
-              <div className={`timer-value ${secondsLeft === 0 ? 'timer-value-done' : ''}`}>
+              <div className={`timer-value ${secondsLeft === 0 ? 'timer-value-done' : ''}`} style={customStyle}>
                 {formatSecondsToTimer(secondsLeft)}
               </div>
               <div className="timer-controls">
