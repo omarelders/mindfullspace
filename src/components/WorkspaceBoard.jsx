@@ -225,6 +225,7 @@ export function WorkspaceBoard({
                 onUpdateTitle={actions.updateNoteTitle}
                 onUpdateText={actions.updateNoteText}
                 onUpdateColor={actions.updateNoteColor}
+                onUpdateFontSize={actions.updateNoteFontSize}
                 onMoveCard={actions.moveCardToTarget}
                 onToggleMinimize={actions.toggleNoteMinimize}
                 onDuplicateCard={actions.duplicateNoteCard}

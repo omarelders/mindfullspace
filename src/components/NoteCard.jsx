@@ -7,6 +7,7 @@ export const NoteCard = memo(function NoteCard({
   onPointerDown,
   onUpdateTitle,
   onUpdateColor,
+  onUpdateFontSize,
   onMoveCard,
   onToggleMinimize,
   onDuplicateCard,
@@ -20,6 +21,24 @@ export const NoteCard = memo(function NoteCard({
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(note.text)
+
+  const currentFontSize = note.fontSize || 14
+
+  const handleDecreaseFont = (e) => {
+    e.stopPropagation()
+    const nextSize = Math.max(10, currentFontSize - 2)
+    if (onUpdateFontSize && nextSize !== currentFontSize) {
+      onUpdateFontSize(note.id, nextSize)
+    }
+  }
+
+  const handleIncreaseFont = (e) => {
+    e.stopPropagation()
+    const nextSize = Math.min(48, currentFontSize + 2)
+    if (onUpdateFontSize && nextSize !== currentFontSize) {
+      onUpdateFontSize(note.id, nextSize)
+    }
+  }
 
   const handleResizeStart = (e) => {
     e.preventDefault()
@@ -100,6 +119,30 @@ export const NoteCard = memo(function NoteCard({
     >
       <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
         <span className="card-title">{note.title}</span>
+        {!note.minimized && (
+          <div className="note-font-controls" onPointerDown={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className="note-font-btn"
+              onClick={handleDecreaseFont}
+              disabled={currentFontSize <= 10}
+              title="Decrease font size"
+              aria-label="Decrease font size"
+            >
+              A-
+            </button>
+            <button
+              type="button"
+              className="note-font-btn"
+              onClick={handleIncreaseFont}
+              disabled={currentFontSize >= 48}
+              title="Increase font size"
+              aria-label="Increase font size"
+            >
+              A+
+            </button>
+          </div>
+        )}
         <CardContextMenu
           title={note.title}
           minimized={Boolean(note.minimized)}
@@ -122,9 +165,12 @@ export const NoteCard = memo(function NoteCard({
               onBlur={handleCommitEdit}
               onKeyDown={handleKeyDown}
               autoFocus
+              style={{
+                fontSize: note.fontSize ? `${note.fontSize}px` : undefined,
+              }}
             />
           ) : (
-            <p className="note-content" onClick={handleStartEdit} style={{ height: 'calc(100% - 36px)' }}>
+            <p className="note-content" onClick={handleStartEdit} style={{ height: 'calc(100% - 36px)', fontSize: note.fontSize ? `${note.fontSize}px` : undefined }}>
               {note.text || 'Click to edit note...'}
             </p>
           )}

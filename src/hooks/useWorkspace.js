@@ -815,6 +815,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const deleteNoteCard = noteCol.remove
   const updateNoteText = useCallback((id, text) => noteCol.update(id, { text }), [noteCol])
   const updateNoteDimensions = useCallback((id, width, height) => noteCol.update(id, { width, height }), [noteCol])
+  const updateNoteFontSize = useCallback((id, fontSize) => noteCol.update(id, { fontSize }), [noteCol])
 
   // Timers
   const updateTimerTitle = timerCol.updateTitle
@@ -1430,7 +1431,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,
       updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,
       updateLabelText, updateLabelColor, toggleLabelMinimize, duplicateLabelCard, archiveLabelCard, deleteLabelCard,
-      updateNoteTitle, updateNoteText, updateNoteColor, toggleNoteMinimize, updateNoteDimensions, duplicateNoteCard, archiveNoteCard, deleteNoteCard,
+      updateNoteTitle, updateNoteText, updateNoteColor, toggleNoteMinimize, updateNoteDimensions, updateNoteFontSize, duplicateNoteCard, archiveNoteCard, deleteNoteCard,
       updateTimerTitle, updateTimerColor, toggleTimerMinimize, updateTimerState, duplicateTimerCard, archiveTimerCard, deleteTimerCard,
       updateCounterTitle, updateCounterValue, updateCounterColor, toggleCounterMinimize, duplicateCounterCard, archiveCounterCard, deleteCounterCard,
       updateStopwatchTitle, updateStopwatchColor, updateStopwatchState, toggleStopwatchMinimize, duplicateStopwatchCard, archiveStopwatchCard, deleteStopwatchCard,
