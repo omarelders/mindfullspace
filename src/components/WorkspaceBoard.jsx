@@ -13,6 +13,7 @@ import { QuickLinksCard } from './QuickLinksCard'
 import { QuoteCard } from './QuoteCard'
 import { TopBar } from './TopBar'
 import { useWorkspace } from '../hooks/useWorkspace'
+import { useDocumentTitleTimer } from '../hooks/useDocumentTitleTimer'
 import { QUICK_CREATE_ACTIONS } from '../utils/constants'
 
 // Note: supportsNativeZoom check omitted for simplicity but would typically come from a utility
@@ -40,6 +41,8 @@ export function WorkspaceBoard({
     setters: { setThemeMode, setIsFocusMode, setIsRailOpen },
     actions
   } = useWorkspace(workspace.id, workspaceRef)
+
+  useDocumentTitleTimer(timers, workspace.name)
 
   const handleToggleThemeMode = useCallback(() => setThemeMode((mode) => (mode === 'night' ? 'day' : 'night')), [setThemeMode])
   const handleToggleFocusMode = useCallback(() => setIsFocusMode((active) => !active), [setIsFocusMode])
