@@ -47,15 +47,15 @@ export const StopwatchCard = memo(function StopwatchCard({
   useEffect(() => {
     if (!isRunning || !lastStartTime) return undefined
 
-    let animationFrameId
+    let intervalId
     const tick = () => {
       const current = getElapsedSeconds()
       setElapsedSeconds((prev) => (prev !== current ? current : prev))
-      animationFrameId = requestAnimationFrame(tick)
     }
 
-    animationFrameId = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(animationFrameId)
+    tick()
+    intervalId = setInterval(tick, 200)
+    return () => clearInterval(intervalId)
   }, [isRunning, lastStartTime, persistedSeconds])
 
   const toggleRunning = () => {

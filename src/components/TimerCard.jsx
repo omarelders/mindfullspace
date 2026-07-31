@@ -74,7 +74,7 @@ export const TimerCard = memo(function TimerCard({
       hasFinishedRef.current = false
     }
 
-    let animationFrameId
+
     const tick = () => {
       const left = getSecondsLeft()
       setSecondsLeft((prev) => (prev !== left ? left : prev))
@@ -126,13 +126,12 @@ export const TimerCard = memo(function TimerCard({
              })
            }
         }
-      } else {
-        animationFrameId = requestAnimationFrame(tick)
       }
     }
 
-    animationFrameId = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(animationFrameId)
+    tick()
+    const intervalId = setInterval(tick, 200)
+    return () => clearInterval(intervalId)
   }, [isRunning, endTime, isPomodoroMode, pomodoroStage, pomodoroRound, pomodoroWork, pomodoroShortBreak, pomodoroLongBreak, timer.id, timer.title, onUpdateTimerState])
 
   const toggleRunning = () => {

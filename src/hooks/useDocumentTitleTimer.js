@@ -21,8 +21,7 @@ export function useDocumentTitleTimer(timers, workspaceName) {
     runningTimers.sort((a, b) => a.endTime - b.endTime)
     const activeTimer = runningTimers[0]
 
-    let animationFrameId
-    
+
     const tick = () => {
       const remainingSeconds = Math.max(0, Math.floor((activeTimer.endTime - Date.now()) / 1000))
       
@@ -40,18 +39,20 @@ export function useDocumentTitleTimer(timers, workspaceName) {
       }
       
       // Stop tracking if it reaches 0 (TimerCard will eventually update state to isRunning=false)
-      if (remainingSeconds > 0) {
-        animationFrameId = requestAnimationFrame(tick)
-      } else {
+      if (remainingSeconds <= 0) {
         // Fallback title when timer finishes before state updates
         document.title = `00:00 - ${timerName}`
       }
     }
+    
+    // Call tick immediately to set the title without delay
+    tick()
 
-    animationFrameId = requestAnimationFrame(tick)
+    // Use setInterval instead of requestAnimationFrame so it keeps ticking in background tabs
+    const intervalId = setInterval(tick, 500)
     
     return () => {
-      cancelAnimationFrame(animationFrameId)
+      clearInterval(intervalId)
       // When unmounting or cleaning up the effect, reset the title
       document.title = baseTitle
     }
