@@ -1173,9 +1173,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
     const id = `singlenote-${Date.now()}`
     const vx = viewport.x / viewport.scale; const vy = viewport.y / viewport.scale
     setCardPositions((prev) => ({ ...prev, [id]: pos || { x: 450 - vx, y: 350 - vy } }))
-    singleNoteCol.add({ id, text: 'Single Note', shape: 'rectangle' })
+    setSingleNotes(prev => [...prev, { id, text: 'Single Note', shape: 'rectangle' }])
     saveSnapshot()
-  }, [singleNoteCol, saveSnapshot, setCardPositions, viewport])
+  }, [setSingleNotes, saveSnapshot, setCardPositions, viewport])
   const handleAddNote = useCallback((pos) => {
     const id = `note-${Date.now()}`
     setNotes(p => [...p, { id, text: '', title: '', color: null, minimized: false }])
