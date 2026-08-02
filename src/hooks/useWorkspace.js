@@ -1168,6 +1168,14 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setCustomLabels(p => [...p, { id, text: '', role: roles[Math.floor(Math.random() * roles.length)] }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
   }, [viewport, setCustomLabels])
+
+  const handleAddSingleNote = useCallback((pos) => {
+    const id = `singlenote-${Date.now()}`
+    const vx = viewport.x / viewport.scale; const vy = viewport.y / viewport.scale
+    setCardPositions((prev) => ({ ...prev, [id]: pos || { x: 450 - vx, y: 350 - vy } }))
+    singleNoteCol.add({ id, text: 'Single Note', shape: 'rectangle' })
+    saveSnapshot()
+  }, [singleNoteCol, saveSnapshot, setCardPositions, viewport])
   const handleAddNote = useCallback((pos) => {
     const id = `note-${Date.now()}`
     setNotes(p => [...p, { id, text: '', title: '', color: null, minimized: false }])
