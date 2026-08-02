@@ -1462,7 +1462,13 @@ html:-webkit-full-screen .app-shell {
   cursor: pointer;
 }
 
-.card-move-submenu {
+.card-shape-submenu .card-submenu-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-move-submenu .card-submenu-content {
   display: flex;
   flex-direction: column;
   gap: 4px;

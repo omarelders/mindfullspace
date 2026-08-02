@@ -306,7 +306,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
       quotes: s.quotes,
       archivedCards: s.archivedCards,
       customLabels: s.customLabels,
-      singleNotes: s.singleNotes, singleNotes, cardPositions: s.cardPositions,
+      singleNotes: s.singleNotes,
+      cardPositions: s.cardPositions,
     }
   }, [])
 
@@ -1470,7 +1471,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     state: {
       columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, theme,
       dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
-      archivedCards, detachedLabels, cardPositions, draggingCard, poppingCardIds, toastMessage,
+      archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
     setters: {
