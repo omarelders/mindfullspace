@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback } from 'react'
 import { ActionRail, ActionRailIcon } from './ActionRail'
 import { TodoCard } from './TodoCard'
 import { LabelCard } from './LabelCard'
+import { SingleNoteCard } from './SingleNoteCard'
 import { NoteCard } from './NoteCard'
 import { TimerCard } from './TimerCard'
 import { CounterCard } from './CounterCard'
@@ -35,7 +36,7 @@ export function WorkspaceBoard({
     state: {
       columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, theme,
       dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
-      archivedCards, detachedLabels, cardPositions, draggingCard, poppingCardIds, toastMessage,
+      archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
     setters: { setThemeMode, setIsFocusMode, setIsRailOpen },

@@ -18,6 +18,8 @@ export function CardContextMenu({
   onDuplicate,
   onArchive,
   onDelete,
+  onShapeChange,
+  currentShape = 'rectangle',
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [openSubmenu, setOpenSubmenu] = useState(null)
@@ -188,6 +190,39 @@ export function CardContextMenu({
               </div>
             )}
           </div>
+
+          {onShapeChange && (
+            <div className="submenu-trigger-wrap">
+              <button
+                type="button"
+                className={`card-menu-item ${openSubmenu === 'shape' ? 'is-active' : ''}`}
+                onClick={() => setOpenSubmenu((submenu) => (submenu === 'shape' ? null : 'shape'))}
+              >
+                <span className="card-menu-item-label">
+                  <Type aria-hidden="true" />
+                  Shape
+                </span>
+                <span className="card-menu-arrow" aria-hidden="true">›</span>
+              </button>
+              {openSubmenu === 'shape' && (
+                <div className="card-submenu card-shape-submenu" role="menu">
+                  <div className="card-submenu-content">
+                    {['rectangle', 'rounded', 'pill', 'circle', 'leaf'].map((shape) => (
+                      <button
+                        key={shape}
+                        type="button"
+                        className={`card-move-option ${currentShape === shape ? 'is-selected' : ''}`}
+                        onClick={() => handleAction(() => onShapeChange(shape))}
+                        style={{ textTransform: 'capitalize' }}
+                      >
+                        {shape}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             type="button"

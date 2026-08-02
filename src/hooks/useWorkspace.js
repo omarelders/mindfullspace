@@ -119,6 +119,17 @@ export function useWorkspace(workspaceId, workspaceRef) {
     onDuplicate: (source, dupData) => ({ ...source, id: dupData.id })
   })
 
+  const singleNoteCol = useCardCollection({
+    initialItems: initialWorkspaceState.singleNotes,
+    idPrefix: 'singlenote',
+    saveSnapshot,
+    archiveCardSnapshot,
+    removeCardPosition,
+    setCardPositions,
+    setDraggingCard,
+    onDuplicate: (source, dupData) => ({ ...source, id: dupData.id })
+  })
+
   const colCol = useCardCollection({
     initialItems: initialWorkspaceState.columns,
     idPrefix: 'col',
@@ -233,6 +244,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
   // Aliases for state variables so existing codebase works without modification
   const customLabels = labelCol.items
   const setCustomLabels = labelCol.setItems
+  const singleNotes = singleNoteCol.items
+  const setSingleNotes = singleNoteCol.setItems
 
   const columns = colCol.items
   const setColumns = colCol.setItems
@@ -270,10 +283,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
   useEffect(() => {
     stateRefsForSnapshot.current = {
       columns, drafts, viewport, themeMode, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions
+      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions
     }
   }, [columns, drafts, viewport, themeMode, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions])
+      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions])
 
   const captureSnapshot = useCallback(() => {
     const s = stateRefsForSnapshot.current
@@ -293,7 +306,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       quotes: s.quotes,
       archivedCards: s.archivedCards,
       customLabels: s.customLabels,
-      cardPositions: s.cardPositions,
+      singleNotes: s.singleNotes, singleNotes, cardPositions: s.cardPositions,
     }
   }, [])
 
@@ -313,8 +326,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setQuotes(snapshot.quotes || [])
     setArchivedCards(snapshot.archivedCards)
     setCustomLabels(snapshot.customLabels)
+    if (snapshot.singleNotes) setSingleNotes(snapshot.singleNotes)
     setCardPositions(snapshot.cardPositions)
-  }, [setColumns, setDrafts, setViewport, setThemeMode, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setCardPositions])
+  }, [setColumns, setDrafts, setViewport, setThemeMode, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setSingleNotes, setCardPositions])
 
   function saveSnapshot() {
     pushSnapshot(captureSnapshot())
@@ -359,6 +373,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     () => [
       ...columns.map((column) => column.id),
       ...detachedLabels.map((label) => label.id),
+      ...singleNotes.map((note) => note.id),
       ...notes.map((note) => note.id),
       ...timers.map((timer) => timer.id),
       ...counters.map((counter) => counter.id),
@@ -369,7 +384,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       ...quickLinks.map((ql) => ql.id),
       ...quotes.map((q) => q.id),
     ],
-    [columns, detachedLabels, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes],
+    [columns, detachedLabels, singleNotes, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes],
   )
 
   const workspaceStorageKey = `${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`
@@ -393,7 +408,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
         window.cancelIdleCallback(idleId)
       }
     }
-  }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, cardPositions, captureSnapshot])
+  }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, captureSnapshot])
 
   // Ensure state is saved immediately on beforeunload or visibilitychange
   useEffect(() => {
@@ -729,6 +744,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
     if (archivedEntry.type === 'label') {
       restoredCardId = `label-${uniqueSeed}`
       setCustomLabels(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || 'LABEL', role: archivedData.role || 'routine' }])
+    } else if (archivedEntry.type === 'singlenote') {
+      restoredCardId = `singlenote-${uniqueSeed}`
+      setSingleNotes(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || 'Single Note' }])
     } else if (archivedEntry.type === 'todo') {
       restoredCardId = `col-${uniqueSeed}`
       const restoredItems = (archivedData.items || []).map((item, index) => ({ ...item, id: `${restoredCardId}-item-${index}-${Date.now()}` }))
@@ -788,6 +806,16 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const duplicateLabelCard = labelCol.duplicate
   const archiveLabelCard = labelCol.archive
   const deleteLabelCard = labelCol.remove
+
+  // Single Notes
+  const updateSingleNoteText = useCallback((id, text) => singleNoteCol.update(id, { text }), [singleNoteCol])
+  const updateSingleNoteColor = useCallback((id, color) => singleNoteCol.update(id, { color }), [singleNoteCol])
+  const updateSingleNoteFontSize = useCallback((id, fontSize) => singleNoteCol.update(id, { fontSize }), [singleNoteCol])
+  const updateSingleNoteShape = useCallback((id, shape) => singleNoteCol.update(id, { shape }), [singleNoteCol])
+  const toggleSingleNoteMinimize = singleNoteCol.toggleMinimize
+  const duplicateSingleNoteCard = singleNoteCol.duplicate
+  const archiveSingleNoteCard = singleNoteCol.archive
+  const deleteSingleNoteCard = singleNoteCol.remove
 
   // Todos (Columns)
   const updateTodoCardTitle = colCol.updateTitle
@@ -1201,6 +1229,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       }
     }
     if (actionId === 'label') handleAddLabel(pos)
+    else if (actionId === 'singlenote') handleAddSingleNote(pos)
     else if (actionId === 'note') handleAddNote(pos)
     else if (actionId === 'todo-list') handleAddTodoList(pos)
     else if (actionId === 'counter') handleAddCounter(pos)
@@ -1212,7 +1241,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     else if (actionId === 'quick-links') handleAddQuickLinks(pos)
     else if (actionId === 'quote') handleAddQuote(pos)
     setIsRailOpen(false)
-  }, [viewport, workspaceRef, handleAddLabel, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks, handleAddQuote])
+  }, [viewport, workspaceRef, handleAddLabel, handleAddSingleNote, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks, handleAddQuote, handleAddSingleNote])
 
   // Long-press callbacks
   const startLongPress = useCallback((event) => {
@@ -1447,6 +1476,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,
       updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, updateTodoCardFontSize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,
       updateLabelText, updateLabelColor, toggleLabelMinimize, updateLabelFontSize, duplicateLabelCard, archiveLabelCard, deleteLabelCard,
+      updateSingleNoteText, updateSingleNoteColor, updateSingleNoteFontSize, updateSingleNoteShape, toggleSingleNoteMinimize, duplicateSingleNoteCard, archiveSingleNoteCard, deleteSingleNoteCard,
       updateNoteTitle, updateNoteText, updateNoteColor, toggleNoteMinimize, updateNoteDimensions, updateNoteFontSize, duplicateNoteCard, archiveNoteCard, deleteNoteCard,
       updateTimerTitle, updateTimerColor, toggleTimerMinimize, updateTimerState, updateTimerFontSize, duplicateTimerCard, archiveTimerCard, deleteTimerCard,
       updateCounterTitle, updateCounterValue, updateCounterColor, toggleCounterMinimize, updateCounterFontSize, duplicateCounterCard, archiveCounterCard, deleteCounterCard,

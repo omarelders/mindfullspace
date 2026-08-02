@@ -137,6 +137,7 @@ export const NOTE_TEXT =
 
 export const QUICK_CREATE_ACTIONS = [
   { id: 'label', title: 'Label', icon: 'label' },
+  { id: 'singlenote', title: 'Single Note', icon: 'label' },
   { id: 'note', title: 'Note', icon: 'note' },
   { id: 'todo-list', title: 'Todo List', icon: 'todo-list' },
   { id: 'counter', title: 'Counter', icon: 'counter' },
