@@ -1090,6 +1090,10 @@ html:-webkit-full-screen .app-shell {
   user-select: none;
 }
 
+.workspace.is-panning .floating-card {
+  pointer-events: none !important;
+}
+
 .workspace.is-card-dragging {
   user-select: none !important;
 }

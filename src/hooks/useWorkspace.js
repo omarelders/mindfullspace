@@ -1067,8 +1067,11 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const startPanning = useCallback((event) => {
     if (window.innerWidth <= 1200) return
     if (event.button !== 2) return
-    if (event.target.closest('.floating-card') || event.target.closest('.action-rail') || event.target.closest('.top-bar') || event.target.closest('.card-menu-wrap')) return
+    if (event.target.closest('.action-rail') || event.target.closest('.top-bar') || event.target.closest('.card-menu-wrap')) return
     event.preventDefault()
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {}
     panRef.current = { active: true, lastX: event.clientX, lastY: event.clientY }
     setIsPanning(true)
   }, [])
@@ -1105,6 +1108,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
     panRef.current.active = false
     setIsPanning(false)
     if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {}
     // Commit final viewport to React state once on release
     setViewport(viewportRef.current)
   }, [])
