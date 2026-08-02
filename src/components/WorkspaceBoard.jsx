@@ -221,6 +221,27 @@ export function WorkspaceBoard({
               />
             ))}
 
+            {singleNotes.map((note) => (
+              <SingleNoteCard
+                key={note.id}
+                cardId={note.id}
+                singleNote={note}
+                position={cardPositions[note.id]}
+                textColor="var(--label-text)"
+                onPointerDown={actions.handleCardPointerDown}
+                onUpdateText={actions.updateSingleNoteText}
+                onUpdateColor={actions.updateSingleNoteColor}
+                onUpdateFontSize={actions.updateSingleNoteFontSize}
+                onUpdateShape={actions.updateSingleNoteShape}
+                onMoveCard={actions.moveCardToTarget}
+                onToggleMinimize={actions.toggleSingleNoteMinimize}
+                onDuplicateCard={actions.duplicateSingleNoteCard}
+                onArchiveCard={actions.archiveSingleNoteCard}
+                onDeleteCard={actions.deleteSingleNoteCard}
+                isPopping={poppingCardIds.has(note.id)}
+              />
+            ))}
+
             {notes.map((note) => (
               <NoteCard
                 key={note.id}
