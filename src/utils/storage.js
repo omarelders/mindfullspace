@@ -126,6 +126,7 @@ export function validateWorkspaceState(stored) {
     archivedCards: Array.isArray(stored?.archivedCards) ? stored.archivedCards : [],
     customLabels: Array.isArray(stored?.customLabels) ? stored.customLabels : DETACHED_LABELS,
     singleNotes: Array.isArray(stored?.singleNotes) ? stored.singleNotes : [],
+    quotes: Array.isArray(stored?.quotes) ? stored.quotes : [],
     cardPositions:
       stored?.cardPositions && typeof stored.cardPositions === 'object'
         ? { ...createDefaultCardPositions(), ...stored.cardPositions }

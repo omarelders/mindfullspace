@@ -54,6 +54,7 @@ export function TopBar({
   habits,
   onRestoreArchivedCard,
   onImportCards,
+  onCaptureSnapshot,
 }) {
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -87,7 +88,10 @@ export function TopBar({
   }, [isAccountMenuOpen, activeAccountTab])
 
   const handleExportClick = () => {
-    exportWorkspace(workspace.id, workspace.name).catch((err) => {
+    // Capture the live in-memory state so the export always reflects the
+    // current workspace even if the debounced autosave hasn't flushed yet.
+    const liveState = onCaptureSnapshot ? onCaptureSnapshot() : null
+    exportWorkspace(workspace.id, workspace.name, liveState).catch((err) => {
       setAlertMessage(err.message || 'Export failed.')
     })
   }

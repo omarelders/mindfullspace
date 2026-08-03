@@ -16,7 +16,7 @@ import {
 } from '../utils/constants'
 import { parseDateKey, buildDateKey } from '../utils/dateUtils'
 import { saveImage, deleteImage as deleteImageBlob, MAX_IMAGE_SIZE } from '../utils/imageStore'
-import { parseImportedCards } from '../utils/backup'
+import { parseImportedCards, isImportReload, clearImportReloadFlag } from '../utils/backup'
 import { useUndoRedo } from './useUndoRedo'
 import { useCardCollection } from './useCardCollection'
 
@@ -411,9 +411,18 @@ export function useWorkspace(workspaceId, workspaceRef) {
     }
   }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, captureSnapshot])
 
-  // Ensure state is saved immediately on beforeunload or visibilitychange
+  // Ensure state is saved immediately on beforeunload or visibilitychange.
+  // IMPORTANT: if an import just wrote data to localStorage and is about to
+  // trigger a page reload, we must NOT overwrite that data with stale React
+  // state. The importWorkspace helper sets a sessionStorage sentinel for this.
   useEffect(() => {
     const handleSave = () => {
+      if (isImportReload()) {
+        // An import wrote fresh data and is reloading — skip the autosave so
+        // we don't clobber the import.
+        clearImportReloadFlag()
+        return
+      }
       writeJsonStorage(workspaceStorageKey, captureSnapshot())
     }
     const handleVisibilityChange = () => {
@@ -1351,6 +1360,14 @@ export function useWorkspace(workspaceId, workspaceRef) {
         })
       }
 
+      const importedSingleNotes = []
+      if (Array.isArray(rawWorkspace.singleNotes)) {
+        rawWorkspace.singleNotes.forEach((sn, idx) => {
+          const { card } = processCard(sn, idx, 450, 350)
+          importedSingleNotes.push({ ...card, text: card.text || 'Single Note', shape: card.shape || 'rectangle' })
+        })
+      }
+
       const importedTimers = []
       if (Array.isArray(rawWorkspace.timers)) {
         rawWorkspace.timers.forEach((timer, idx) => {
@@ -1448,6 +1465,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       if (importedColumns.length > 0) setColumns(c => [...c, ...importedColumns])
       if (importedLabels.length > 0) setCustomLabels(c => [...c, ...importedLabels])
       if (importedNotes.length > 0) setNotes(c => [...c, ...importedNotes])
+      if (importedSingleNotes.length > 0) setSingleNotes(c => [...c, ...importedSingleNotes])
       if (importedTimers.length > 0) setTimers(c => [...c, ...importedTimers])
       if (importedCounters.length > 0) setCounters(c => [...c, ...importedCounters])
       if (importedStopwatches.length > 0) setStopwatches(c => [...c, ...importedStopwatches])
@@ -1464,7 +1482,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     } catch (err) {
       showToast(err.message || 'Failed to import cards.')
     }
-  }, [viewport, showToast, saveSnapshot, setColumns, setCustomLabels, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setCardPositions, setDrafts])
+  }, [viewport, showToast, saveSnapshot, setColumns, setCustomLabels, setNotes, setSingleNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setCardPositions, setDrafts])
 
 
   return {
@@ -1494,7 +1512,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
       updateHabitTitle, updateHabitIcon, updateHabitColor, toggleHabitMinimize, setHabitView, changeHabitMonth, toggleHabitDate, updateHabitFontSize, duplicateHabitCard, archiveHabitCard, deleteHabitCard,
       updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, updatePictureFitMode, updatePictureFontSize, duplicatePictureCard, archivePictureCard, deletePictureCard,
       updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, updateQuickLinksFontSize, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard,
-      updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, updateQuoteFontSize, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard, importCardsFromJson
+      updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, updateQuoteFontSize, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard, importCardsFromJson,
+      captureSnapshot
     }
   }
 }

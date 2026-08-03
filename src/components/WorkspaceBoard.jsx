@@ -154,6 +154,7 @@ export function WorkspaceBoard({
         habits={habits}
         onRestoreArchivedCard={actions.restoreArchivedCard}
         onImportCards={actions.importCardsFromJson}
+        onCaptureSnapshot={actions.captureSnapshot}
       />
 
       <div className={`focus-overlay ${isFocusMode ? 'is-active' : ''}`} aria-hidden="true" />
