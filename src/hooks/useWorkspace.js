@@ -416,11 +416,15 @@ export function useWorkspace(workspaceId, workspaceRef) {
   // trigger a page reload, we must NOT overwrite that data with stale React
   // state. The importWorkspace helper sets a sessionStorage sentinel for this.
   useEffect(() => {
+    // Clear the import flag on mount so future saves are allowed
+    clearImportReloadFlag()
+  }, [])
+
+  useEffect(() => {
     const handleSave = () => {
       if (isImportReload()) {
         // An import wrote fresh data and is reloading — skip the autosave so
         // we don't clobber the import.
-        clearImportReloadFlag()
         return
       }
       writeJsonStorage(workspaceStorageKey, captureSnapshot())
