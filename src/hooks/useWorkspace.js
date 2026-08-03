@@ -1095,15 +1095,32 @@ export function useWorkspace(workspaceId, workspaceRef) {
     event.preventDefault()
     const bounds = workspaceRef.current?.getBoundingClientRect()
     if (!bounds) return
-    const pointerX = event.clientX - bounds.left; const pointerY = event.clientY - bounds.top
-    const zoomFactor = Math.exp(-event.deltaY * ZOOM_SENSITIVITY)
 
-    setViewport((v) => {
-      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * zoomFactor))
-      if (nextScale === v.scale) return v
-      const contentX = (pointerX - v.x) / v.scale; const contentY = (pointerY - v.y) / v.scale
-      return { scale: nextScale, x: pointerX - contentX * nextScale, y: pointerY - contentY * nextScale }
-    })
+    // deltaMode 0 is usually pixels (Trackpad), 1 is lines (Mouse Wheel)
+    const isMouseWheel = event.deltaMode !== 0
+    const isPinch = event.ctrlKey || event.metaKey
+
+    if (isMouseWheel || isPinch) {
+      const pointerX = event.clientX - bounds.left; const pointerY = event.clientY - bounds.top
+      
+      // Use original sensitivity for mouse wheel, use 3x for trackpad pinch
+      const sensitivity = isPinch && !isMouseWheel ? (ZOOM_SENSITIVITY * 3.0) : ZOOM_SENSITIVITY
+      const zoomFactor = Math.exp(-event.deltaY * sensitivity)
+  
+      setViewport((v) => {
+        const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * zoomFactor))
+        if (nextScale === v.scale) return v
+        const contentX = (pointerX - v.x) / v.scale; const contentY = (pointerY - v.y) / v.scale
+        return { scale: nextScale, x: pointerX - contentX * nextScale, y: pointerY - contentY * nextScale }
+      })
+    } else {
+      // Trackpad two-finger scroll (Pan)
+      setViewport((v) => ({
+        ...v,
+        x: v.x - event.deltaX,
+        y: v.y - event.deltaY
+      }))
+    }
   }, [workspaceRef])
 
   const startPanning = useCallback((event) => {

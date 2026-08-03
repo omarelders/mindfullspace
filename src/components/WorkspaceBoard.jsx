@@ -158,12 +158,11 @@ export function WorkspaceBoard({
       />
 
       <div className={`focus-overlay ${isFocusMode ? 'is-active' : ''}`} aria-hidden="true" />
-
+      <WorkspaceWheelHandler workspaceRef={workspaceRef} onWheel={actions.handleWheel} />
       <div
         className={`workspace ${isPanning ? 'is-panning' : ''} ${draggingCard ? 'is-card-dragging' : ''}`}
         ref={workspaceRef}
         onContextMenu={(event) => event.preventDefault()}
-        onWheel={actions.handleWheel}
         onPointerDown={(e) => { actions.startPanning(e); actions.startLongPress(e) }}
         onPointerMove={(e) => { actions.movePanning(e); actions.moveLongPress(e) }}
         onPointerUp={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
@@ -514,4 +513,18 @@ function LongPressContextMenu({ menu, quickActions, onAction, onClose }) {
       </div>
     </>
   )
+}
+
+function WorkspaceWheelHandler({ workspaceRef, onWheel }) {
+  useEffect(() => {
+    const el = workspaceRef.current
+    if (!el) return
+    const handleWheel = (e) => {
+      onWheel(e)
+    }
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [workspaceRef, onWheel])
+  
+  return null
 }
