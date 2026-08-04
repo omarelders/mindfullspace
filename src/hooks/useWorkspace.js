@@ -45,6 +45,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const initialWorkspaceState = useMemo(() => getInitialWorkspaceState(workspaceId), [workspaceId])
   const [drafts, setDrafts] = useState(() => initialWorkspaceState.drafts)
   const [viewport, setViewport] = useState(() => initialWorkspaceState.viewport)
+  const [wheelMode, setWheelMode] = useState('zoom')
+  const lastMiddleClickRef = useRef(0)
   const [isPanning, setIsPanning] = useState(false)
   const [isRailOpen, setIsRailOpen] = useState(false)
   const [isFocusMode, setIsFocusMode] = useState(false)
@@ -1096,11 +1098,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
     const bounds = workspaceRef.current?.getBoundingClientRect()
     if (!bounds) return
 
-    // deltaMode 0 is usually pixels (Trackpad), 1 is lines (Mouse Wheel)
     const isMouseWheel = event.deltaMode !== 0
     const isPinch = event.ctrlKey || event.metaKey
 
-    if (isMouseWheel || isPinch) {
+    if (isPinch || wheelMode === 'zoom') {
       const pointerX = event.clientX - bounds.left; const pointerY = event.clientY - bounds.top
       
       // Use original sensitivity for mouse wheel, use 3x for trackpad pinch
@@ -1114,14 +1115,15 @@ export function useWorkspace(workspaceId, workspaceRef) {
         return { scale: nextScale, x: pointerX - contentX * nextScale, y: pointerY - contentY * nextScale }
       })
     } else {
-      // Trackpad two-finger scroll (Pan)
+      // Pan mode
+      const panSpeed = isMouseWheel ? 40 : 1; // Adjust speed for mouse wheel panning
       setViewport((v) => ({
         ...v,
-        x: v.x - event.deltaX,
-        y: v.y - event.deltaY
+        x: v.x - (event.deltaX * panSpeed),
+        y: v.y - (event.deltaY * panSpeed)
       }))
     }
-  }, [workspaceRef])
+  }, [workspaceRef, wheelMode])
 
   const startPanning = useCallback((event) => {
     if (window.innerWidth <= 1200) return
@@ -1134,6 +1136,22 @@ export function useWorkspace(workspaceId, workspaceRef) {
     panRef.current = { active: true, lastX: event.clientX, lastY: event.clientY }
     setIsPanning(true)
   }, [])
+
+  const handleMiddleClick = useCallback((event) => {
+    if (event.button !== 1) return // Middle button
+    event.preventDefault()
+    const now = Date.now()
+    if (now - lastMiddleClickRef.current < 400) {
+      setWheelMode(mode => {
+        const nextMode = mode === 'zoom' ? 'pan' : 'zoom'
+        showToast(`Scroll mode switched to ${nextMode === 'zoom' ? 'Zoom' : 'Pan'}`)
+        return nextMode
+      })
+      lastMiddleClickRef.current = 0
+    } else {
+      lastMiddleClickRef.current = now
+    }
+  }, [showToast])
 
   const movePanning = useCallback((event) => {
     if (!panRef.current.active) return
@@ -1519,7 +1537,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     actions: {
       setDraft, addItem, updateItemText, updateItemDetails, deleteItem,
       handleDragStartItem, handleDragEndItem, handleDragOverItem, handleDropOnItem, handleDropOnList,
-      handleCardPointerDown, handleWheel, startPanning, movePanning, endPanning,
+      handleCardPointerDown, handleWheel, startPanning, movePanning, endPanning, handleMiddleClick,
       handleQuickAction, focusLabelCard, restoreArchivedCard, moveCardToTarget,
       handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,
       updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, updateTodoCardFontSize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,

@@ -163,7 +163,7 @@ export function WorkspaceBoard({
         className={`workspace ${isPanning ? 'is-panning' : ''} ${draggingCard ? 'is-card-dragging' : ''}`}
         ref={workspaceRef}
         onContextMenu={(event) => event.preventDefault()}
-        onPointerDown={(e) => { actions.startPanning(e); actions.startLongPress(e) }}
+        onPointerDown={(e) => { actions.startPanning(e); actions.startLongPress(e); actions.handleMiddleClick(e) }}
         onPointerMove={(e) => { actions.movePanning(e); actions.moveLongPress(e) }}
         onPointerUp={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
         onPointerLeave={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
