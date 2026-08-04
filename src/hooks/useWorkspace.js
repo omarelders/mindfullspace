@@ -47,6 +47,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const [viewport, setViewport] = useState(() => initialWorkspaceState.viewport)
   const [wheelMode, setWheelMode] = useState('zoom')
   const lastMiddleClickRef = useRef(0)
+  const lastShiftPressRef = useRef(0)
   const [isPanning, setIsPanning] = useState(false)
   const [isRailOpen, setIsRailOpen] = useState(false)
   const [isFocusMode, setIsFocusMode] = useState(false)
@@ -637,6 +638,32 @@ export function useWorkspace(workspaceId, workspaceRef) {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleUndo, handleRedo])
+
+  // Double-Shift toggle wheel mode
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignore if typing in an input
+      const tag = document.activeElement?.tagName?.toLowerCase()
+      const isEditable = tag === 'input' || tag === 'textarea' || document.activeElement?.isContentEditable
+      if (isEditable) return
+
+      if (e.key === 'Shift') {
+        const now = Date.now()
+        if (now - lastShiftPressRef.current < 400) {
+          setWheelMode(mode => {
+            const nextMode = mode === 'zoom' ? 'pan' : 'zoom'
+            showToast(`Scroll mode switched to ${nextMode === 'zoom' ? 'Zoom' : 'Pan'}`)
+            return nextMode
+          })
+          lastShiftPressRef.current = 0
+        } else {
+          lastShiftPressRef.current = now
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showToast])
 
   const handlePasteImage = useCallback(async (blob) => {
     if (blob.size > MAX_IMAGE_SIZE) {
