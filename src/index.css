@@ -33,47 +33,52 @@ input {
 
 .app-shell {
   --top-bar-height: 52px;
-  --workspace-bg: #18181b;
-  --workspace-bg-alt: #17171a;
-  --navbar-bg-start: #18181b;
-  --navbar-bg-mid: #17171a;
-  --navbar-bg-end: #18181b;
-  --surface-panel: #18181b;
-  --surface-panel-muted: #3f3f46;
-  --surface-border: #3f3f46;
-  --ui-text: #ffffff;
-  --ui-text-strong: #ffffff;
-  --ui-icon: #ffffff;
-  --input-text: #ffffff;
-  --input-placeholder: #ead09b;
-  --card-text: #ffffff;
-  --card-ui-soft: rgba(255, 255, 255, 0.24);
-  --card-ui-mid: rgba(255, 255, 255, 0.38);
+  --workspace-bg: #14111f;
+  --workspace-bg-alt: #0d0b14;
+  --navbar-bg-start: #19152a;
+  --navbar-bg-mid: #110e1c;
+  --navbar-bg-end: #19152a;
+  --surface-panel: #1c1831;
+  --surface-panel-muted: #2b2556;
+  --surface-border: #3a305f;
+  --ui-text: #e7e4f1;
+  --ui-text-strong: #f9f7fc;
+  --ui-icon: #c7c0da;
+  --input-text: #f3f1f9;
+  --input-placeholder: #c9b580;
+  --card-text: #f6f4fa;
+  --card-ui-soft: rgba(255, 255, 255, 0.16);
+  --card-ui-mid: rgba(255, 255, 255, 0.32);
   --card-ui-strong: #ffffff;
-  --tone-charcoal: #27272a;
-  --tone-gold: #ca8a04;
-  --tone-violet: #9333ea;
-  --tone-red: #dc2626;
-  --tone-blue: #0284c7;
-  --label-routine: #2563eb;
-  --label-programming: #ea580c;
-  --label-english: #65a30d;
+  --tone-charcoal: #262238;
+  --tone-gold: #b98a2e;
+  --tone-violet: #7b68c9;
+  --tone-red: #b14848;
+  --tone-blue: #3e7ca6;
+  --label-routine: #4d7ef9;
+  --label-programming: #ef6f22;
+  --label-english: #7bb83c;
   --label-text: #ffffff;
-  --rail-button-bg: #f4f4f5;
-  --rail-button-icon: #18181b;
-  --switch-track: #9333ea;
-  --switch-knob: #fde047;
-  --palette-color-1: #dc2626;
-  --palette-color-2: #db2777;
-  --palette-color-3: #9333ea;
-  --palette-color-4: #4f46e5;
-  --palette-color-5: #2563eb;
-  --palette-color-6: #0284c7;
-  --palette-color-7: #16a34a;
-  --palette-color-8: #65a30d;
-  --palette-color-9: #ca8a04;
-  --palette-color-10: #ea580c;
-  --palette-neutral: #3f3f46;
+  --rail-button-bg: #3b3263;
+  --rail-button-icon: #f2f0f8;
+  --switch-track: #7b68c9;
+  --switch-knob: #f0c24d;
+  --card-counter-bg: #453d64;
+  --card-stopwatch-bg: #2f8e68;
+  --card-calendar-bg: #5c68c9;
+  --card-habit-bg: #b5713c;
+  --ink-strong: #1c1831;
+  --palette-color-1: #e53942;
+  --palette-color-2: #e95a9c;
+  --palette-color-3: #8b5cf6;
+  --palette-color-4: #6772ea;
+  --palette-color-5: #4d8ef7;
+  --palette-color-6: #1fa7df;
+  --palette-color-7: #2ecc71;
+  --palette-color-8: #8ab129;
+  --palette-color-9: #e3a82e;
+  --palette-color-10: #f07a28;
+  --palette-neutral: #3b3263;
   width: 100%;
   height: 100%;
   display: flex;
@@ -896,8 +901,8 @@ html:-webkit-full-screen .app-shell {
   top: 46px;
   left: 0;
   width: 280px;
-  background: #181a20;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--workspace-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 12px;
   display: grid;
@@ -2085,7 +2090,7 @@ html:-webkit-full-screen .app-shell {
   top: 260px;
   width: 160px;
   height: 188px;
-  background: #c9c9ce;
+  background: var(--card-counter-bg);
   padding: 2px 8px 10px;
   border: none;
 }
@@ -2103,11 +2108,11 @@ html:-webkit-full-screen .app-shell {
 
 .counter-header .card-title {
   margin-right: auto;
-  color: #202027;
+  color: var(--card-text);
 }
 
 .card-counter .card-menu {
-  color: #202027;
+  color: var(--card-text);
 }
 
 .counter-panel {
@@ -2134,7 +2139,7 @@ html:-webkit-full-screen .app-shell {
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: #121216;
+  color: var(--card-text);
   will-change: transform, opacity;
 }
 
@@ -2175,8 +2180,8 @@ html:-webkit-full-screen .app-shell {
   height: 28px;
   border: none;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.1);
-  color: #25252b;
+  background: var(--card-ui-soft);
+  color: var(--card-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -2192,7 +2197,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .counter-chevron-btn:hover {
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--card-ui-mid);
   transform: scale(1.12);
 }
 
@@ -2212,7 +2217,7 @@ html:-webkit-full-screen .app-shell {
 
 @keyframes counter-btn-pop {
   0%   { transform: scale(1); }
-  40%  { transform: scale(1.35); background: rgba(0, 0, 0, 0.22); }
+  40%  { transform: scale(1.35); background: var(--card-ui-mid); }
   100% { transform: scale(1); }
 }
 
@@ -2221,7 +2226,7 @@ html:-webkit-full-screen .app-shell {
   top: 260px;
   width: 286px;
   height: 286px;
-  background: #86ECA0;
+  background: var(--card-stopwatch-bg);
   border-radius: 50%;
   padding: 12px;
   border: none;
@@ -2249,7 +2254,7 @@ html:-webkit-full-screen .app-shell {
 
 .stopwatch-drag-handle .card-menu-wrap {
   margin-left: auto;
-  color: #000000;
+  color: var(--card-ui-strong);
 }
 
 .stopwatch-panel {
@@ -2337,7 +2342,7 @@ html:-webkit-full-screen .app-shell {
   top: 120px;
   width: 360px;
   height: 360px;
-  background: #98a4e9;
+  background: var(--card-calendar-bg);
   padding: 0 0 8px;
   border: 1px solid var(--card-ui-soft);
 }
@@ -2436,7 +2441,7 @@ html:-webkit-full-screen .app-shell {
   border: 0;
   border-radius: 999px;
   background: rgba(58, 72, 145, 0.28);
-  color: #0e122a;
+  color: var(--card-text);
   font-size: 16px;
   font-weight: 800;
   line-height: 1;
@@ -2454,8 +2459,8 @@ html:-webkit-full-screen .app-shell {
 
 .calendar-day.is-today,
 .calendar-day.has-entry {
-  background: #0e0f14;
-  color: #ffffff;
+  background: var(--card-ui-strong);
+  color: var(--ink-strong);
 }
 
 .calendar-entry-view {
@@ -2593,8 +2598,8 @@ html:-webkit-full-screen .app-shell {
   top: 120px;
   width: 250px;
   height: 332px;
-  background: #efb26f;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  background: var(--card-habit-bg);
+  border: 1px solid var(--card-ui-soft);
   padding: 0 8px 10px;
 }
 
@@ -2633,7 +2638,7 @@ html:-webkit-full-screen .app-shell {
   height: 20px;
   border: 0;
   background: transparent;
-  color: #111111;
+  color: var(--card-ui-strong);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -2665,7 +2670,7 @@ html:-webkit-full-screen .app-shell {
   height: 28px;
   border: 0;
   background: transparent;
-  color: #111111;
+  color: var(--card-ui-strong);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2693,12 +2698,12 @@ html:-webkit-full-screen .app-shell {
 .habit-icon-circle {
   width: 98px;
   height: 98px;
-  border: 2.5px solid #111111;
+  border: 2.5px solid var(--card-ui-strong);
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #111111;
+  color: var(--card-ui-strong);
   flex-shrink: 0;
 }
 
@@ -2733,7 +2738,7 @@ html:-webkit-full-screen .app-shell {
   font-size: 42px;
   font-weight: 700;
   line-height: 0.94;
-  color: rgba(120, 87, 47, 0.44);
+  color: var(--card-ui-mid);
   text-align: center;
   max-width: 170px;
   white-space: nowrap;
@@ -2742,7 +2747,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .habit-name.is-custom {
-  color: #111111;
+  color: var(--card-ui-strong);
 }
 
 .habit-name-btn {
@@ -2756,12 +2761,12 @@ html:-webkit-full-screen .app-shell {
   margin-top: 0;
   width: 170px;
   border: 0;
-  border-bottom: 2px solid rgba(17, 17, 17, 0.4);
+  border-bottom: 2px solid var(--card-ui-mid);
   background: transparent;
   padding: 0;
   outline: none;
   text-align: center;
-  color: #111111;
+  color: var(--card-ui-strong);
   font-size: 42px;
   font-weight: 700;
   line-height: 0.94;
@@ -2779,9 +2784,9 @@ html:-webkit-full-screen .app-shell {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  border: 2.5px solid #111111;
+  border: 2.5px solid var(--card-ui-strong);
   background: transparent;
-  color: #111111;
+  color: var(--card-ui-strong);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2799,16 +2804,16 @@ html:-webkit-full-screen .app-shell {
 }
 
 .habit-check-btn.is-done {
-  background: #0e0f14;
-  border-color: #0e0f14;
-  color: #ffffff;
+  background: var(--card-ui-strong);
+  border-color: var(--card-ui-strong);
+  color: var(--ink-strong);
 }
 
 .habit-done-text {
   margin-top: 10px;
   font-size: 20px;
   font-weight: 700;
-  color: #111111;
+  color: var(--card-ui-strong);
 }
 
 .habit-missing-text {
@@ -2926,13 +2931,13 @@ html:-webkit-full-screen .app-shell {
 }
 
 .habit-day.is-done {
-  background: #0e0f14;
-  color: #ffffff;
+  background: var(--card-ui-strong);
+  color: var(--ink-strong);
 }
 
 .habit-day.is-missed {
   background: rgba(220, 38, 38, 0.22);
-  color: #7a1010;
+  color: var(--tone-red);
 }
 
 .habit-day.is-future {
@@ -4518,11 +4523,11 @@ html:-webkit-full-screen .app-shell {
   grid-template-columns: 1fr 1fr;
   gap: 4px 8px;
   width: 280px;
-  background: #181a20;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--workspace-bg);
+  border: 1px solid var(--panel-border);
   border-radius: 10px;
   padding: 12px;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55), inset 0 1px 0 var(--card-ui-soft);
   transform: translate(-50%, -50%);
   animation: lp-menu-in 0.15s ease-out;
 }

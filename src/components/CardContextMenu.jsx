@@ -152,7 +152,7 @@ export function CardContextMenu({
                   <button
                     type="button"
                     className="card-color-option reset-color"
-                    style={{ backgroundColor: '#e0e0e0' }}
+                    style={{ backgroundColor: 'var(--palette-neutral)' }}
                     aria-label="reset color"
                     onClick={() => handleAction(() => onColorChange(null))}
                   />

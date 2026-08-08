@@ -98,7 +98,7 @@ export const StopwatchCard = memo(function StopwatchCard({
         left: position?.x,
         top: position?.y,
         margin: position ? 0 : undefined,
-        backgroundColor: stopwatch.color || '#86ECA0',
+        backgroundColor: stopwatch.color || 'var(--card-stopwatch-bg)',
       }}
     >
       <div className="stopwatch-drag-handle" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
