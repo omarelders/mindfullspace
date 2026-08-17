@@ -43,13 +43,27 @@ describe('TopBar', () => {
     expect(screen.getByText('Import Cards')).toBeInTheDocument()
   })
 
-  it('renders Import Cards button in quick create menu', () => {
-    render(<TopBar {...defaultProps} />)
+  it('renders color palette options and triggers onSelectPalette when clicked', () => {
+    const onSelectPalette = vi.fn()
+    render(<TopBar {...defaultProps} palette="sage" onSelectPalette={onSelectPalette} />)
 
-    const quickCreateButton = screen.getByRole('button', { name: /quick create/i })
-    fireEvent.click(quickCreateButton)
+    // Open account menu
+    const menuButton = screen.getByRole('button', { name: /menu/i })
+    fireEvent.click(menuButton)
 
-    expect(screen.getByText('Import Cards from JSON')).toBeInTheDocument()
+    // Click on Settings tab
+    const settingsTab = screen.getByRole('button', { name: /settings/i })
+    fireEvent.click(settingsTab)
+
+    expect(screen.getByText('Color Palette')).toBeInTheDocument()
+    expect(screen.getByText('Sage & Stone')).toBeInTheDocument()
+    expect(screen.getByText('Cosmic Classic')).toBeInTheDocument()
+
+    // Click Cosmic Classic palette option
+    const classicBtn = screen.getByRole('button', { name: /Select Cosmic Classic palette/i })
+    fireEvent.click(classicBtn)
+
+    expect(onSelectPalette).toHaveBeenCalledWith('classic')
   })
 })
 

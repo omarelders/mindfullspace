@@ -26,15 +26,19 @@ import {
   CalendarDays,
   Sparkles,
   Image,
+  Palette,
 } from 'lucide-react'
 import { buildDateKey } from '../utils/dateUtils'
 import { ConfirmModal } from './ConfirmModal'
 import { ActionRailIcon } from './ActionRail'
 import { exportWorkspace, importWorkspace } from '../utils/backup'
+import { PALETTE_OPTIONS } from '../utils/constants'
 
 export function TopBar({
   mode,
   onToggleMode,
+  palette = 'sage',
+  onSelectPalette,
   isFocusMode,
   onToggleFocusMode,
   workspace,
@@ -416,6 +420,49 @@ export function TopBar({
                       <button type="button" className="account-setting-btn" onClick={onToggleMode}>
                         {mode === 'night' ? 'Switch to day' : 'Switch to night'}
                       </button>
+                    </div>
+                    <div className="account-setting-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Palette aria-hidden="true" style={{ width: 14, height: 14, color: 'var(--ui-icon)' }} />
+                          <span>Color Palette</span>
+                        </span>
+                      </div>
+                      <div className="palette-picker-grid">
+                        {PALETTE_OPTIONS.map((p) => {
+                          const isSelected = (palette || 'sage') === p.id
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className={`palette-option-btn ${isSelected ? 'is-active' : ''}`}
+                              onClick={() => onSelectPalette?.(p.id)}
+                              aria-label={`Select ${p.name} palette`}
+                              aria-pressed={isSelected}
+                            >
+                              <div className="palette-preview-dots">
+                                {p.swatches.map((color, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="palette-preview-dot"
+                                    style={{ backgroundColor: color }}
+                                    aria-hidden="true"
+                                  />
+                                ))}
+                              </div>
+                              <div className="palette-option-text">
+                                <span className="palette-name">{p.name}</span>
+                                <span className="palette-desc">{p.subtitle}</span>
+                              </div>
+                              {isSelected && (
+                                <span className="palette-active-badge">
+                                  <Check style={{ width: 12, height: 12 }} aria-hidden="true" />
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                     <div className="account-setting-row">
                       <span>Export Workspace</span>

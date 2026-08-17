@@ -34,12 +34,12 @@ export function WorkspaceBoard({
   
   const {
     state: {
-      columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, theme,
+      columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, themePalette, theme,
       dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
       archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
-    setters: { setThemeMode, setIsFocusMode, setIsRailOpen },
+    setters: { setThemeMode, setThemePalette, setIsFocusMode, setIsRailOpen },
     actions
   } = useWorkspace(workspace.id, workspaceRef)
 
@@ -87,7 +87,7 @@ export function WorkspaceBoard({
 
   return (
     <div
-      className={`app-shell theme-${themeMode} ${isFocusMode ? 'is-focus-mode' : ''}`}
+      className={`app-shell theme-${themeMode} palette-${themePalette} ${isFocusMode ? 'is-focus-mode' : ''}`}
       style={{
         '--workspace-bg': theme.workspaceBg,
         '--workspace-bg-alt': theme.workspaceBgAlt,
@@ -140,6 +140,8 @@ export function WorkspaceBoard({
       <TopBar 
         mode={themeMode} 
         onToggleMode={handleToggleThemeMode} 
+        palette={themePalette}
+        onSelectPalette={setThemePalette}
         isFocusMode={isFocusMode}
         onToggleFocusMode={handleToggleFocusMode}
         workspace={workspace}

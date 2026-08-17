@@ -55,18 +55,18 @@ input {
   --tone-violet: #7b68c9;
   --tone-red: #b14848;
   --tone-blue: #3e7ca6;
-  --label-routine: #4d7ef9;
-  --label-programming: #ef6f22;
-  --label-english: #7bb83c;
+  --label-routine: #416bd3;
+  --label-programming: #b35319;
+  --label-english: #4f7727;
   --label-text: #ffffff;
   --rail-button-bg: #3b3263;
   --rail-button-icon: #f2f0f8;
   --switch-track: #7b68c9;
   --switch-knob: #f0c24d;
   --card-counter-bg: #453d64;
-  --card-stopwatch-bg: #2f8e68;
-  --card-calendar-bg: #5c68c9;
-  --card-habit-bg: #b5713c;
+  --card-stopwatch-bg: #277858;
+  --card-calendar-bg: #4e58aa;
+  --card-habit-bg: #905a30;
   --ink-strong: #1c1831;
   --palette-color-1: #e53942;
   --palette-color-2: #e95a9c;
@@ -79,6 +79,19 @@ input {
   --palette-color-9: #e3a82e;
   --palette-color-10: #f07a28;
   --palette-neutral: #3b3263;
+  --menu-bg: var(--surface-panel-muted);
+  --menu-bg-alt: var(--surface-panel);
+  --menu-border: var(--tone-violet);
+  --menu-text: var(--ui-text-strong);
+  --menu-text-muted: var(--ui-icon);
+  --action-primary-bg: var(--tone-gold);
+  --action-primary-text: var(--surface-panel);
+  --action-danger-bg: var(--tone-red);
+  --action-danger-text: #ffffff;
+  --modal-bg: var(--surface-panel);
+  --modal-border: var(--surface-border);
+  --modal-btn-cancel-bg: var(--surface-panel-muted);
+  --modal-btn-cancel-hover: var(--rail-button-bg);
   width: 100%;
   height: 100%;
   display: flex;
@@ -201,12 +214,12 @@ html:-webkit-full-screen .app-shell {
   top: 46px;
   left: 0;
   width: 302px;
-  border: 1px solid #b4b4ba;
+  border: 1px solid var(--menu-border);
   border-radius: 8px;
-  background: #d7d7db;
+  background: var(--menu-bg);
   padding: 6px;
   z-index: 560;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
 }
 
 .workspace-list {
@@ -221,14 +234,14 @@ html:-webkit-full-screen .app-shell {
   grid-template-columns: 14px 1fr auto;
   align-items: center;
   gap: 8px;
-  border: 1px solid #c5c5ca;
+  border: 1px solid var(--surface-border);
   border-radius: 4px;
-  background: #d0d0d4;
+  background: var(--menu-bg-alt);
   padding: 6px 7px;
 }
 
 .workspace-item.is-active {
-  border-color: #b7b7bd;
+  border-color: var(--menu-border);
 }
 
 .workspace-drag-handle,
@@ -238,7 +251,7 @@ html:-webkit-full-screen .app-shell {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #47484f;
+  color: var(--menu-text-muted);
 }
 
 .workspace-drag-handle svg {
@@ -251,9 +264,9 @@ html:-webkit-full-screen .app-shell {
   min-width: 0;
   width: 100%;
   border: 0;
-  border-bottom: 2px solid #1f1f24;
+  border-bottom: 2px solid var(--menu-border);
   background: transparent;
-  color: #16171d;
+  color: var(--menu-text);
   height: 30px;
   padding: 0 4px 2px;
   font-size: 28px;
@@ -263,7 +276,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .workspace-name-input:focus {
-  border-bottom-color: #0a0a0d;
+  border-bottom-color: var(--tone-gold);
 }
 
 .workspace-actions {
@@ -275,10 +288,10 @@ html:-webkit-full-screen .app-shell {
 .workspace-action-btn {
   width: 27px;
   height: 27px;
-  border: 1px solid #a2a2aa;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
-  background: #d4d4d9;
-  color: #1a1b22;
+  background: var(--menu-bg-alt);
+  color: var(--menu-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -287,7 +300,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .workspace-action-btn:hover {
-  background: #e0e0e5;
+  background: var(--menu-bg);
 }
 
 .workspace-action-btn svg {
@@ -297,7 +310,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .workspace-delete-btn {
-  color: #1f1f24;
+  color: var(--tone-red);
 }
 
 .workspace-menu-footer {
@@ -310,7 +323,7 @@ html:-webkit-full-screen .app-shell {
   border: 1px solid transparent;
   border-radius: 5px;
   background: transparent;
-  color: #131319;
+  color: var(--menu-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -319,7 +332,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .workspace-add-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--card-ui-soft);
 }
 
 .workspace-add-btn svg {
@@ -457,8 +470,8 @@ html:-webkit-full-screen .app-shell {
   width: 160px;
   height: 160px;
   border-radius: 50%;
-  background: radial-gradient(circle at 48% 20%, #eac8f0 0, #d9b3e4 55%, #b784d0 100%);
-  color: #4a0d8a;
+  background: radial-gradient(circle at 48% 20%, color-mix(in srgb, var(--tone-violet) 35%, white) 0, color-mix(in srgb, var(--tone-violet) 60%, white) 55%, var(--tone-violet) 100%);
+  color: var(--surface-panel);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -536,7 +549,7 @@ html:-webkit-full-screen .app-shell {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #7a7a7a 0, #4a4a4a 55%, #262626 100%);
+  background: radial-gradient(circle at 35% 35%, var(--rail-button-bg) 0, var(--surface-panel-muted) 55%, var(--surface-panel) 100%);
   flex-shrink: 0;
 }
 
@@ -594,38 +607,38 @@ html:-webkit-full-screen .app-shell {
 }
 
 .streak-node.done:nth-child(1) {
-  border-color: #ec4899;
-  background: #f9a8d4;
+  border-color: var(--palette-color-2);
+  background: color-mix(in srgb, var(--palette-color-2) 55%, var(--surface-panel));
 }
 
 .streak-node.done:nth-child(2) {
-  border-color: #8b5cf6;
-  background: #c4b5fd;
+  border-color: var(--palette-color-3);
+  background: color-mix(in srgb, var(--palette-color-3) 55%, var(--surface-panel));
 }
 
 .streak-node.done:nth-child(3) {
-  border-color: #3b82f6;
-  background: #93c5fd;
+  border-color: var(--palette-color-5);
+  background: color-mix(in srgb, var(--palette-color-5) 55%, var(--surface-panel));
 }
 
 .streak-node.done {
-  border-color: #7c3aed;
-  background: #c4b5fd;
+  border-color: var(--palette-color-4);
+  background: color-mix(in srgb, var(--palette-color-4) 55%, var(--surface-panel));
 }
 
 .streak-node.today-done {
-  border-color: #22c55e;
-  background: #86efac;
+  border-color: var(--palette-color-7);
+  background: color-mix(in srgb, var(--palette-color-7) 55%, var(--surface-panel));
 }
 
 .streak-node.today {
-  border-color: #22c55e;
-  background: rgba(34, 197, 94, 0.2);
+  border-color: var(--palette-color-7);
+  background: color-mix(in srgb, var(--palette-color-7) 20%, transparent);
 }
 
 .streak-node.missed {
-  border-color: #ef4444;
-  background: rgba(239, 68, 68, 0.2);
+  border-color: var(--tone-red);
+  background: color-mix(in srgb, var(--tone-red) 20%, transparent);
 }
 
 .streak-node.future {
@@ -636,10 +649,10 @@ html:-webkit-full-screen .app-shell {
 .account-subscribe-btn {
   align-self: center;
   min-height: 38px;
-  border: 1px solid #3b82f6;
+  border: 1px solid var(--action-primary-bg);
   border-radius: 6px;
-  background: #3b82f6;
-  color: #ffffff;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-text);
   font-size: 15px;
   font-weight: 700;
   padding: 0 14px;
@@ -647,7 +660,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .account-subscribe-btn:hover {
-  filter: brightness(1.05);
+  filter: brightness(1.08);
 }
 
 .account-archive-list {
@@ -748,6 +761,89 @@ html:-webkit-full-screen .app-shell {
   font-weight: 600;
   padding: 0 10px;
   cursor: pointer;
+}
+
+.palette-picker-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.palette-option-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-panel);
+  color: var(--ui-text);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.18s ease;
+  position: relative;
+}
+
+.palette-option-btn:hover {
+  background: var(--surface-panel-muted);
+  border-color: var(--ui-icon);
+}
+
+.palette-option-btn.is-active {
+  border-color: var(--label-english);
+  background: var(--surface-panel-muted);
+  box-shadow: 0 0 0 1px var(--label-english);
+}
+
+.palette-preview-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.palette-preview-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.palette-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.palette-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ui-text-strong);
+}
+
+.palette-desc {
+  font-size: 11px;
+  color: var(--ui-icon);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-active-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--label-english);
+  color: var(--label-text);
+  flex-shrink: 0;
 }
 
 .search-shell {
@@ -869,15 +965,15 @@ html:-webkit-full-screen .app-shell {
   margin-right: -5px;
   border-width: 6px 5px 0 5px;
   border-style: solid;
-  border-color: #000000 transparent transparent transparent;
+  border-color: var(--rail-button-bg) transparent transparent transparent;
   transform: translateY(-2px);
 }
 
 .focus-toggle::after {
   content: attr(aria-label);
   bottom: -42px;
-  background: #000000;
-  color: #ffffff;
+  background: var(--rail-button-bg);
+  color: var(--rail-button-icon);
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 13px;
@@ -902,7 +998,7 @@ html:-webkit-full-screen .app-shell {
   left: 0;
   width: 280px;
   background: var(--workspace-bg);
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--menu-border);
   border-radius: 8px;
   padding: 12px;
   display: grid;
@@ -918,7 +1014,7 @@ html:-webkit-full-screen .app-shell {
   gap: 10px;
   background: transparent;
   border: none;
-  color: #d9dbe8;
+  color: var(--ui-text);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -929,12 +1025,12 @@ html:-webkit-full-screen .app-shell {
 
 .quick-menu-item:hover {
   background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
+  color: var(--ui-text-strong);
 }
 
 .quick-menu-item.active {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
+  color: var(--ui-text-strong);
 }
 
 .quick-menu-item svg {
@@ -949,7 +1045,7 @@ html:-webkit-full-screen .app-shell {
   height: 34px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  background: #3f3f46;
+  background: var(--surface-panel-muted);
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
@@ -961,14 +1057,14 @@ html:-webkit-full-screen .app-shell {
 
 .theme-switch.is-day {
   justify-content: flex-start;
-  background: #525a67;
+  background: var(--switch-track);
 }
 
 .theme-moon {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #f6e547;
+  background: var(--switch-knob);
   position: relative;
   transition: transform 0.18s ease;
 }
@@ -981,7 +1077,7 @@ html:-webkit-full-screen .app-shell {
   top: 2px;
   left: 8px;
   border-radius: 50%;
-  background: #3f3f46;
+  background: var(--surface-panel-muted);
 }
 
 .theme-switch.is-day .theme-moon::before {
@@ -1145,6 +1241,7 @@ html:-webkit-full-screen .app-shell {
 .quote-card {
   display: flex;
   flex-direction: column;
+  background: var(--card-counter-bg);
 }
 
 .quote-content-wrapper {
@@ -1344,13 +1441,13 @@ html:-webkit-full-screen .app-shell {
   left: calc(100% + 12px);
   top: -4px;
   width: 202px;
-  background: #d7d7da;
-  color: #141418;
-  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: var(--menu-bg);
+  color: var(--menu-text);
+  border: 1px solid var(--menu-border);
   border-radius: 6px;
   padding: 8px;
   z-index: 140;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
 }
 
 .card-menu-title-row {
@@ -1372,10 +1469,10 @@ html:-webkit-full-screen .app-shell {
 .card-menu-title-row input {
   width: 100%;
   height: 30px;
-  border: 1px solid rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--surface-border);
   border-radius: 3px;
-  background: #ececef;
-  color: #1c1c22;
+  background: var(--menu-bg-alt);
+  color: var(--menu-text);
   font-size: 13px;
   font-weight: 500;
   padding: 0 10px;
@@ -1383,7 +1480,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .card-menu-title-row input::placeholder {
-  color: #73737e;
+  color: var(--menu-text-muted);
 }
 
 .card-menu-item {
@@ -1403,7 +1500,7 @@ html:-webkit-full-screen .app-shell {
 
 .card-menu-item:hover,
 .card-menu-item.is-active {
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--card-ui-soft);
 }
 
 .card-menu-item-label {
@@ -1428,7 +1525,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .card-menu-item-danger {
-  color: #7f1d1d;
+  color: var(--tone-red);
 }
 
 .submenu-trigger-wrap {
@@ -1446,11 +1543,11 @@ html:-webkit-full-screen .app-shell {
 
 .card-submenu-content {
   min-width: 146px;
-  background: #d7d7da;
-  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: var(--menu-bg);
+  border: 1px solid var(--menu-border);
   border-radius: 6px;
   padding: 8px;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
 }
 
 .card-color-submenu .card-submenu-content {
@@ -1483,8 +1580,8 @@ html:-webkit-full-screen .app-shell {
   width: 100%;
   border: 0;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.02);
-  color: #18181c;
+  background: var(--menu-bg-alt);
+  color: var(--menu-text);
   text-align: left;
   padding: 7px 8px;
   font-size: 12px;
@@ -1493,7 +1590,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .card-move-option:hover {
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--card-ui-soft);
 }
 
 .todo-list {
@@ -1966,6 +2063,7 @@ html:-webkit-full-screen .app-shell {
   align-items: center;
   padding: 6px 8px 6px 14px;
   border-radius: 9999px;
+  background: var(--label-routine);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.8px;
@@ -2277,14 +2375,14 @@ html:-webkit-full-screen .app-shell {
   line-height: 1;
   letter-spacing: 0px;
   font-variant-numeric: tabular-nums;
-  color: #ffffff;
+  color: var(--card-text);
 }
 
 .stopwatch-colon {
   font-size: 22px;
   margin: 0 8px;
   transform: translateY(-3px);
-  color: #ffffff;
+  color: var(--card-text);
 }
 
 .stopwatch-controls {
@@ -2309,7 +2407,7 @@ html:-webkit-full-screen .app-shell {
   height: 44px;
   border: 0;
   background: transparent;
-  color: #ffffff;
+  color: var(--card-text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -3046,7 +3144,7 @@ html:-webkit-full-screen .app-shell {
 /* Hover + tooltip caret */
 .rail-button:hover {
   transform: scale(1.1) translateY(-1px);
-  background: #1c1d24;
+  background: var(--surface-panel);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38);
 }
 
@@ -3102,7 +3200,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .rail-button[aria-label="Stopwatch"]::after {
-  color: #ffffff;
+  color: var(--rail-button-icon);
 }
 
 /* ── Per-item chromatic glow accents ── */
@@ -3642,7 +3740,7 @@ html:-webkit-full-screen .app-shell {
   top: 10px;
   left: 10px;
   background: rgba(0, 0, 0, 0.65);
-  color: white;
+  color: var(--ui-text-strong);
   border: none;
   padding: 6px 12px;
   border-radius: 6px;
@@ -3714,7 +3812,7 @@ html:-webkit-full-screen .app-shell {
   border: none;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  color: var(--ui-text-strong);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -3728,7 +3826,7 @@ html:-webkit-full-screen .app-shell {
 .picture-error {
   margin-top: 6px;
   font-size: 11px;
-  color: #ef4444;
+  color: var(--tone-red);
   text-align: center;
 }
 
@@ -3743,7 +3841,7 @@ html:-webkit-full-screen .app-shell {
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  color: #fff;
+  color: var(--ui-text-strong);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -3894,8 +3992,8 @@ html:-webkit-full-screen .app-shell {
 }
 
 .ql-action-delete:hover {
-  color: #ef4444;
-  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--tone-red);
+  background-color: color-mix(in srgb, var(--tone-red) 15%, transparent);
 }
 
 .quick-links-add-btn {
@@ -3947,7 +4045,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .quick-links-input:focus {
-  border-color: #3b82f6;
+  border-color: var(--tone-violet);
 }
 
 .quick-links-form-actions {
@@ -3980,8 +4078,8 @@ html:-webkit-full-screen .app-shell {
 }
 
 .ql-btn-primary {
-  background: #3b82f6;
-  color: #fff;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-text);
 }
 
 .ql-btn-secondary {
@@ -4019,7 +4117,7 @@ html:-webkit-full-screen .app-shell {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: rgba(39, 39, 42, 0.85);
+  background: color-mix(in srgb, var(--surface-panel) 85%, transparent);
   backdrop-filter: blur(12px) saturate(180%);
   -webkit-backdrop-filter: blur(12px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -4042,13 +4140,13 @@ html:-webkit-full-screen .app-shell {
   height: 40px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  color: #fff;
+  color: var(--ui-text-strong);
 }
 
 .install-prompt-text h3 {
   font-size: 14px;
   font-weight: 600;
-  color: #fff;
+  color: var(--ui-text-strong);
   margin: 0;
 }
 
@@ -4065,8 +4163,8 @@ html:-webkit-full-screen .app-shell {
 }
 
 .install-button {
-  background: #fff;
-  color: #000;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-text);
   border: none;
   border-radius: 6px;
   padding: 6px 14px;
@@ -4096,7 +4194,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .dismiss-button:hover {
-  color: #fff;
+  color: var(--ui-text-strong);
   background-color: rgba(255, 255, 255, 0.05);
 }
 
@@ -4174,7 +4272,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .quick-links-item.is-drag-over {
-  border-top: 2px solid #3b82f6;
+  border-top: 2px solid var(--tone-violet);
 }
 
 .quick-links-item.is-dragging {
@@ -4206,7 +4304,7 @@ html:-webkit-full-screen .app-shell {
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  background: white;
+  background: var(--card-ui-strong);
   padding: 1px;
 }
 
@@ -4256,8 +4354,8 @@ html:-webkit-full-screen .app-shell {
 }
 
 .ql-action-delete:hover {
-  color: #fca5a5;
-  background: rgba(239, 68, 68, 0.15);
+  color: var(--tone-red);
+  background: color-mix(in srgb, var(--tone-red) 15%, transparent);
 }
 
 .quick-links-add-btn {
@@ -4340,12 +4438,12 @@ html:-webkit-full-screen .app-shell {
 }
 
 .ql-btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: var(--action-primary-bg);
+  color: var(--action-primary-text);
 }
 
 .ql-btn-primary:hover:not(:disabled) {
-  background: #2563eb;
+  filter: brightness(1.08);
   transform: translateY(-1px);
 }
 
@@ -4382,15 +4480,15 @@ html:-webkit-full-screen .app-shell {
 }
 
 .confirm-modal-content {
-  background: #18181b;
-  border: 1px solid #3f3f46;
+  background: var(--modal-bg);
+  border: 1px solid var(--modal-border);
   border-radius: 12px;
   width: 90%;
   max-width: 380px;
   padding: 24px;
   position: relative;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-  color: #ffffff;
+  color: var(--ui-text-strong);
   animation: modal-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -4405,7 +4503,7 @@ html:-webkit-full-screen .app-shell {
   right: 14px;
   background: transparent;
   border: none;
-  color: #a1a1aa;
+  color: var(--menu-text-muted);
   cursor: pointer;
   padding: 6px;
   border-radius: 6px;
@@ -4416,7 +4514,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .confirm-modal-close:hover {
-  color: #ffffff;
+  color: var(--ui-text-strong);
   background-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -4428,20 +4526,20 @@ html:-webkit-full-screen .app-shell {
 }
 
 .confirm-modal-icon {
-  color: #ef4444; /* tone-red */
+  color: var(--tone-red);
 }
 
 .confirm-modal-title {
   font-size: 18px;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--ui-text-strong);
   margin: 0;
   line-height: 1.2;
 }
 
 .confirm-modal-message {
   font-size: 14px;
-  color: #d4d4d8;
+  color: var(--ui-text);
   margin-bottom: 24px;
   line-height: 1.5;
 }
@@ -4463,23 +4561,23 @@ html:-webkit-full-screen .app-shell {
 }
 
 .confirm-modal-btn.cancel {
-  background: #27272a;
-  color: #ffffff;
-  border: 1px solid #3f3f46;
+  background: var(--modal-btn-cancel-bg);
+  color: var(--ui-text-strong);
+  border: 1px solid var(--modal-border);
 }
 
 .confirm-modal-btn.cancel:hover {
-  background: #3f3f46;
+  background: var(--modal-btn-cancel-hover);
 }
 
 .confirm-modal-btn.confirm {
-  background: #dc2626;
-  color: white;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.2);
+  background: var(--action-danger-bg);
+  color: var(--action-danger-text);
+  box-shadow: 0 2px 8px rgba(177, 72, 72, 0.3);
 }
 
 .confirm-modal-btn.confirm:hover {
-  background: #b91c1c;
+  filter: brightness(1.1);
 }
 
 /* ── Long-press context menu ── */
@@ -4524,7 +4622,7 @@ html:-webkit-full-screen .app-shell {
   gap: 4px 8px;
   width: 280px;
   background: var(--workspace-bg);
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--menu-border);
   border-radius: 10px;
   padding: 12px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55), inset 0 1px 0 var(--card-ui-soft);
@@ -4543,7 +4641,7 @@ html:-webkit-full-screen .app-shell {
   gap: 10px;
   background: transparent;
   border: none;
-  color: #d9dbe8;
+  color: var(--ui-text);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -4554,7 +4652,7 @@ html:-webkit-full-screen .app-shell {
 
 .long-press-menu-item:hover {
   background: rgba(255, 255, 255, 0.07);
-  color: #ffffff;
+  color: var(--ui-text-strong);
 }
 
 .long-press-menu-item svg {

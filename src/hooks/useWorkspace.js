@@ -6,6 +6,7 @@ import {
 } from '../utils/storage'
 import {
   THEME_COLORS,
+  THEME_PALETTES,
   CARD_POP_DURATION_MS,
   ZOOM_SENSITIVITY,
   MAX_SCALE,
@@ -52,6 +53,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const [isRailOpen, setIsRailOpen] = useState(false)
   const [isFocusMode, setIsFocusMode] = useState(false)
   const [themeMode, setThemeMode] = useState(() => initialWorkspaceState.themeMode)
+  const [themePalette, setThemePalette] = useState(() => initialWorkspaceState.themePalette || 'sage')
   const [dragState, setDragState] = useState({ columnId: null, itemId: null })
   const [archivedCards, setArchivedCards] = useState(() => initialWorkspaceState.archivedCards)
   const [cardPositions, setCardPositions] = useState(() => initialWorkspaceState.cardPositions)
@@ -285,10 +287,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
   useEffect(() => {
     stateRefsForSnapshot.current = {
-      columns, drafts, viewport, themeMode, notes, timers, counters,
+      columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
       stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions
     }
-  }, [columns, drafts, viewport, themeMode, notes, timers, counters,
+  }, [columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
       stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions])
 
   const captureSnapshot = useCallback(() => {
@@ -298,6 +300,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       drafts: s.drafts,
       viewport: s.viewport,
       themeMode: s.themeMode,
+      themePalette: s.themePalette,
       notes: s.notes,
       timers: s.timers,
       counters: s.counters,
@@ -319,6 +322,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDrafts(snapshot.drafts)
     setViewport(snapshot.viewport)
     setThemeMode(snapshot.themeMode)
+    if (snapshot.themePalette) setThemePalette(snapshot.themePalette)
     setNotes(snapshot.notes)
     setTimers(snapshot.timers)
     setCounters(snapshot.counters)
@@ -332,7 +336,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setCustomLabels(snapshot.customLabels)
     if (snapshot.singleNotes) setSingleNotes(snapshot.singleNotes)
     setCardPositions(snapshot.cardPositions)
-  }, [setColumns, setDrafts, setViewport, setThemeMode, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setSingleNotes, setCardPositions])
+  }, [setColumns, setDrafts, setViewport, setThemeMode, setThemePalette, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setSingleNotes, setCardPositions])
 
   function saveSnapshot() {
     pushSnapshot(captureSnapshot())
@@ -358,7 +362,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
     }
   }, [redo, captureSnapshot, restoreSnapshot, showToast])
 
-  const theme = THEME_COLORS[themeMode]
+  const activePalette = THEME_PALETTES[themePalette] || THEME_PALETTES.sage || THEME_COLORS
+  const theme = activePalette[themeMode] || activePalette.night || THEME_COLORS[themeMode]
   const detachedLabels = useMemo(() => customLabels.map((label) => {
     let color = ''
     if (label.customColor) {
@@ -412,7 +417,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
         window.cancelIdleCallback(idleId)
       }
     }
-  }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, captureSnapshot])
+  }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, themePalette, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, captureSnapshot])
 
   // Ensure state is saved immediately on beforeunload or visibilitychange.
   // IMPORTANT: if an import just wrote data to localStorage and is about to
@@ -1243,7 +1248,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
     const id = `label-${Date.now()}`; const roles = ['routine', 'programming', 'english']
     setCustomLabels(p => [...p, { id, text: '', role: roles[Math.floor(Math.random() * roles.length)] }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setCustomLabels])
+    saveSnapshot()
+  }, [viewport, setCustomLabels, saveSnapshot, setCardPositions])
 
   const handleAddSingleNote = useCallback((pos) => {
     const id = `singlenote-${Date.now()}`
@@ -1252,54 +1258,74 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setSingleNotes(prev => [...prev, { id, text: 'Single Note', shape: 'rectangle' }])
     saveSnapshot()
   }, [setSingleNotes, saveSnapshot, setCardPositions, viewport])
+
   const handleAddNote = useCallback((pos) => {
     const id = `note-${Date.now()}`
     setNotes(p => [...p, { id, text: '', title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 350 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setNotes])
+    saveSnapshot()
+  }, [viewport, setNotes, saveSnapshot, setCardPositions])
+
   const handleAddTodoList = useCallback((pos) => {
     const id = `col-${Date.now()}`; const tones = ['charcoal', 'gold', 'violet', 'red', 'blue']
     setColumns(p => [...p, { id, tone: tones[Math.floor(Math.random() * tones.length)], positionClass: '', items: [], title: '', color: null, minimized: false }])
     setDrafts(p => ({ ...p, [id]: '' }))
     setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 200 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setColumns])
+    saveSnapshot()
+  }, [viewport, setColumns, saveSnapshot, setCardPositions, setDrafts])
+
   const handleAddTimer = useCallback((pos) => {
     const id = `timer-${Date.now()}`; setTimers(p => [...p, { id, initialSeconds: 2700, remainingSeconds: 2700, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 600 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setTimers])
+    saveSnapshot()
+  }, [viewport, setTimers, saveSnapshot, setCardPositions])
+
   const handleAddCounter = useCallback((pos) => {
     const id = `counter-${Date.now()}`; setCounters(p => [...p, { id, initialValue: 0, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 960 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setCounters])
+    saveSnapshot()
+  }, [viewport, setCounters, saveSnapshot, setCardPositions])
+
   const handleAddStopwatch = useCallback((pos) => {
     const id = `stopwatch-${Date.now()}`; setStopwatches(p => [...p, { id, initialSeconds: 0, elapsedSeconds: 0, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1240 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setStopwatches])
+    saveSnapshot()
+  }, [viewport, setStopwatches, saveSnapshot, setCardPositions])
+
   const handleAddCalendar = useCallback((pos) => {
     const id = `calendar-${Date.now()}`; const now = new Date()
     setCalendars(p => [...p, { id, year: now.getFullYear(), month: now.getMonth(), selectedDate: null, entries: {}, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1500 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setCalendars])
+    saveSnapshot()
+  }, [viewport, setCalendars, saveSnapshot, setCardPositions])
+
   const handleAddHabit = useCallback((pos) => {
     const id = `habit-${Date.now()}`; const now = new Date()
     setHabits(p => [...p, { id, icon: HABIT_ICON_OPTIONS[0].id, year: now.getFullYear(), month: now.getMonth(), view: 'summary', completions: {}, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1700 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setHabits])
+    saveSnapshot()
+  }, [viewport, setHabits, saveSnapshot, setCardPositions])
+
   const handleAddPicture = useCallback((pos) => {
     const id = `picture-${Date.now()}`
     setPictures(p => [...p, { id, imageId: null, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 500 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setPictures])
+    saveSnapshot()
+  }, [viewport, setPictures, saveSnapshot, setCardPositions])
+
   const handleAddQuickLinks = useCallback((pos) => {
     const id = `quick-links-${Date.now()}`
     setQuickLinks(p => [...p, { id, links: [], title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1000 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setQuickLinks])
+    saveSnapshot()
+  }, [viewport, setQuickLinks, saveSnapshot, setCardPositions])
+
   const handleAddQuote = useCallback((pos) => {
     const id = `quote-${Date.now()}`
     setQuotes(p => [...p, { id, text: '', author: '', title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 450 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
-  }, [viewport, setQuotes])
+    saveSnapshot()
+  }, [viewport, setQuotes, saveSnapshot, setCardPositions])
 
   const handleQuickAction = useCallback((actionId, event, canvasPos) => {
     let pos = canvasPos || null
@@ -1325,7 +1351,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     else if (actionId === 'quick-links') handleAddQuickLinks(pos)
     else if (actionId === 'quote') handleAddQuote(pos)
     setIsRailOpen(false)
-  }, [viewport, workspaceRef, handleAddLabel, handleAddSingleNote, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks, handleAddQuote, handleAddSingleNote])
+  }, [viewport, workspaceRef, handleAddLabel, handleAddSingleNote, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks, handleAddQuote])
 
   // Long-press callbacks
   const startLongPress = useCallback((event) => {
@@ -1553,13 +1579,13 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
   return {
     state: {
-      columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, theme,
+      columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, themePalette, theme,
       dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
       archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
     setters: {
-      setThemeMode, setIsFocusMode, setIsRailOpen
+      setThemeMode, setThemePalette, setIsFocusMode, setIsRailOpen
     },
     actions: {
       setDraft, addItem, updateItemText, updateItemDetails, deleteItem,
@@ -1579,7 +1605,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, updatePictureFitMode, updatePictureFontSize, duplicatePictureCard, archivePictureCard, deletePictureCard,
       updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, updateQuickLinksFontSize, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard,
       updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, updateQuoteFontSize, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard, importCardsFromJson,
-      captureSnapshot
+      captureSnapshot, setThemePalette
     }
   }
 }

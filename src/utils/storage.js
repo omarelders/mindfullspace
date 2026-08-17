@@ -4,7 +4,9 @@ import {
   DEFAULT_WORKSPACES, 
   INITIAL_COLUMNS, 
   NOTE_TEXT, 
-  DETACHED_LABELS 
+  DETACHED_LABELS,
+  THEME_PALETTES,
+  normalizeCardColor,
 } from './constants'
 
 export const createDefaultColumns = () =>
@@ -100,9 +102,20 @@ export function getInitialAppState() {
   return { workspaces, activeWorkspaceId }
 }
 
+const normalizeItems = (items) =>
+  Array.isArray(items)
+    ? items.map((item) =>
+        item && typeof item === 'object' && item.color
+          ? { ...item, color: normalizeCardColor(item.color) }
+          : item,
+      )
+    : []
+
 export function validateWorkspaceState(stored) {
   return {
-    columns: Array.isArray(stored?.columns) ? stored.columns : createDefaultColumns(),
+    columns: Array.isArray(stored?.columns)
+      ? normalizeItems(stored.columns)
+      : createDefaultColumns(),
     drafts:
       stored?.drafts && typeof stored.drafts === 'object'
         ? { ...createDefaultDrafts(), ...stored.drafts }
@@ -115,18 +128,26 @@ export function validateWorkspaceState(stored) {
         ? stored.viewport
         : { x: 0, y: 0, scale: 1 },
     themeMode: stored?.themeMode === 'day' ? 'day' : 'night',
-    notes: Array.isArray(stored?.notes) ? stored.notes : createDefaultNotes(),
-    timers: Array.isArray(stored?.timers) ? stored.timers : createDefaultTimers(),
-    counters: Array.isArray(stored?.counters) ? stored.counters : [],
-    stopwatches: Array.isArray(stored?.stopwatches) ? stored.stopwatches : [],
-    calendars: Array.isArray(stored?.calendars) ? stored.calendars : [],
-    habits: Array.isArray(stored?.habits) ? stored.habits : [],
-    pictures: Array.isArray(stored?.pictures) ? stored.pictures : [],
-    quickLinks: Array.isArray(stored?.quickLinks) ? stored.quickLinks : [],
+    themePalette:
+      stored?.themePalette && THEME_PALETTES[stored.themePalette] ? stored.themePalette : 'sage',
+    notes: Array.isArray(stored?.notes) ? normalizeItems(stored.notes) : createDefaultNotes(),
+    timers: Array.isArray(stored?.timers) ? normalizeItems(stored.timers) : createDefaultTimers(),
+    counters: normalizeItems(stored?.counters),
+    stopwatches: normalizeItems(stored?.stopwatches),
+    calendars: normalizeItems(stored?.calendars),
+    habits: normalizeItems(stored?.habits),
+    pictures: normalizeItems(stored?.pictures),
+    quickLinks: normalizeItems(stored?.quickLinks),
     archivedCards: Array.isArray(stored?.archivedCards) ? stored.archivedCards : [],
-    customLabels: Array.isArray(stored?.customLabels) ? stored.customLabels : DETACHED_LABELS,
-    singleNotes: Array.isArray(stored?.singleNotes) ? stored.singleNotes : [],
-    quotes: Array.isArray(stored?.quotes) ? stored.quotes : [],
+    customLabels: Array.isArray(stored?.customLabels)
+      ? stored.customLabels.map((lbl) =>
+          lbl && lbl.customColor
+            ? { ...lbl, customColor: normalizeCardColor(lbl.customColor) }
+            : lbl,
+        )
+      : DETACHED_LABELS,
+    singleNotes: normalizeItems(stored?.singleNotes),
+    quotes: normalizeItems(stored?.quotes),
     cardPositions:
       stored?.cardPositions && typeof stored.cardPositions === 'object'
         ? { ...createDefaultCardPositions(), ...stored.cardPositions }
