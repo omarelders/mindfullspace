@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { ImagePlus, Upload, Maximize, Minimize } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
 import { getImage, saveImage, deleteImage, MAX_IMAGE_SIZE } from '../utils/imageStore'
+import { useAuth } from '../hooks/useAuth'
+import { uploadImageToCloud, downloadImageFromCloud, deleteImageFromCloud } from '../lib/imageSync'
 
 export const PictureCard = memo(function PictureCard({
   picture,
@@ -22,6 +24,7 @@ export const PictureCard = memo(function PictureCard({
   isPopping,
   cardId,
 }) {
+  const { user } = useAuth()
   const customStyle = picture.fontSize ? { fontSize: `${picture.fontSize}px` } : undefined
   const [objectUrl, setObjectUrl] = useState(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -31,7 +34,7 @@ export const PictureCard = memo(function PictureCard({
   const fileInputRef = useRef(null)
   const resizerRef = useRef(null)
 
-  // Load image from IndexedDB on mount or when imageId changes
+  // Load image from IndexedDB on mount or when imageId changes (with cloud fallback)
   useEffect(() => {
     let revoked = false
     if (!picture.imageId) {
@@ -39,10 +42,18 @@ export const PictureCard = memo(function PictureCard({
       return
     }
     getImage(picture.imageId)
-      .then((blob) => {
+      .then(async (blob) => {
         if (revoked) return
         if (blob) {
           setObjectUrl(URL.createObjectURL(blob))
+        } else if (user) {
+          // Cloud fallback when image isn't in local IndexedDB
+          const cloudBlob = await downloadImageFromCloud(user.id, picture.imageId)
+          if (!revoked && cloudBlob) {
+            setObjectUrl(URL.createObjectURL(cloudBlob))
+          } else if (!revoked) {
+            setObjectUrl(null)
+          }
         } else {
           setObjectUrl(null)
         }
@@ -57,7 +68,7 @@ export const PictureCard = memo(function PictureCard({
         return null
       })
     }
-  }, [picture.imageId])
+  }, [picture.imageId, user])
 
   const handleFile = useCallback(async (file) => {
     setError(null)
@@ -73,16 +84,22 @@ export const PictureCard = memo(function PictureCard({
       const oldImageId = picture.imageId
       const newImageId = `img-${picture.id}-${Date.now()}`
       await saveImage(newImageId, file)
+      if (user) {
+        uploadImageToCloud(user.id, newImageId, file).catch(() => {})
+      }
       if (onUpdateImageId) onUpdateImageId(picture.id, newImageId)
       
-      // Cleanup old image from storage if it exists
+      // Cleanup old image from local and cloud storage if it exists
       if (oldImageId) {
         deleteImage(oldImageId).catch(err => console.error('Failed to cleanup old image:', err))
+        if (user) {
+          deleteImageFromCloud(user.id, oldImageId).catch(() => {})
+        }
       }
     } catch (err) {
       setError(err.message || 'Failed to save image.')
     }
-  }, [picture.id, picture.imageId, onUpdateImageId])
+  }, [picture.id, picture.imageId, onUpdateImageId, user])
 
   const handleFileInput = useCallback((e) => {
     const file = e.target.files?.[0]

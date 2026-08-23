@@ -12,6 +12,10 @@ vi.mock('../utils/audio', () => ({
   playTaskCompleteSound: vi.fn(),
 }))
 
+vi.mock('./useAuth', () => ({
+  useAuth: vi.fn(() => ({ user: null })),
+}))
+
 describe('useWorkspace hook', () => {
   let workspaceRef
 

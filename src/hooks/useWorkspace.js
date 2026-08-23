@@ -24,6 +24,8 @@ import { createId } from '../utils/id'
 import { supportsNativeZoom } from '../utils/browserSupport'
 import { useUndoRedo } from './useUndoRedo'
 import { useCardCollection } from './useCardCollection'
+import { useAuth } from './useAuth'
+import { uploadImageToCloud, deleteImageFromCloud } from '../lib/imageSync'
 
 function reorderListItems(list, itemId, targetItemId) {
   const currentIndex = list.findIndex((item) => item.id === itemId)
@@ -51,6 +53,7 @@ function duplicateWithSameData(source, dupData) {
 }
 
 export function useWorkspace(workspaceId, workspaceRef) {
+  const { user } = useAuth()
   const initialWorkspaceState = useMemo(() => getInitialWorkspaceState(workspaceId), [workspaceId])
   const [drafts, setDrafts] = useState(() => initialWorkspaceState.drafts)
   const [viewport, setViewport] = useState(() => initialWorkspaceState.viewport)
@@ -740,6 +743,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
     const imageId = createId('img-paste')
     try {
       await saveImage(imageId, blob)
+      if (user) {
+        uploadImageToCloud(user.id, imageId, blob).catch(() => {})
+      }
     } catch {
       showToast('Failed to paste image.')
       return
@@ -753,7 +759,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       },
     }))
     showToast('Image pasted!')
-  }, [viewport, showToast, setPictures])
+  }, [viewport, showToast, setPictures, user])
 
   const handlePasteText = useCallback((text) => {
     if (!text || text.trim().length === 0) return
@@ -1108,8 +1114,14 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
     if (card?.imageId && !isReferencedByActive && !isReferencedByArchived) {
       deleteImageBlob(card.imageId).catch(() => {})
+      // Remove the cloud copy too so deleted images don't accumulate as
+      // orphaned Storage objects. Fire-and-forget: local deletion already
+      // succeeded and the card is gone from the synced snapshot.
+      if (user) {
+        deleteImageFromCloud(user.id, card.imageId).catch(() => {})
+      }
     }
-  }, [picCol, archivedCards])
+  }, [picCol, archivedCards, user])
 
   // Quick Links
   const updateQuickLinksTitle = useCallback((id, title) => {

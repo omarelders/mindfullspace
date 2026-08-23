@@ -10,6 +10,16 @@ export default defineConfig({
       'sb-2xodzyue34as.vercel.run'
     ]
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'supabase-vendor': ['@supabase/supabase-js'],
+          'lucide-icons': ['lucide-react'],
+        }
+      }
+    }
+  },
   test: {
     globals: true,
     environment: 'jsdom',

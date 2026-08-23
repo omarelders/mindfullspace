@@ -27,12 +27,16 @@ import {
   Sparkles,
   Image,
   Palette,
+  LogOut,
 } from 'lucide-react'
 import { buildDateKey } from '../utils/dateUtils'
 import { ConfirmModal } from './ConfirmModal'
 import { ActionRailIcon } from './ActionRail'
 import { exportWorkspace, parseWorkspaceBackup } from '../utils/backup'
 import { PALETTE_OPTIONS } from '../utils/constants'
+import { useAuth } from '../hooks/useAuth'
+import { AuthForm } from './AuthForm'
+import { SyncStatus } from './SyncStatus'
 
 export function TopBar({
   mode,
@@ -54,11 +58,15 @@ export function TopBar({
   onSelectLabel,
   archivedCards,
   habits,
-  onRestoreArchivedCard,
   onImportCards,
   onImportWorkspace,
   onCaptureSnapshot,
+  syncStatus = 'idle',
+  lastSyncedAt = null,
+  onSyncNow = null,
+  syncMessage = null,
 }) {
+  const { user, profile, isAuthenticated, signOut, isConfigured } = useAuth()
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -290,8 +298,12 @@ export function TopBar({
     return 'Archived Card'
   }
 
-  const profileName = 'Mindful User'
-  const profileSubtitle = 'Local workspace — your data stays on this device'
+  const profileName = isAuthenticated
+    ? (profile?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mindful User')
+    : 'Mindful User'
+  const profileSubtitle = isAuthenticated
+    ? user?.email
+    : 'Local workspace — your data stays on this device'
   const profileLevel = 1
 
   if (isFullscreen) return null
@@ -348,7 +360,15 @@ export function TopBar({
                   <div className="account-profile-grid">
                     <div className="account-avatar-wrap">
                       <div className="account-avatar">
-                        <UserRound aria-hidden="true" />
+                        {profile?.avatar_url ? (
+                          <img
+                            src={profile.avatar_url}
+                            alt={profileName}
+                            style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                          />
+                        ) : (
+                          <UserRound aria-hidden="true" />
+                        )}
                       </div>
                     </div>
 
@@ -358,14 +378,41 @@ export function TopBar({
                         <User aria-hidden="true" />
                         Level {profileLevel}
                       </div>
-
                     </div>
                   </div>
 
                   <div className="account-email-row">
-                    <span className="account-email-dot" aria-hidden="true" />
+                    <span
+                      className="account-email-dot"
+                      style={isAuthenticated ? { background: '#2ecc71', boxShadow: '0 0 8px #2ecc71' } : undefined}
+                      aria-hidden="true"
+                    />
                     <span>{profileSubtitle}</span>
                   </div>
+
+                  {isAuthenticated ? (
+                    <>
+                      <SyncStatus
+                        status={syncStatus}
+                        lastSyncedAt={lastSyncedAt}
+                        onSyncNow={onSyncNow}
+                        message={syncMessage}
+                      />
+
+                      <button
+                        type="button"
+                        className="account-signout-btn"
+                        onClick={async () => {
+                          await signOut()
+                        }}
+                      >
+                        <LogOut size={15} />
+                        <span>Sign Out</span>
+                      </button>
+                    </>
+                  ) : (
+                    <AuthForm />
+                  )}
 
                   <div className="account-streak-card">
                     <div className="account-streak-header">
@@ -380,10 +427,6 @@ export function TopBar({
                       ))}
                     </div>
                   </div>
-
-                  <button type="button" className="account-subscribe-btn">
-                    Subscribe to mindfulspace+
-                  </button>
                 </div>
               )}
 

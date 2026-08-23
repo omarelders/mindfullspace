@@ -14,6 +14,16 @@ vi.mock('../utils/imageStore', () => ({
   MAX_IMAGE_SIZE: 5 * 1024 * 1024
 }))
 
+vi.mock('../hooks/useAuth', () => ({
+  useAuth: () => ({ user: null, isAuthenticated: false }),
+}))
+
+vi.mock('../lib/imageSync', () => ({
+  uploadImageToCloud: vi.fn().mockResolvedValue('user-1/img.png'),
+  downloadImageFromCloud: vi.fn().mockResolvedValue(new Blob(['cloud-blob'], { type: 'image/png' })),
+  deleteImageFromCloud: vi.fn().mockResolvedValue(true),
+}))
+
 vi.mock('../utils/storage', () => ({
   readJsonStorage: vi.fn(),
   writeJsonStorage: vi.fn(),

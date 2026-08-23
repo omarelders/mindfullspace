@@ -15,6 +15,8 @@ import { QuoteCard } from './QuoteCard'
 import { TopBar } from './TopBar'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useDocumentTitleTimer } from '../hooks/useDocumentTitleTimer'
+import { useAuth } from '../hooks/useAuth'
+import { useSyncEngine } from '../hooks/useSyncEngine'
 import { QUICK_CREATE_ACTIONS } from '../utils/constants'
 import { supportsNativeZoom } from '../utils/browserSupport'
 
@@ -37,9 +39,26 @@ export function WorkspaceBoard({
       archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
-    setters: { setThemeMode, setThemePalette, setIsFocusMode, setIsRailOpen },
-    actions
+    actions,
   } = useWorkspace(workspace.id, workspaceRef)
+
+  const { user } = useAuth()
+  const { syncStatus, lastSyncedAt, syncError, syncNow, notifyChange } = useSyncEngine({
+    workspaceId: workspace.id,
+    captureSnapshot: actions.captureSnapshot,
+    user,
+    workspaceName: workspace.name,
+    onRemoteWorkspaceLoaded: actions.importWorkspaceState,
+  })
+
+  // Trigger debounced cloud sync whenever local state changes
+  useEffect(() => {
+    notifyChange()
+  }, [
+    columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
+    stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards,
+    detachedLabels, singleNotes, cardPositions, notifyChange
+  ])
 
   useDocumentTitleTimer(timers, workspace.name)
 
@@ -181,6 +200,10 @@ export function WorkspaceBoard({
         onImportCards={actions.importCardsFromJson}
         onImportWorkspace={actions.importWorkspaceState}
         onCaptureSnapshot={actions.captureSnapshot}
+        syncStatus={syncStatus}
+        lastSyncedAt={lastSyncedAt}
+        onSyncNow={syncNow}
+        syncMessage={syncError}
       />
 
       <div className={`focus-overlay ${isFocusMode ? 'is-active' : ''}`} aria-hidden="true" />
