@@ -325,6 +325,9 @@ export function TopBar({
             }}
           >
             <Menu aria-hidden="true" />
+            {isAuthenticated && (
+              <span className="auth-presence-dot" title={`Signed in as ${user?.email || 'user'}`} aria-hidden="true" />
+            )}
           </button>
 
           {isAccountMenuOpen && (
@@ -468,6 +471,19 @@ export function TopBar({
               {activeAccountTab === 'settings' && (
                 <div className="account-content">
                   <div className="account-settings-list">
+                    <div className="account-setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isAuthenticated && (
+                          <span className="auth-presence-dot" aria-hidden="true" />
+                        )}
+                        <strong>{isAuthenticated ? 'Signed in' : 'Guest mode'}</strong>
+                      </div>
+                      <span style={{ fontSize: '12px', color: 'var(--ui-text)', opacity: 0.75, wordBreak: 'break-all' }}>
+                        {isAuthenticated
+                          ? `${user?.email || profileName} — your changes sync to the cloud`
+                          : 'Sign in from the Profile tab to enable cloud sync'}
+                      </span>
+                    </div>
                     <div className="account-setting-row">
                       <span>Theme</span>
                       <button type="button" className="account-setting-btn" onClick={onToggleMode}>

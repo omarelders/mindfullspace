@@ -567,6 +567,26 @@ html:-webkit-full-screen .app-shell {
   flex-shrink: 0;
 }
 
+/* Signed-in presence indicator */
+.account-menu-wrap .nav-box {
+  position: relative;
+}
+
+.auth-presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #2ecc71;
+  box-shadow: 0 0 7px rgba(46, 204, 113, 0.9);
+  flex-shrink: 0;
+}
+
+.account-menu-wrap .auth-presence-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+}
+
 .account-streak-card {
   border: 1px solid var(--surface-border);
   border-radius: 8px;
