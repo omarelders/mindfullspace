@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, memo } from 'react'
 import {
   Archive,
   Menu,
@@ -38,7 +38,9 @@ import { useAuth } from '../hooks/useAuth'
 import { AuthForm } from './AuthForm'
 import { SyncStatus } from './SyncStatus'
 
-export function TopBar({
+// Memoized: the bar is large and its props are referentially stable, so it
+// must not re-render on every board state change (e.g. typing inside a card).
+export const TopBar = memo(function TopBar({
   mode,
   onToggleMode,
   palette = 'sage',
@@ -878,4 +880,4 @@ export function TopBar({
       />
     </header>
   )
-}
+})

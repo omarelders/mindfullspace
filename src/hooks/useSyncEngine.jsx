@@ -14,9 +14,33 @@ import { WORKSPACE_STORAGE_KEY_PREFIX } from '../utils/constants'
 // against a persistently failing backend.
 const MAX_AUTO_RETRIES = 5
 
+// Canonical JSON: object keys are sorted recursively before stringifying.
+// Postgres jsonb does not preserve key order and validateWorkspaceState
+// rebuilds objects, so plain JSON.stringify of a local snapshot NEVER
+// string-equals the same content echoed back from the cloud. Without this,
+// every push's own realtime echo looked like a foreign remote update, which
+// re-imported the workspace (toast + full restore) and pushed again forever.
+function canonicalize(value) {
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) {
+    const out = new Array(value.length)
+    for (let i = 0; i < value.length; i++) out[i] = canonicalize(value[i])
+    return out
+  }
+  const keys = Object.keys(value).sort()
+  const out = {}
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]
+    const entry = value[key]
+    if (entry === undefined) continue
+    out[key] = canonicalize(entry)
+  }
+  return out
+}
+
 function serializeState(state) {
   try {
-    return JSON.stringify(state ?? null)
+    return JSON.stringify(canonicalize(state ?? null))
   } catch {
     return String(Date.now())
   }
@@ -83,19 +107,27 @@ export function useSyncEngine({
   }, [])
 
   /**
-   * Adopt a cloud snapshot locally. Always backs up the current local
-   * state first — a remote takeover never destroys local work silently.
+   * Adopt a cloud snapshot locally. Backs up the current local state first —
+   * but only when it actually differs from the incoming data, so identical
+   * echoes never flood localStorage with conflict backups or re-render the
+   * whole board.
    */
   const adoptRemoteData = useCallback(
     (remoteData, remoteVersion) => {
+      const remoteStr = serializeState(remoteData)
       const localCurrent = captureSnapshotRef.current?.()
-      if (localCurrent) saveConflictBackup(workspaceId, localCurrent)
+      const localStr = serializeState(localCurrent)
+      const contentChanged = remoteStr !== localStr
 
-      writeJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`, remoteData)
-      lastPushedSnapshotRef.current = serializeState(remoteData)
+      if (contentChanged) {
+        if (localCurrent) saveConflictBackup(workspaceId, localCurrent)
+        writeJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`, remoteData)
+        onRemoteWorkspaceLoadedRef.current?.(remoteData)
+      }
+
+      lastPushedSnapshotRef.current = remoteStr
       if (Number.isFinite(remoteVersion)) knownVersionRef.current = remoteVersion
       pendingChangeRef.current = false
-      onRemoteWorkspaceLoadedRef.current?.(remoteData)
       setLastSyncedAt(Date.now())
     },
     [workspaceId]
