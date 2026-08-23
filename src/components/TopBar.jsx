@@ -58,6 +58,7 @@ export function TopBar({
   onSelectLabel,
   archivedCards,
   habits,
+  onRestoreArchivedCard,
   onImportCards,
   onImportWorkspace,
   onCaptureSnapshot,

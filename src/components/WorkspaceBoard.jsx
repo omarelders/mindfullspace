@@ -39,6 +39,9 @@ export function WorkspaceBoard({
       archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
+    setters: {
+      setThemeMode, setThemePalette, setIsFocusMode, setIsRailOpen
+    },
     actions,
   } = useWorkspace(workspace.id, workspaceRef)
 

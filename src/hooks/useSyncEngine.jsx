@@ -193,7 +193,6 @@ export function useSyncEngine({
       }
       return false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, workspaceId, adoptRemoteData, scheduleRetry, safeSetStatus, safeSetError])
 
   // Manual or external sync trigger
@@ -438,7 +437,6 @@ export function useSyncEngine({
         }
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, workspaceId])
 
   return {
