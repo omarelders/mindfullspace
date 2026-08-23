@@ -336,7 +336,9 @@ BEGIN
 
     INSERT INTO public.workspaces (id, user_id, name)
     VALUES (p_workspace_id, v_user, COALESCE(p_workspace_name, 'Workspace'))
-    ON CONFLICT (id, user_id) DO NOTHING;
+    ON CONFLICT (id, user_id) DO UPDATE
+        SET name = COALESCE(EXCLUDED.name, workspaces.name),
+            updated_at = now();
 
     INSERT INTO public.workspace_data AS wd
         (workspace_id, user_id, data, version, synced_at)

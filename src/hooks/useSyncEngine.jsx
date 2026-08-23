@@ -195,12 +195,17 @@ export function useSyncEngine({
     }
   }, [user, workspaceId, adoptRemoteData, scheduleRetry, safeSetStatus, safeSetError])
 
+  const performPushRef = useRef(null)
+  useEffect(() => {
+    performPushRef.current = performPush
+  }, [performPush])
+
   // Manual or external sync trigger
   const syncNow = useCallback(async () => {
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
     retryCountRef.current = 0
-    return await performPush()
+    return await (performPushRef.current ? performPushRef.current() : performPush())
   }, [performPush])
 
   // Explicit pull (also used manually from tests / future UI)
@@ -234,7 +239,8 @@ export function useSyncEngine({
     pendingChangeRef.current = true
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
     debounceTimerRef.current = setTimeout(() => {
-      performPush()
+      if (performPushRef.current) performPushRef.current()
+      else performPush()
     }, debounceMs)
   }, [user, debounceMs, performPush])
 
@@ -250,8 +256,14 @@ export function useSyncEngine({
 
     let cancelled = false
     let resolveGate
+    let gateSettled = false
     reconcileGateRef.current = new Promise((resolve) => {
-      resolveGate = resolve
+      resolveGate = () => {
+        if (!gateSettled) {
+          gateSettled = true
+          resolve()
+        }
+      }
     })
 
     pullWorkspace(user.id, workspaceId)
@@ -263,7 +275,13 @@ export function useSyncEngine({
           if (localSnap) {
             // Cloud is completely empty for this workspace. Initialize it with local data!
             pendingChangeRef.current = true
-            syncNow()
+            lastPushedSnapshotRef.current = null
+            resolveGate()
+            if (performPushRef.current) {
+              performPushRef.current()
+            }
+          } else {
+            resolveGate()
           }
           return
         }
@@ -304,10 +322,13 @@ export function useSyncEngine({
       .catch(() => {
         // Offline/unreachable — stay fully local; pushes handle retries.
       })
-      .finally(() => resolveGate())
+      .finally(() => {
+        resolveGate()
+      })
 
     return () => {
       cancelled = true
+      resolveGate()
     }
   }, [user, workspaceId, adoptRemoteData, safeSetStatus, safeSetError])
 

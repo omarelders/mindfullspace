@@ -122,7 +122,7 @@ export function AuthProvider({ children }) {
       setAuthError(error.message)
       return { error }
     }
-    if (data?.user) {
+    if (data?.session && data?.user) {
       setUser(data.user)
       setSession(data.session)
       await fetchProfile(data.user.id, data.user)
@@ -201,14 +201,16 @@ export function AuthProvider({ children }) {
     setAuthError(null)
   }, [])
 
+  const isAuthed = Boolean(user && session)
+
   const contextValue = useMemo(() => ({
-    user,
-    profile,
+    user: isAuthed ? user : null,
+    profile: isAuthed ? profile : null,
     session,
     loading,
     authError,
-    isGuest: !user,
-    isAuthenticated: Boolean(user),
+    isGuest: !isAuthed,
+    isAuthenticated: isAuthed,
     isConfigured: isSupabaseConfigured(),
     signUp,
     signIn,
@@ -218,6 +220,7 @@ export function AuthProvider({ children }) {
     clearError,
     fetchProfile,
   }), [
+    isAuthed,
     user,
     profile,
     session,

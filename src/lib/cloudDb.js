@@ -133,41 +133,145 @@ export async function pushWorkspace(userId, workspaceId, workspaceData, {
     return { success: false, reason: 'missing_parameters' }
   }
 
-  const { data, error } = await supabase.rpc('push_workspace_snapshot', {
-    p_workspace_id: workspaceId,
-    p_data: workspaceData,
-    p_workspace_name: workspaceName,
-    p_expected_version: expectedVersion,
-  })
+  try {
+    const { data, error } = await supabase.rpc('push_workspace_snapshot', {
+      p_workspace_id: workspaceId,
+      p_data: workspaceData,
+      p_workspace_name: workspaceName,
+      p_expected_version: expectedVersion,
+    })
 
-  if (error) throw error
+    if (error) {
+      // If RPC is missing (e.g. schema not fully initialized in Supabase),
+      // fall back to direct table push so data is safely stored!
+      const isRpcMissing =
+        error.code === 'PGRST202' ||
+        error.code === '42883' ||
+        error.message?.includes('push_workspace_snapshot')
+      if (isRpcMissing) {
+        console.warn('[CloudDb] push_workspace_snapshot RPC unavailable, using direct table push fallback')
+        return await pushWorkspaceDirectFallback(userId, workspaceId, workspaceData, {
+          expectedVersion,
+          workspaceName,
+        })
+      }
+      throw error
+    }
 
-  const row = Array.isArray(data) ? data[0] : data
-  if (!row) {
-    return { success: false, reason: 'no_result' }
-  }
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row) {
+      return { success: false, reason: 'no_result' }
+    }
 
-  if (row.status === 'conflict') {
+    if (row.status === 'conflict') {
+      return {
+        success: false,
+        reason: 'conflict',
+        cloudVersion: row.version ?? null,
+        // Validate here so callers can adopt it directly.
+        cloudData: row.data ? validateWorkspaceState(row.data) : null,
+      }
+    }
+
+    const newVersion = Number(row.version) || null
+
+    // Record local push time — used by migration and mount reconciliation
+    // to decide which side is newer without extra server round-trips.
+    setLastPushMeta(workspaceId, { at: Date.now(), version: newVersion })
+
+    recordSyncMetadata(userId).catch(() => {})
+
     return {
-      success: false,
-      reason: 'conflict',
-      cloudVersion: row.version ?? null,
-      // Validate here so callers can adopt it directly.
-      cloudData: row.data ? validateWorkspaceState(row.data) : null,
+      success: true,
+      version: newVersion,
+      syncedAt: new Date().toISOString(),
+    }
+  } catch (err) {
+    // If the error indicates missing RPC, also try direct fallback
+    const isRpcMissing =
+      err?.code === 'PGRST202' ||
+      err?.code === '42883' ||
+      err?.message?.includes('push_workspace_snapshot')
+    if (isRpcMissing) {
+      console.warn('[CloudDb] Caught RPC error, attempting direct table push fallback:', err.message)
+      return await pushWorkspaceDirectFallback(userId, workspaceId, workspaceData, {
+        expectedVersion,
+        workspaceName,
+      })
+    }
+    throw err
+  }
+}
+
+async function pushWorkspaceDirectFallback(userId, workspaceId, workspaceData, {
+  expectedVersion = null,
+  workspaceName = null,
+} = {}) {
+  // 1. Ensure parent workspace exists
+  await ensureCloudWorkspace(userId, workspaceId, workspaceName || 'Workspace')
+
+  // 2. Fetch existing version if expectedVersion was specified
+  const { data: existing, error: selectErr } = await supabase
+    .from('workspace_data')
+    .select('version, data')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (selectErr) throw selectErr
+
+  if (existing) {
+    if (expectedVersion !== null && expectedVersion !== undefined && existing.version !== expectedVersion) {
+      return {
+        success: false,
+        reason: 'conflict',
+        cloudVersion: existing.version ?? null,
+        cloudData: existing.data ? validateWorkspaceState(existing.data) : null,
+      }
+    }
+
+    const nextVersion = (existing.version || 0) + 1
+    const { error: updateErr } = await supabase
+      .from('workspace_data')
+      .update({
+        data: workspaceData,
+        version: nextVersion,
+        synced_at: new Date().toISOString(),
+      })
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', userId)
+
+    if (updateErr) throw updateErr
+
+    setLastPushMeta(workspaceId, { at: Date.now(), version: nextVersion })
+    recordSyncMetadata(userId).catch(() => {})
+
+    return {
+      success: true,
+      version: nextVersion,
+      syncedAt: new Date().toISOString(),
     }
   }
 
-  const newVersion = Number(row.version) || null
+  // Insert initial workspace data
+  const { error: insertErr } = await supabase
+    .from('workspace_data')
+    .insert({
+      workspace_id: workspaceId,
+      user_id: userId,
+      data: workspaceData,
+      version: 1,
+      synced_at: new Date().toISOString(),
+    })
 
-  // Record local push time — used by migration and mount reconciliation
-  // to decide which side is newer without extra server round-trips.
-  setLastPushMeta(workspaceId, { at: Date.now(), version: newVersion })
+  if (insertErr) throw insertErr
 
+  setLastPushMeta(workspaceId, { at: Date.now(), version: 1 })
   recordSyncMetadata(userId).catch(() => {})
 
   return {
     success: true,
-    version: newVersion,
+    version: 1,
     syncedAt: new Date().toISOString(),
   }
 }

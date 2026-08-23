@@ -1,76 +1,35 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { describe, it, expect } from 'vitest'
+import { render, screen } from '@testing-library/react'
 import { WorkspaceBoard } from './WorkspaceBoard'
+import { AuthProvider } from '../hooks/useAuth'
+import { QUICK_CREATE_ACTIONS } from '../utils/constants'
 
-const { mockAuthValue } = vi.hoisted(() => ({
-  mockAuthValue: {
-    user: null,
-    profile: null,
-    session: null,
-    loading: false,
-    authError: null,
-    isGuest: true,
-    isAuthenticated: false,
-    isConfigured: false,
-    signUp: vi.fn(),
-    signIn: vi.fn(),
-    signInWithOAuth: vi.fn(),
-    signOut: vi.fn(),
-    updateDisplayName: vi.fn(),
-    clearError: vi.fn(),
-  },
-}))
+// Full-board render smoke test. Guards against runtime ReferenceErrors on
+// mount (e.g. a setter destructured away from useWorkspace's `setters`),
+// a crash class that previously shipped because no test rendered the board.
+describe('WorkspaceBoard smoke', () => {
+  it('renders the full board without crashing in guest mode', () => {
+    render(
+      <AuthProvider>
+        <WorkspaceBoard
+          workspace={{ id: 'ws-smoke', name: 'Smoke Board' }}
+          isVisible={true}
+          allWorkspaces={[{ id: 'ws-smoke', name: 'Smoke Board' }]}
+          onSwitchWorkspace={() => {}}
+          onUpdateName={() => {}}
+          onDuplicateWorkspace={() => {}}
+          onDeleteWorkspace={() => {}}
+          onCreateWorkspace={() => {}}
+          quickActions={QUICK_CREATE_ACTIONS}
+          labels={[]}
+          habits={[]}
+        />
+      </AuthProvider>
+    )
 
-vi.mock('../hooks/useAuth', () => ({
-  useAuth: () => mockAuthValue,
-  AuthProvider: ({ children }) => children,
-}))
-
-describe('WorkspaceBoard', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    localStorage.clear()
-  })
-
-  const defaultProps = {
-    workspace: { id: 'ws-test-1', name: 'Test Workspace' },
-    isVisible: true,
-    allWorkspaces: [{ id: 'ws-test-1', name: 'Test Workspace' }],
-    onSwitchWorkspace: vi.fn(),
-    onUpdateName: vi.fn(),
-    onDuplicateWorkspace: vi.fn(),
-    onDeleteWorkspace: vi.fn(),
-    onCreateWorkspace: vi.fn(),
-    onSetAllWorkspaces: vi.fn(),
-  }
-
-  it('renders workspace board without throwing ReferenceError or crashing', () => {
-    expect(() => {
-      render(<WorkspaceBoard {...defaultProps} />)
-    }).not.toThrow()
-
-    expect(screen.getByText('Test Workspace')).toBeInTheDocument()
-  })
-
-  it('allows toggling theme mode and focus mode without throwing', () => {
-    const { container } = render(<WorkspaceBoard {...defaultProps} />)
-    
-    // Find theme mode toggle button
-    const themeBtn = container.querySelector('[aria-label*="mode" i], [title*="mode" i], .theme-toggle, button:has(svg)')
-    if (themeBtn) {
-      expect(() => {
-        fireEvent.click(themeBtn)
-      }).not.toThrow()
-    }
-  })
-
-  it('allows toggling action rail without errors', () => {
-    const { container } = render(<WorkspaceBoard {...defaultProps} />)
-    const railToggleBtn = container.querySelector('.action-rail-toggle, .rail-toggle, [aria-label*="rail" i]')
-    if (railToggleBtn) {
-      expect(() => {
-        fireEvent.click(railToggleBtn)
-      }).not.toThrow()
-    }
+    // TopBar chrome mounted…
+    expect(screen.getByRole('button', { name: /^menu$/i })).toBeInTheDocument()
+    // …and the active workspace name made it into the workspace selector.
+    expect(screen.getByText('Smoke Board')).toBeInTheDocument()
   })
 })
