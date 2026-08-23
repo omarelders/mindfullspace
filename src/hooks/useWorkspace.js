@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import {
   writeJsonStorage,
   getInitialWorkspaceState,
+  validateWorkspaceState,
   removeStorageKey
 } from '../utils/storage'
 import {
@@ -17,7 +18,10 @@ import {
 } from '../utils/constants'
 import { parseDateKey, buildDateKey } from '../utils/dateUtils'
 import { saveImage, deleteImage as deleteImageBlob, MAX_IMAGE_SIZE } from '../utils/imageStore'
-import { parseImportedCards, isImportReload, clearImportReloadFlag } from '../utils/backup'
+import { parseImportedCards } from '../utils/backup'
+import { sanitizeUrl } from '../utils/urlSafety'
+import { createId } from '../utils/id'
+import { supportsNativeZoom } from '../utils/browserSupport'
 import { useUndoRedo } from './useUndoRedo'
 import { useCardCollection } from './useCardCollection'
 
@@ -40,7 +44,11 @@ function normalizeHabitIconId(iconId) {
   return HABIT_ICON_OPTIONS[0].id
 }
 
-const supportsNativeZoom = 'zoom' in document.createElement('div').style
+// Pure duplicate strategy shared by every collection whose cards copy as-is.
+// Module-level so its identity is stable without memoization.
+function duplicateWithSameData(source, dupData) {
+  return { ...source, id: dupData.id }
+}
 
 export function useWorkspace(workspaceId, workspaceRef) {
   const initialWorkspaceState = useMemo(() => getInitialWorkspaceState(workspaceId), [workspaceId])
@@ -89,6 +97,44 @@ export function useWorkspace(workspaceId, workspaceRef) {
     toastTimerRef.current = setTimeout(() => setToastMessage(null), 2000)
   }, [])
 
+  // Refs that always hold current state for snapshot capture.
+  // Declared before the card collections below so saveSnapshot can be passed
+  // into them as a referentially stable callback.
+  const stateRefsForSnapshot = useRef({})
+
+  const captureSnapshot = useCallback(() => {
+    const s = stateRefsForSnapshot.current
+    return {
+      columns: s.columns,
+      drafts: s.drafts,
+      viewport: s.viewport,
+      themeMode: s.themeMode,
+      themePalette: s.themePalette,
+      notes: s.notes,
+      timers: s.timers,
+      counters: s.counters,
+      stopwatches: s.stopwatches,
+      calendars: s.calendars,
+      habits: s.habits,
+      pictures: s.pictures,
+      quickLinks: s.quickLinks,
+      quotes: s.quotes,
+      archivedCards: s.archivedCards,
+      customLabels: s.customLabels,
+      singleNotes: s.singleNotes,
+      cardPositions: s.cardPositions,
+    }
+  }, [])
+
+  // Tag lets consecutive edit pushes coalesce into one undo entry (see useUndoRedo)
+  const saveSnapshot = useCallback((tag = null) => {
+    pushSnapshot(captureSnapshot(), tag)
+  }, [pushSnapshot, captureSnapshot])
+
+  // Ref mirror of cardPositions so position-dependent callbacks stay stable
+  const cardPositionsRef = useRef(cardPositions)
+  useEffect(() => { cardPositionsRef.current = cardPositions }, [cardPositions])
+
   const removeCardPosition = useCallback((cardId) => {
     setCardPositions((currentPositions) => {
       if (!(cardId in currentPositions)) return currentPositions
@@ -108,9 +154,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [])
 
   const archiveCardSnapshot = useCallback((cardType, cardData) => {
-    const archivedPosition = cardData?.id && cardPositions[cardData.id] ? { ...cardPositions[cardData.id] } : null
-    setArchivedCards(current => [...current, { id: `${cardType}-${Date.now()}`, type: cardType, archivedAt: Date.now(), data: cardData, position: archivedPosition }])
-  }, [cardPositions])
+    const archivedPosition = cardData?.id && cardPositionsRef.current[cardData.id] ? { ...cardPositionsRef.current[cardData.id] } : null
+    setArchivedCards(current => [...current, { id: createId(cardType), type: cardType, archivedAt: Date.now(), data: cardData, position: archivedPosition }])
+  }, [])
 
   // Card Collections
   const labelCol = useCardCollection({
@@ -121,7 +167,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     removeCardPosition,
     setCardPositions,
     setDraggingCard,
-    onDuplicate: (source, dupData) => ({ ...source, id: dupData.id })
+    onDuplicate: duplicateWithSameData
   })
 
   const singleNoteCol = useCardCollection({
@@ -132,7 +178,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     removeCardPosition,
     setCardPositions,
     setDraggingCard,
-    onDuplicate: (source, dupData) => ({ ...source, id: dupData.id })
+    onDuplicate: duplicateWithSameData
   })
 
   const colCol = useCardCollection({
@@ -143,17 +189,17 @@ export function useWorkspace(workspaceId, workspaceRef) {
     removeCardPosition,
     setCardPositions,
     setDraggingCard,
-    onDuplicate: (source, dupData, dupId) => {
+    onDuplicate: useCallback((source, dupData, dupId) => {
       setDrafts(d => ({ ...d, [dupId]: d[source.id] || '' }))
       return {
         ...dupData,
         items: source.items.map((i, idx) => ({ ...i, id: `${dupId}-item-${idx}-${Date.now()}` }))
       }
-    },
-    onDelete: (id) => {
+    }, [setDrafts]),
+    onDelete: useCallback((id) => {
       clearCardDraft(id)
       setDragState(d => d.columnId === id ? { columnId: null, itemId: null } : d)
-    }
+    }, [clearCardDraft])
   })
 
   const noteCol = useCardCollection({
@@ -282,9 +328,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const quotes = quoteCol.items
   const setQuotes = quoteCol.setItems
 
-  // Refs that always hold current state for snapshot capture
-  const stateRefsForSnapshot = useRef({})
-
+  // Keep the snapshot ref populated after every committed render
   useEffect(() => {
     stateRefsForSnapshot.current = {
       columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
@@ -292,30 +336,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
     }
   }, [columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
       stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions])
-
-  const captureSnapshot = useCallback(() => {
-    const s = stateRefsForSnapshot.current
-    return {
-      columns: s.columns,
-      drafts: s.drafts,
-      viewport: s.viewport,
-      themeMode: s.themeMode,
-      themePalette: s.themePalette,
-      notes: s.notes,
-      timers: s.timers,
-      counters: s.counters,
-      stopwatches: s.stopwatches,
-      calendars: s.calendars,
-      habits: s.habits,
-      pictures: s.pictures,
-      quickLinks: s.quickLinks,
-      quotes: s.quotes,
-      archivedCards: s.archivedCards,
-      customLabels: s.customLabels,
-      singleNotes: s.singleNotes,
-      cardPositions: s.cardPositions,
-    }
-  }, [])
 
   const restoreSnapshot = useCallback((snapshot) => {
     setColumns(snapshot.columns)
@@ -338,10 +358,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setCardPositions(snapshot.cardPositions)
   }, [setColumns, setDrafts, setViewport, setThemeMode, setThemePalette, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setSingleNotes, setCardPositions])
 
-  function saveSnapshot() {
-    pushSnapshot(captureSnapshot())
-  }
-
   const handleUndo = useCallback(() => {
     const snapshot = undo(captureSnapshot())
     if (snapshot) {
@@ -361,6 +377,16 @@ export function useWorkspace(workspaceId, workspaceRef) {
       showToast('Nothing to redo')
     }
   }, [redo, captureSnapshot, restoreSnapshot, showToast])
+
+  // Apply a parsed workspace backup (see parseWorkspaceBackup) directly to
+  // React state. Replaces the old write-to-storage-then-reload flow: no page
+  // reload, no sessionStorage sentinel, and the previous state is pushed onto
+  // the undo stack so an import can be undone.
+  const importWorkspaceState = useCallback((sanitizedWorkspace) => {
+    saveSnapshot()
+    restoreSnapshot(sanitizedWorkspace)
+    showToast('Workspace imported')
+  }, [saveSnapshot, restoreSnapshot, showToast])
 
   const activePalette = THEME_PALETTES[themePalette] || THEME_PALETTES.sage || THEME_COLORS
   const theme = activePalette[themeMode] || activePalette.night || THEME_COLORS[themeMode]
@@ -398,16 +424,37 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
   const workspaceStorageKey = `${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`
 
+  // Cross-tab coordination. State is whole-workspace JSON in localStorage, so
+  // without coordination the last tab to write would silently clobber
+  // everything the other tab did. We track the last payload we wrote and the
+  // last payload received from another tab to keep tabs in sync without
+  // ping-ponging identical data back and forth.
+  const lastWrittenValueRef = useRef(null)
+  const lastRemoteValueRef = useRef(null)
+
+  const saveWorkspaceState = useCallback(() => {
+    const snapshot = captureSnapshot()
+    const serialized = JSON.stringify(snapshot)
+    if (serialized === lastRemoteValueRef.current) {
+      // Our state is identical to what another tab just sent us — writing it
+      // back would only echo the same storage event between tabs forever.
+      lastRemoteValueRef.current = null
+      return
+    }
+    writeJsonStorage(workspaceStorageKey, snapshot)
+    lastWrittenValueRef.current = serialized
+  }, [captureSnapshot, workspaceStorageKey])
+
   useEffect(() => {
     if (isPanning || draggingCard) return undefined
     let idleId = null
     const timerId = window.setTimeout(() => {
       if ('requestIdleCallback' in window) {
         idleId = window.requestIdleCallback(() => {
-          writeJsonStorage(workspaceStorageKey, captureSnapshot())
+          saveWorkspaceState()
         }, { timeout: 2000 })
       } else {
-        writeJsonStorage(workspaceStorageKey, captureSnapshot())
+        saveWorkspaceState()
       }
     }, 1000)
 
@@ -417,25 +464,12 @@ export function useWorkspace(workspaceId, workspaceRef) {
         window.cancelIdleCallback(idleId)
       }
     }
-  }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, themePalette, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, captureSnapshot])
+  }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, themePalette, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, captureSnapshot, saveWorkspaceState])
 
   // Ensure state is saved immediately on beforeunload or visibilitychange.
-  // IMPORTANT: if an import just wrote data to localStorage and is about to
-  // trigger a page reload, we must NOT overwrite that data with stale React
-  // state. The importWorkspace helper sets a sessionStorage sentinel for this.
-  useEffect(() => {
-    // Clear the import flag on mount so future saves are allowed
-    clearImportReloadFlag()
-  }, [])
-
   useEffect(() => {
     const handleSave = () => {
-      if (isImportReload()) {
-        // An import wrote fresh data and is reloading — skip the autosave so
-        // we don't clobber the import.
-        return
-      }
-      writeJsonStorage(workspaceStorageKey, captureSnapshot())
+      saveWorkspaceState()
     }
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') handleSave()
@@ -446,7 +480,27 @@ export function useWorkspace(workspaceId, workspaceRef) {
       window.removeEventListener('beforeunload', handleSave)
       window.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [workspaceStorageKey, captureSnapshot])
+  }, [saveWorkspaceState])
+
+  // Multi-tab safety net: when another tab saves this same workspace, apply
+  // its state here so both tabs stay current instead of overwriting each
+  // other's work.
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key !== workspaceStorageKey || e.newValue === null) return
+      if (e.newValue === lastWrittenValueRef.current) return // our own write reflected back
+      try {
+        const incoming = JSON.parse(e.newValue)
+        restoreSnapshot(validateWorkspaceState(incoming))
+        lastRemoteValueRef.current = e.newValue
+        showToast('Synced changes from another tab')
+      } catch {
+        // Ignore malformed payloads from other tabs.
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [workspaceStorageKey, restoreSnapshot, showToast])
 
   useEffect(() => {
     const currentCardIds = new Set(renderedCardIds)
@@ -577,9 +631,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
   // Stable handleCardPointerDown via ref — never creates new function reference,
   // so it won't defeat React.memo on card components
-  const cardPositionsRef = useRef(cardPositions)
-  useEffect(() => { cardPositionsRef.current = cardPositions }, [cardPositions])
-
   const handleCardPointerDown = useCallback((cardId, e) => {
     if (window.innerWidth <= 1200) return
     if (e.button !== 0 && e.pointerType === 'mouse') return
@@ -628,11 +679,21 @@ export function useWorkspace(workspaceId, workspaceRef) {
     return () => window.removeEventListener('keydown', handleEscape)
   }, [isFocusMode])
 
-  // Ctrl+Z / Ctrl+Shift+Z keyboard listener
+  // Ctrl+Z / Ctrl+Shift+Z keyboard listener.
+  // Never hijack undo while the user is typing — native text undo must keep
+  // working inside inputs, textareas, and contenteditable elements.
   useEffect(() => {
     const handleKeyDown = (e) => {
       const isCtrl = e.ctrlKey || e.metaKey
       if (!isCtrl || e.key.toLowerCase() !== 'z') return
+      const active = document.activeElement
+      const tag = active?.tagName?.toLowerCase()
+      const isEditable =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        active?.isContentEditable
+      if (isEditable) return
       e.preventDefault()
       if (e.shiftKey) {
         handleRedo()
@@ -675,8 +736,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
       showToast(`Image too large (${(blob.size / 1024 / 1024).toFixed(1)}MB). Max 5MB.`)
       return
     }
-    const id = `picture-${Date.now()}`
-    const imageId = `img-paste-${Date.now()}`
+    const id = createId('picture')
+    const imageId = createId('img-paste')
     try {
       await saveImage(imageId, blob)
     } catch {
@@ -696,7 +757,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
   const handlePasteText = useCallback((text) => {
     if (!text || text.trim().length === 0) return
-    const id = `quote-${Date.now()}`
+    const id = createId('quote')
     setQuotes(p => [...p, { id, text, author: '', title: '', color: null, minimized: false }])
     setCardPositions(p => ({
       ...p,
@@ -720,7 +781,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
       const items = e.clipboardData?.items
       if (!items) return
-
       let hasImage = false
       for (const item of items) {
         if (item.type.startsWith('image/')) {
@@ -749,6 +809,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const addItem = useCallback((columnId) => {
     const text = stateRefsForSnapshot.current.drafts[columnId]?.trim()
     if (!text) return
+    saveSnapshot('todo-items')
     setColumns((currentColumns) => currentColumns.map((column) => {
       if (column.id !== columnId) return column
       return {
@@ -757,11 +818,12 @@ export function useWorkspace(workspaceId, workspaceRef) {
       }
     }))
     setDrafts((currentDrafts) => ({ ...currentDrafts, [columnId]: '' }))
-  }, [setColumns])
+  }, [setColumns, saveSnapshot])
 
   const deleteItem = useCallback((columnId, itemId) => {
+    saveSnapshot('todo-items')
     setColumns(current => current.map(col => col.id === columnId ? { ...col, items: col.items.filter(i => i.id !== itemId) } : col))
-  }, [setColumns])
+  }, [setColumns, saveSnapshot])
 
   const getRestorePosition = (cardType, archivedPosition) => {
     if (archivedPosition && Number.isFinite(archivedPosition.x) && Number.isFinite(archivedPosition.y)) return { x: archivedPosition.x + 24, y: archivedPosition.y + 24 }
@@ -786,52 +848,52 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
     const archivedData = archivedEntry.data || {}
     const restoredPosition = getRestorePosition(archivedEntry.type, archivedEntry.position)
-    const uniqueSeed = `${Date.now()}-${Math.floor(Math.random() * 1000)}`
     let restoredCardId = null
 
     if (archivedEntry.type === 'label') {
-      restoredCardId = `label-${uniqueSeed}`
+      restoredCardId = createId('label')
       setCustomLabels(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || 'LABEL', role: archivedData.role || 'routine' }])
     } else if (archivedEntry.type === 'singlenote') {
-      restoredCardId = `singlenote-${uniqueSeed}`
+      restoredCardId = createId('singlenote')
       setSingleNotes(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || 'Single Note' }])
     } else if (archivedEntry.type === 'todo') {
-      restoredCardId = `col-${uniqueSeed}`
+      restoredCardId = createId('col')
       const restoredItems = (archivedData.items || []).map((item, index) => ({ ...item, id: `${restoredCardId}-item-${index}-${Date.now()}` }))
       setColumns(current => [...current, { ...archivedData, id: restoredCardId, tone: archivedData.tone || 'charcoal', positionClass: '', title: archivedData.title || '', color: archivedData.color || null, minimized: false, items: restoredItems }])
       setDrafts(current => ({ ...current, [restoredCardId]: '' }))
     } else if (archivedEntry.type === 'note') {
-      restoredCardId = `note-${uniqueSeed}`
+      restoredCardId = createId('note')
       setNotes(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || '', title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'timer') {
-      restoredCardId = `timer-${uniqueSeed}`
+      restoredCardId = createId('timer')
       const initialSeconds = Number.isFinite(archivedData.initialSeconds) ? archivedData.initialSeconds : 2700
       const remainingSeconds = Number.isFinite(archivedData.remainingSeconds) ? archivedData.remainingSeconds : initialSeconds
       setTimers(current => [...current, { ...archivedData, id: restoredCardId, initialSeconds, remainingSeconds, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'counter') {
-      restoredCardId = `counter-${uniqueSeed}`
+      restoredCardId = createId('counter')
       setCounters(current => [...current, { ...archivedData, id: restoredCardId, initialValue: Number.isFinite(archivedData.initialValue) ? archivedData.initialValue : 0, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'stopwatch') {
-      restoredCardId = `stopwatch-${uniqueSeed}`
+      restoredCardId = createId('stopwatch')
       const initialSeconds = Number.isFinite(archivedData.initialSeconds) ? archivedData.initialSeconds : 0
       const elapsedSeconds = Number.isFinite(archivedData.elapsedSeconds) ? archivedData.elapsedSeconds : initialSeconds
       setStopwatches(current => [...current, { ...archivedData, id: restoredCardId, initialSeconds, elapsedSeconds, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'calendar') {
-      restoredCardId = `calendar-${uniqueSeed}`
+      restoredCardId = createId('calendar')
       const now = new Date()
       setCalendars(current => [...current, { ...archivedData, id: restoredCardId, year: Number.isFinite(archivedData.year) ? archivedData.year : now.getFullYear(), month: Number.isFinite(archivedData.month) ? archivedData.month : now.getMonth(), selectedDate: null, entries: { ...(archivedData.entries || {}) }, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'habit') {
-      restoredCardId = `habit-${uniqueSeed}`
+      restoredCardId = createId('habit')
       const now = new Date()
       setHabits(current => [...current, { ...archivedData, id: restoredCardId, icon: normalizeHabitIconId(archivedData.icon), year: Number.isFinite(archivedData.year) ? archivedData.year : now.getFullYear(), month: Number.isFinite(archivedData.month) ? archivedData.month : now.getMonth(), view: 'summary', completions: { ...(archivedData.completions || {}) }, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'picture') {
-      restoredCardId = `picture-${uniqueSeed}`
+      restoredCardId = createId('picture')
       setPictures(current => [...current, { ...archivedData, id: restoredCardId, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'quick-links') {
-      restoredCardId = `quick-links-${uniqueSeed}`
-      setQuickLinks(current => [...current, { ...archivedData, id: restoredCardId, links: archivedData.links || [], title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      restoredCardId = createId('quick-links')
+      const restoredLinks = (archivedData.links || []).map((link) => ({ ...link, url: sanitizeUrl(link?.url) || '' }))
+      setQuickLinks(current => [...current, { ...archivedData, id: restoredCardId, links: restoredLinks, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'quote') {
-      restoredCardId = `quote-${uniqueSeed}`
+      restoredCardId = createId('quote')
       setQuotes(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || '', author: archivedData.author || '', title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     }
 
@@ -847,7 +909,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [])
 
   // Labels
-  const updateLabelText = useCallback((id, text) => labelCol.update(id, { text: text.toUpperCase() }), [labelCol])
+  const updateLabelText = useCallback((id, text) => {
+    saveSnapshot('label-text')
+    labelCol.update(id, { text: text.toUpperCase() })
+  }, [labelCol, saveSnapshot])
   const updateLabelColor = useCallback((id, color) => labelCol.update(id, { customColor: color }), [labelCol])
   const updateLabelFontSize = useCallback((id, fontSize) => labelCol.update(id, { fontSize }), [labelCol])
   const toggleLabelMinimize = labelCol.toggleMinimize
@@ -856,7 +921,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const deleteLabelCard = labelCol.remove
 
   // Single Notes
-  const updateSingleNoteText = useCallback((id, text) => singleNoteCol.update(id, { text }), [singleNoteCol])
+  const updateSingleNoteText = useCallback((id, text) => {
+    saveSnapshot('singlenote-text')
+    singleNoteCol.update(id, { text })
+  }, [singleNoteCol, saveSnapshot])
   const updateSingleNoteColor = useCallback((id, color) => singleNoteCol.update(id, { color }), [singleNoteCol])
   const updateSingleNoteFontSize = useCallback((id, fontSize) => singleNoteCol.update(id, { fontSize }), [singleNoteCol])
   const updateSingleNoteShape = useCallback((id, shape) => singleNoteCol.update(id, { shape }), [singleNoteCol])
@@ -866,67 +934,99 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const deleteSingleNoteCard = singleNoteCol.remove
 
   // Todos (Columns)
-  const updateTodoCardTitle = colCol.updateTitle
+  const updateTodoCardTitle = useCallback((id, title) => {
+    saveSnapshot('todo-title')
+    colCol.updateTitle(id, title)
+  }, [colCol, saveSnapshot])
   const updateTodoCardColor = colCol.updateColor
   const toggleTodoCardMinimize = colCol.toggleMinimize
   const updateItemDetails = useCallback((colId, itemId, details) => {
+    saveSnapshot('todo-items')
     colCol.update(colId, (c) => ({
       items: c.items.map(i => i.id === itemId ? { ...i, ...details } : i)
     }))
-  }, [colCol])
+  }, [colCol, saveSnapshot])
   const updateItemText = useCallback((colId, itemId, text) => {
+    saveSnapshot('todo-items')
     colCol.update(colId, (c) => ({
       items: c.items.map(i => i.id === itemId ? { ...i, text } : i)
     }))
-  }, [colCol])
+  }, [colCol, saveSnapshot])
   const updateTodoCardFontSize = useCallback((id, fontSize) => colCol.update(id, { fontSize }), [colCol])
   const duplicateTodoCard = colCol.duplicate
   const archiveTodoCard = colCol.archive
   const deleteTodoCard = colCol.remove
 
   // Notes
-  const updateNoteTitle = noteCol.updateTitle
+  const updateNoteTitle = useCallback((id, title) => {
+    saveSnapshot('note-title')
+    noteCol.updateTitle(id, title)
+  }, [noteCol, saveSnapshot])
   const updateNoteColor = noteCol.updateColor
   const toggleNoteMinimize = noteCol.toggleMinimize
   const duplicateNoteCard = noteCol.duplicate
   const archiveNoteCard = noteCol.archive
   const deleteNoteCard = noteCol.remove
-  const updateNoteText = useCallback((id, text) => noteCol.update(id, { text }), [noteCol])
+  const updateNoteText = useCallback((id, text) => {
+    saveSnapshot('note-text')
+    noteCol.update(id, { text })
+  }, [noteCol, saveSnapshot])
   const updateNoteDimensions = useCallback((id, width, height) => noteCol.update(id, { width, height }), [noteCol])
   const updateNoteFontSize = useCallback((id, fontSize) => noteCol.update(id, { fontSize }), [noteCol])
 
   // Timers
-  const updateTimerTitle = timerCol.updateTitle
+  const updateTimerTitle = useCallback((id, title) => {
+    saveSnapshot('timer-title')
+    timerCol.updateTitle(id, title)
+  }, [timerCol, saveSnapshot])
   const updateTimerColor = timerCol.updateColor
   const toggleTimerMinimize = timerCol.toggleMinimize
   const duplicateTimerCard = timerCol.duplicate
   const archiveTimerCard = timerCol.archive
   const deleteTimerCard = timerCol.remove
-  const updateTimerState = useCallback((id, patch) => timerCol.update(id, patch), [timerCol])
+  const updateTimerState = useCallback((id, patch) => {
+    saveSnapshot('timer-state')
+    timerCol.update(id, patch)
+  }, [timerCol, saveSnapshot])
   const updateTimerFontSize = useCallback((id, fontSize) => timerCol.update(id, { fontSize }), [timerCol])
 
   // Counters
-  const updateCounterTitle = counterCol.updateTitle
+  const updateCounterTitle = useCallback((id, title) => {
+    saveSnapshot('counter-title')
+    counterCol.updateTitle(id, title)
+  }, [counterCol, saveSnapshot])
   const updateCounterColor = counterCol.updateColor
   const toggleCounterMinimize = counterCol.toggleMinimize
   const duplicateCounterCard = counterCol.duplicate
   const archiveCounterCard = counterCol.archive
   const deleteCounterCard = counterCol.remove
-  const updateCounterValue = useCallback((id, v) => counterCol.update(id, { initialValue: v }), [counterCol])
+  const updateCounterValue = useCallback((id, v) => {
+    saveSnapshot('counter-value')
+    counterCol.update(id, { initialValue: v })
+  }, [counterCol, saveSnapshot])
   const updateCounterFontSize = useCallback((id, fontSize) => counterCol.update(id, { fontSize }), [counterCol])
 
   // Stopwatches
-  const updateStopwatchTitle = stopwatchCol.updateTitle
+  const updateStopwatchTitle = useCallback((id, title) => {
+    saveSnapshot('stopwatch-title')
+    stopwatchCol.updateTitle(id, title)
+  }, [stopwatchCol, saveSnapshot])
   const updateStopwatchColor = stopwatchCol.updateColor
   const toggleStopwatchMinimize = stopwatchCol.toggleMinimize
   const duplicateStopwatchCard = stopwatchCol.duplicate
   const archiveStopwatchCard = stopwatchCol.archive
   const deleteStopwatchCard = stopwatchCol.remove
-  const updateStopwatchState = useCallback((id, patch) => stopwatchCol.update(id, patch), [stopwatchCol])
+  const updateStopwatchState = useCallback((id, patch) => {
+    saveSnapshot('stopwatch-state')
+    stopwatchCol.update(id, patch)
+  }, [stopwatchCol, saveSnapshot])
   const updateStopwatchFontSize = useCallback((id, fontSize) => stopwatchCol.update(id, { fontSize }), [stopwatchCol])
 
   // Calendars
-  const updateCalendarTitle = calendarCol.updateTitle
+  const updateCalendarTitle = useCallback((id, title) => {
+    saveSnapshot('calendar-title')
+    calendarCol.updateTitle(id, title)
+  }, [calendarCol, saveSnapshot])
   const updateCalendarColor = calendarCol.updateColor
   const toggleCalendarMinimize = calendarCol.toggleMinimize
   const duplicateCalendarCard = calendarCol.duplicate
@@ -939,17 +1039,21 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const openCalendarDay = useCallback((id, dateKey) => calendarCol.update(id, { selectedDate: dateKey }), [calendarCol])
   const closeCalendarDay = useCallback((id) => calendarCol.update(id, { selectedDate: null }), [calendarCol])
   const updateCalendarEntry = useCallback((id, dateKey, value) => {
+    saveSnapshot('calendar-entry')
     calendarCol.update(id, (c) => {
       const nextEnt = { ...c.entries }
       if (!value.trim()) delete nextEnt[dateKey]
       else nextEnt[dateKey] = value
       return { entries: nextEnt }
     })
-  }, [calendarCol])
+  }, [calendarCol, saveSnapshot])
   const updateCalendarFontSize = useCallback((id, fontSize) => calendarCol.update(id, { fontSize }), [calendarCol])
 
   // Habits
-  const updateHabitTitle = habitCol.updateTitle
+  const updateHabitTitle = useCallback((id, title) => {
+    saveSnapshot('habit-title')
+    habitCol.updateTitle(id, title)
+  }, [habitCol, saveSnapshot])
   const updateHabitColor = habitCol.updateColor
   const toggleHabitMinimize = habitCol.toggleMinimize
   const duplicateHabitCard = habitCol.duplicate
@@ -962,6 +1066,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     return { year: shifted.getFullYear(), month: shifted.getMonth() }
   }), [habitCol])
   const toggleHabitDate = useCallback((id, dateKey) => {
+    saveSnapshot('habit-date')
     habitCol.update(id, (h) => {
       const parsedDate = parseDateKey(dateKey)
       if (!parsedDate) return {}
@@ -974,7 +1079,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       else nextComp[dateKey] = true
       return { completions: nextComp }
     })
-  }, [habitCol])
+  }, [habitCol, saveSnapshot])
   const updateHabitFontSize = useCallback((id, fontSize) => habitCol.update(id, { fontSize }), [habitCol])
 
   // Pictures
@@ -988,69 +1093,88 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const updatePictureFitMode = useCallback((id, fitMode) => picCol.update(id, { fitMode }), [picCol])
   const updatePictureFontSize = useCallback((id, fontSize) => picCol.update(id, { fontSize }), [picCol])
   const deletePictureCard = useCallback((id) => {
-    let imageIdToDelete = null;
-    picCol.setItems(prev => {
-      const card = prev.find(t => t.id === id);
-      if (card?.imageId) {
-        // Check if other active picture cards share this imageId
-        const isReferencedByActive = prev.some(c => c.id !== id && c.imageId === card.imageId);
+    // Compute from current state directly — never run side effects inside a
+    // setItems updater (React may defer or re-run updaters, which made the
+    // IndexedDB blob deletion unreliable).
+    const card = picCol.items.find(t => t.id === id)
+    const isReferencedByActive = card?.imageId
+      ? picCol.items.some(c => c.id !== id && c.imageId === card.imageId)
+      : false
+    const isReferencedByArchived = card?.imageId
+      ? archivedCards.some(a => a.type === 'picture' && a.data?.imageId === card.imageId)
+      : false
 
-        // Check if other archived cards share this imageId
-        const isReferencedByArchived = archivedCards.some(a => a.type === 'picture' && a.data?.imageId === card.imageId);
+    picCol.remove(id)
 
-        if (!isReferencedByActive && !isReferencedByArchived) {
-          imageIdToDelete = card.imageId;
-        }
-      }
-      return prev;
-    });
-    picCol.remove(id);
-    if (imageIdToDelete) {
-      deleteImageBlob(imageIdToDelete).catch(() => {});
+    if (card?.imageId && !isReferencedByActive && !isReferencedByArchived) {
+      deleteImageBlob(card.imageId).catch(() => {})
     }
   }, [picCol, archivedCards])
 
   // Quick Links
-  const updateQuickLinksTitle = qlCol.updateTitle
+  const updateQuickLinksTitle = useCallback((id, title) => {
+    saveSnapshot('quicklinks-title')
+    qlCol.updateTitle(id, title)
+  }, [qlCol, saveSnapshot])
   const updateQuickLinksColor = qlCol.updateColor
   const toggleQuickLinksMinimize = qlCol.toggleMinimize
   const duplicateQuickLinksCard = qlCol.duplicate
   const archiveQuickLinksCard = qlCol.archive
   const deleteQuickLinksCard = qlCol.remove
+  // Store-boundary URL validation: the form validates too, but data can also
+  // arrive from imports/undo/restore — never trust it blindly (XSS via
+  // javascript: hrefs).
   const addQuickLinkItem = useCallback((id, url, label) => {
+    const safeUrl = sanitizeUrl(url)
+    if (!safeUrl) return
+    saveSnapshot('quick-links')
     qlCol.update(id, (t) => ({
-      links: [...(t.links || []), { id: `ql-item-${Date.now()}-${Math.floor(Math.random()*1000)}`, url, label }]
+      links: [...(t.links || []), { id: createId('ql-item'), url: safeUrl, label }]
     }))
-  }, [qlCol])
+  }, [qlCol, saveSnapshot])
   const updateQuickLinkItem = useCallback((id, itemId, url, label) => {
+    const safeUrl = sanitizeUrl(url)
+    if (!safeUrl) return
+    saveSnapshot('quick-links')
     qlCol.update(id, (t) => ({
-      links: (t.links || []).map(l => l.id === itemId ? { ...l, url, label } : l)
+      links: (t.links || []).map(l => l.id === itemId ? { ...l, url: safeUrl, label } : l)
     }))
-  }, [qlCol])
+  }, [qlCol, saveSnapshot])
   const removeQuickLinkItem = useCallback((id, itemId) => {
+    saveSnapshot('quick-links')
     qlCol.update(id, (t) => ({
       links: (t.links || []).filter(l => l.id !== itemId)
     }))
-  }, [qlCol])
+  }, [qlCol, saveSnapshot])
   const reorderQuickLinkItems = useCallback((id, sourceIndex, destIndex) => {
+    saveSnapshot('quick-links')
     qlCol.update(id, (t) => {
       const links = [...(t.links || [])]
       const [removed] = links.splice(sourceIndex, 1)
       links.splice(destIndex, 0, removed)
       return { links }
     })
-  }, [qlCol])
+  }, [qlCol, saveSnapshot])
   const updateQuickLinksFontSize = useCallback((id, fontSize) => qlCol.update(id, { fontSize }), [qlCol])
 
   // Quotes
-  const updateQuoteTitle = quoteCol.updateTitle
+  const updateQuoteTitle = useCallback((id, title) => {
+    saveSnapshot('quote-title')
+    quoteCol.updateTitle(id, title)
+  }, [quoteCol, saveSnapshot])
   const updateQuoteColor = quoteCol.updateColor
   const toggleQuoteMinimize = quoteCol.toggleMinimize
   const duplicateQuoteCard = quoteCol.duplicate
   const archiveQuoteCard = quoteCol.archive
   const deleteQuoteCard = quoteCol.remove
-  const updateQuoteText = useCallback((id, text) => quoteCol.update(id, { text }), [quoteCol])
-  const updateQuoteAuthor = useCallback((id, author) => quoteCol.update(id, { author }), [quoteCol])
+  const updateQuoteText = useCallback((id, text) => {
+    saveSnapshot('quote-text')
+    quoteCol.update(id, { text })
+  }, [quoteCol, saveSnapshot])
+  const updateQuoteAuthor = useCallback((id, author) => {
+    saveSnapshot('quote-author')
+    quoteCol.update(id, { author })
+  }, [quoteCol, saveSnapshot])
   const updateQuoteDimensions = useCallback((id, width, height) => quoteCol.update(id, { width, height }), [quoteCol])
   const updateQuoteFontSize = useCallback((id, fontSize) => quoteCol.update(id, { fontSize }), [quoteCol])
 
@@ -1074,6 +1198,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     event.preventDefault(); event.stopPropagation()
     const payload = readDragPayload(event)
     if (!payload || (payload.columnId === columnId && payload.itemId === targetItemId)) return
+    saveSnapshot('todo-items')
 
     setColumns((currentColumns) => {
       if (payload.columnId === columnId) {
@@ -1095,12 +1220,13 @@ export function useWorkspace(workspaceId, workspaceRef) {
       })
     })
     setDragState({ columnId: null, itemId: null })
-  }, [setColumns])
+  }, [setColumns, saveSnapshot])
 
   const handleDropOnList = useCallback((columnId, event) => {
     event.preventDefault()
     const payload = readDragPayload(event)
     if (!payload) return
+    saveSnapshot('todo-items')
 
     setColumns((currentColumns) => {
       if (payload.columnId !== columnId) {
@@ -1123,7 +1249,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       })
     })
     setDragState({ columnId: null, itemId: null })
-  }, [setColumns])
+  }, [setColumns, saveSnapshot])
 
   const handleWheel = useCallback((event) => {
     event.preventDefault()
@@ -1245,14 +1371,14 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [workspaceRef, cardPositions])
 
   const handleAddLabel = useCallback((pos) => {
-    const id = `label-${Date.now()}`; const roles = ['routine', 'programming', 'english']
+    const id = createId('label'); const roles = ['routine', 'programming', 'english']
     setCustomLabels(p => [...p, { id, text: '', role: roles[Math.floor(Math.random() * roles.length)] }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setCustomLabels, saveSnapshot, setCardPositions])
 
   const handleAddSingleNote = useCallback((pos) => {
-    const id = `singlenote-${Date.now()}`
+    const id = createId('singlenote')
     const vx = viewport.x / viewport.scale; const vy = viewport.y / viewport.scale
     setCardPositions((prev) => ({ ...prev, [id]: pos || { x: 450 - vx, y: 350 - vy } }))
     setSingleNotes(prev => [...prev, { id, text: 'Single Note', shape: 'rectangle' }])
@@ -1260,14 +1386,14 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [setSingleNotes, saveSnapshot, setCardPositions, viewport])
 
   const handleAddNote = useCallback((pos) => {
-    const id = `note-${Date.now()}`
+    const id = createId('note')
     setNotes(p => [...p, { id, text: '', title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 350 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setNotes, saveSnapshot, setCardPositions])
 
   const handleAddTodoList = useCallback((pos) => {
-    const id = `col-${Date.now()}`; const tones = ['charcoal', 'gold', 'violet', 'red', 'blue']
+    const id = createId('col'); const tones = ['charcoal', 'gold', 'violet', 'red', 'blue']
     setColumns(p => [...p, { id, tone: tones[Math.floor(Math.random() * tones.length)], positionClass: '', items: [], title: '', color: null, minimized: false }])
     setDrafts(p => ({ ...p, [id]: '' }))
     setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 200 - (viewport.y / viewport.scale) } }))
@@ -1275,53 +1401,53 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [viewport, setColumns, saveSnapshot, setCardPositions, setDrafts])
 
   const handleAddTimer = useCallback((pos) => {
-    const id = `timer-${Date.now()}`; setTimers(p => [...p, { id, initialSeconds: 2700, remainingSeconds: 2700, title: '', color: null, minimized: false }])
+    const id = createId('timer'); setTimers(p => [...p, { id, initialSeconds: 2700, remainingSeconds: 2700, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 600 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setTimers, saveSnapshot, setCardPositions])
 
   const handleAddCounter = useCallback((pos) => {
-    const id = `counter-${Date.now()}`; setCounters(p => [...p, { id, initialValue: 0, title: '', color: null, minimized: false }])
+    const id = createId('counter'); setCounters(p => [...p, { id, initialValue: 0, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 960 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setCounters, saveSnapshot, setCardPositions])
 
   const handleAddStopwatch = useCallback((pos) => {
-    const id = `stopwatch-${Date.now()}`; setStopwatches(p => [...p, { id, initialSeconds: 0, elapsedSeconds: 0, title: '', color: null, minimized: false }])
+    const id = createId('stopwatch'); setStopwatches(p => [...p, { id, initialSeconds: 0, elapsedSeconds: 0, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1240 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setStopwatches, saveSnapshot, setCardPositions])
 
   const handleAddCalendar = useCallback((pos) => {
-    const id = `calendar-${Date.now()}`; const now = new Date()
+    const id = createId('calendar'); const now = new Date()
     setCalendars(p => [...p, { id, year: now.getFullYear(), month: now.getMonth(), selectedDate: null, entries: {}, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1500 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setCalendars, saveSnapshot, setCardPositions])
 
   const handleAddHabit = useCallback((pos) => {
-    const id = `habit-${Date.now()}`; const now = new Date()
+    const id = createId('habit'); const now = new Date()
     setHabits(p => [...p, { id, icon: HABIT_ICON_OPTIONS[0].id, year: now.getFullYear(), month: now.getMonth(), view: 'summary', completions: {}, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1700 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setHabits, saveSnapshot, setCardPositions])
 
   const handleAddPicture = useCallback((pos) => {
-    const id = `picture-${Date.now()}`
+    const id = createId('picture')
     setPictures(p => [...p, { id, imageId: null, title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 500 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setPictures, saveSnapshot, setCardPositions])
 
   const handleAddQuickLinks = useCallback((pos) => {
-    const id = `quick-links-${Date.now()}`
+    const id = createId('quick-links')
     setQuickLinks(p => [...p, { id, links: [], title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 1000 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
   }, [viewport, setQuickLinks, saveSnapshot, setCardPositions])
 
   const handleAddQuote = useCallback((pos) => {
-    const id = `quote-${Date.now()}`
+    const id = createId('quote')
     setQuotes(p => [...p, { id, text: '', author: '', title: '', color: null, minimized: false }])
     setCardPositions(p => ({ ...p, [id]: pos || { x: 450 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
     saveSnapshot()
@@ -1535,7 +1661,13 @@ export function useWorkspace(workspaceId, workspaceRef) {
       if (Array.isArray(rawWorkspace.quickLinks)) {
         rawWorkspace.quickLinks.forEach((ql, idx) => {
           const { card } = processCard(ql, idx, 900, 300)
-          importedQuickLinks.push({ ...card, links: card.links || [], title: card.title || '', minimized: false })
+          // Imported files are untrusted — strip dangerous URL schemes here so
+          // a shared backup can't inject javascript: links.
+          const safeLinks = (Array.isArray(card.links) ? card.links : []).map((link) => ({
+            ...link,
+            url: sanitizeUrl(link?.url) || '',
+          }))
+          importedQuickLinks.push({ ...card, links: safeLinks, title: card.title || '', minimized: false })
         })
       }
 
@@ -1593,6 +1725,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       handleCardPointerDown, handleWheel, startPanning, movePanning, endPanning, handleMiddleClick,
       handleQuickAction, focusLabelCard, restoreArchivedCard, moveCardToTarget,
       handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,
+      importWorkspaceState,
       updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, updateTodoCardFontSize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,
       updateLabelText, updateLabelColor, toggleLabelMinimize, updateLabelFontSize, duplicateLabelCard, archiveLabelCard, deleteLabelCard,
       updateSingleNoteText, updateSingleNoteColor, updateSingleNoteFontSize, updateSingleNoteShape, toggleSingleNoteMinimize, duplicateSingleNoteCard, archiveSingleNoteCard, deleteSingleNoteCard,

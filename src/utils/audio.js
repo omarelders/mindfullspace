@@ -34,10 +34,10 @@ export function fireNotification(title, body) {
   try {
     if (!('Notification' in window)) return
     if (Notification.permission === 'granted') {
-      new Notification(title, { body, icon: '/icon-192.png', silent: true })
+      new Notification(title, { body, icon: '/icons/icon-192.png', silent: true })
     } else if (Notification.permission !== 'denied') {
       Notification.requestPermission().then((perm) => {
-        if (perm === 'granted') new Notification(title, { body, icon: '/icon-192.png', silent: true })
+        if (perm === 'granted') new Notification(title, { body, icon: '/icons/icon-192.png', silent: true })
       })
     }
   } catch {}

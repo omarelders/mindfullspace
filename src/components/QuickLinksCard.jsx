@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, memo } from 'react'
 import { Plus, Trash2, Edit2, Check, X, GripVertical, Link2 } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
+import { sanitizeUrl } from '../utils/urlSafety'
 
 function getFaviconUrl(url) {
   try {
@@ -66,31 +67,19 @@ export const QuickLinksCard = memo(function QuickLinksCard({
     e.preventDefault()
     if (!formUrl.trim()) return
 
-    let finalUrl = formUrl.trim()
+    // Single source of truth for URL validation: rejects dangerous schemes
+    // (javascript:, data:, ...) and prepends https:// to bare domains.
+    const finalUrl = sanitizeUrl(formUrl)
+    if (!finalUrl) return
 
-    // Check if URL has a protocol
-    // Using URL parser to check for a protocol.
-    // If it throws, it doesn't have a valid protocol (like 'example.com'), so we prepend https://
-    let parsedUrl;
+    let parsedHostname = ''
     try {
-      parsedUrl = new URL(finalUrl)
-      // Check if it's a known dangerous protocol or just restrict to http/https
-      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-        // Specifically block dangerous protocols like javascript:
-        // We can just alert or return early. For simple UX, we will just reject.
-        return;
-      }
+      parsedHostname = new URL(finalUrl).hostname
     } catch {
-      // It doesn't have a protocol or is invalid, prepend https://
-      finalUrl = `https://${finalUrl}`
-      try {
-        parsedUrl = new URL(finalUrl)
-      } catch {
-        return; // Still invalid after prepending https://
-      }
+      return
     }
 
-    const finalLabel = formLabel.trim() || parsedUrl.hostname
+    const finalLabel = formLabel.trim() || parsedHostname
 
     if (isAdding) {
       onAddLink(quickLinkCard.id, finalUrl, finalLabel)
@@ -130,7 +119,9 @@ export const QuickLinksCard = memo(function QuickLinksCard({
     <section
       className={`floating-card quick-links-card ${quickLinkCard.color ? 'has-custom-color' : ''} ${isPopping ? 'is-popping' : ''}`}
       style={{
-        transform: `translate(${position?.x || 0}px, ${position?.y || 0}px)`,
+        left: position?.x,
+        top: position?.y,
+        margin: position ? 0 : undefined,
         ...cardStyle,
         ...fontStyle,
       }}
@@ -164,7 +155,20 @@ export const QuickLinksCard = memo(function QuickLinksCard({
           <ul className="quick-links-list">
             {(quickLinkCard.links || []).map((link, index) => {
               const isEditingThis = editingItemId === link.id
-              const faviconUrl = getFaviconUrl(link.url)
+              // Render-boundary validation: imported/legacy data may contain
+              // unsafe schemes, so the href is always re-checked here.
+              const safeUrl = sanitizeUrl(link.url)
+              const faviconUrl = safeUrl ? getFaviconUrl(safeUrl) : null
+              const linkContent = (
+                <>
+                  {faviconUrl ? (
+                    <img src={faviconUrl} alt="" className="ql-favicon" onError={(e) => e.target.style.display = 'none'} />
+                  ) : (
+                    <Link2 size={14} className="ql-favicon-fallback" />
+                  )}
+                  <span className="ql-label" style={fontStyle} title={link.url}>{link.label}</span>
+                </>
+              )
 
               if (isEditingThis) {
                 return (
@@ -205,15 +209,16 @@ export const QuickLinksCard = memo(function QuickLinksCard({
                   <div className="ql-drag-handle">
                     <GripVertical size={14} />
                   </div>
-                  
-                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="ql-link-content" onPointerDown={(e) => e.stopPropagation()}>
-                    {faviconUrl ? (
-                      <img src={faviconUrl} alt="" className="ql-favicon" onError={(e) => e.target.style.display = 'none'} />
-                    ) : (
-                      <Link2 size={14} className="ql-favicon-fallback" />
-                    )}
-                    <span className="ql-label" style={fontStyle} title={link.url}>{link.label}</span>
-                  </a>
+
+                  {safeUrl ? (
+                    <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="ql-link-content" onPointerDown={(e) => e.stopPropagation()}>
+                      {linkContent}
+                    </a>
+                  ) : (
+                    <span className="ql-link-content ql-link-invalid" title="Invalid or unsafe link" onPointerDown={(e) => e.stopPropagation()}>
+                      {linkContent}
+                    </span>
+                  )}
 
                   <div className="ql-item-actions">
                     <button type="button" onClick={() => handleStartEdit(link)} className="ql-action-btn" title="Edit">

@@ -27,13 +27,13 @@ export function HabitIcon({ iconId }) {
       return <Zap className="habit-icon-svg" aria-hidden="true" />
     case 'studying':
       return <GraduationCap className="habit-icon-svg" aria-hidden="true" />
-    case 'programming':
+    case 'coding':
       return <Code2 className="habit-icon-svg" aria-hidden="true" />
     case 'reading':
       return <BookOpen className="habit-icon-svg" aria-hidden="true" />
-    case 'exercise':
+    case 'workout':
       return <Dumbbell className="habit-icon-svg" aria-hidden="true" />
-    case 'water':
+    case 'hydration':
       return <Droplets className="habit-icon-svg" aria-hidden="true" />
     case 'meditation':
       return <Sparkles className="habit-icon-svg" aria-hidden="true" />

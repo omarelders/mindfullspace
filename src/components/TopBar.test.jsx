@@ -15,8 +15,6 @@ describe('TopBar', () => {
     onDuplicateWorkspace: vi.fn(),
     onDeleteWorkspace: vi.fn(),
     onCreateWorkspace: vi.fn(),
-    isWorkspaceMenuOpen: false,
-    setIsWorkspaceMenuOpen: vi.fn(),
     quickActions: [],
     onQuickAction: vi.fn(),
     labels: [{ id: 'l1', text: 'Work' }],
@@ -64,6 +62,33 @@ describe('TopBar', () => {
     fireEvent.click(classicBtn)
 
     expect(onSelectPalette).toHaveBeenCalledWith('classic')
+  })
+
+  it('opens the workspace menu and switches to another workspace', () => {
+    const onSwitchWorkspace = vi.fn()
+    render(
+      <TopBar
+        {...defaultProps}
+        allWorkspaces={[
+          { id: 'ws-1', name: 'Default Workspace' },
+          { id: 'ws-2', name: 'Deep Work' },
+        ]}
+        onSwitchWorkspace={onSwitchWorkspace}
+      />
+    )
+
+    // Workspace menu is closed initially
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    // Clicking the workspace selector opens the menu
+    fireEvent.click(screen.getByRole('button', { name: /workspace selector/i }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Deep Work')).toBeInTheDocument()
+
+    // Selecting the second workspace triggers the switch callback
+    const selectButtons = screen.getAllByLabelText('select workspace')
+    fireEvent.click(selectButtons[1])
+    expect(onSwitchWorkspace).toHaveBeenCalledWith('ws-2')
   })
 })
 

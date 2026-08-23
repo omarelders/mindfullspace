@@ -1,13 +1,14 @@
-import { 
-  APP_STORAGE_KEY, 
-  WORKSPACE_STORAGE_KEY_PREFIX, 
-  DEFAULT_WORKSPACES, 
-  INITIAL_COLUMNS, 
-  NOTE_TEXT, 
+import {
+  APP_STORAGE_KEY,
+  WORKSPACE_STORAGE_KEY_PREFIX,
+  DEFAULT_WORKSPACES,
+  INITIAL_COLUMNS,
+  NOTE_TEXT,
   DETACHED_LABELS,
   THEME_PALETTES,
   normalizeCardColor,
 } from './constants'
+import { sanitizeUrl } from './urlSafety'
 
 export const createDefaultColumns = () =>
   INITIAL_COLUMNS.map((column) => ({
@@ -111,6 +112,23 @@ const normalizeItems = (items) =>
       )
     : []
 
+// Link URLs are rendered as <a href>, so anything that isn't a safe http(s)
+// URL (e.g. javascript: injected via a tampered localStorage or a shared
+// backup file) is neutralized at the load boundary.
+const sanitizeQuickLinks = (cards) =>
+  cards.map((card) =>
+    card && typeof card === 'object' && Array.isArray(card.links)
+      ? {
+          ...card,
+          links: card.links.map((link) =>
+            link && typeof link === 'object'
+              ? { ...link, url: sanitizeUrl(link.url) || '' }
+              : link,
+          ),
+        }
+      : card,
+  )
+
 export function validateWorkspaceState(stored) {
   return {
     columns: Array.isArray(stored?.columns)
@@ -137,7 +155,7 @@ export function validateWorkspaceState(stored) {
     calendars: normalizeItems(stored?.calendars),
     habits: normalizeItems(stored?.habits),
     pictures: normalizeItems(stored?.pictures),
-    quickLinks: normalizeItems(stored?.quickLinks),
+    quickLinks: sanitizeQuickLinks(normalizeItems(stored?.quickLinks)),
     archivedCards: Array.isArray(stored?.archivedCards) ? stored.archivedCards : [],
     customLabels: Array.isArray(stored?.customLabels)
       ? stored.customLabels.map((lbl) =>

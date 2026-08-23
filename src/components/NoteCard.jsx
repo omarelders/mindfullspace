@@ -1,4 +1,4 @@
-import { useState, memo } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { CardContextMenu } from './CardContextMenu'
 
 export const NoteCard = memo(function NoteCard({
@@ -22,6 +22,11 @@ export const NoteCard = memo(function NoteCard({
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(note.text)
 
+  // If the card unmounts mid-resize (archive/delete/undo), remove the
+  // document-level listeners so they don't leak.
+  const resizeCleanupRef = useRef(null)
+  useEffect(() => () => resizeCleanupRef.current?.(), [])
+
   const handleResizeStart = (e) => {
     e.preventDefault()
     e.stopPropagation()
@@ -38,10 +43,10 @@ export const NoteCard = memo(function NoteCard({
     const handlePointerMove = (moveEvent) => {
       const deltaX = (moveEvent.clientX - startX) / scale
       const deltaY = (moveEvent.clientY - startY) / scale
-      
+
       currentWidth = Math.max(180, startWidth + deltaX)
       currentHeight = Math.max(100, startHeight + deltaY)
-      
+
       if (rafId) cancelAnimationFrame(rafId)
       rafId = requestAnimationFrame(() => {
         if (cardEl) {
@@ -52,6 +57,7 @@ export const NoteCard = memo(function NoteCard({
     }
 
     const handlePointerUp = () => {
+      resizeCleanupRef.current = null
       if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
@@ -60,6 +66,11 @@ export const NoteCard = memo(function NoteCard({
       }
     }
 
+    resizeCleanupRef.current = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+    }
     document.addEventListener('pointermove', handlePointerMove)
     document.addEventListener('pointerup', handlePointerUp)
   }

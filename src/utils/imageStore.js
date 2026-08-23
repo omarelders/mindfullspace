@@ -3,18 +3,33 @@ const DB_VERSION = 1
 const STORE_NAME = 'images'
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
 
+// The connection is opened once and reused for every operation — opening a
+// new IndexedDB connection per call leaked handles and slowed image loads.
+let dbPromise = null
+
 function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-    request.onupgradeneeded = () => {
-      const db = request.result
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME)
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      if (typeof indexedDB === 'undefined') {
+        reject(new Error('IndexedDB is not available in this environment.'))
+        return
       }
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      request.onupgradeneeded = () => {
+        const db = request.result
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME)
+        }
+      }
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+    }).catch((err) => {
+      // Reset the cache so a later call can retry a failed/blocked open.
+      dbPromise = null
+      throw err
+    })
+  }
+  return dbPromise
 }
 
 export async function saveImage(id, blob) {

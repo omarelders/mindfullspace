@@ -1,12 +1,6 @@
 import { getImage, saveImage } from './imageStore'
-import { readJsonStorage, writeJsonStorage, validateWorkspaceState } from './storage'
+import { readJsonStorage, validateWorkspaceState } from './storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX } from './constants'
-
-// Sentinel key used to suppress the reactive auto-save right before a
-// programmatic reload triggered by an import. Without this, the beforeunload
-// handler in useWorkspace writes the PRE-import React state back over the
-// just-written import data, silently undoing the entire import.
-const IMPORT_RELOAD_FLAG = 'mindfulspace_import_pending'
 
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -47,18 +41,10 @@ export async function exportWorkspace(workspaceId, workspaceName, liveState = nu
   const storageKey = `${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`
 
   // Prefer the live in-memory snapshot over whatever is currently in storage.
-  // If the caller didn't pass it, fall back to localStorage (older behaviour).
-  let workspaceState = liveState || readJsonStorage(storageKey)
+  const workspaceState = liveState || readJsonStorage(storageKey)
 
   if (!workspaceState) {
     throw new Error('Workspace state not found. Please try again.')
-  }
-
-  // If we fell back to localStorage, eagerly flush the live state too so the
-  // stored copy is at least as fresh as possible (best-effort).
-  if (!liveState) {
-    const freshState = readJsonStorage(storageKey)
-    if (freshState) workspaceState = freshState
   }
 
   // Find all referenced imageIds in picture cards (active and archived)
@@ -109,36 +95,16 @@ export async function exportWorkspace(workspaceId, workspaceName, liveState = nu
 }
 
 /**
- * Returns true if a page load was triggered by an import operation. The caller
- * (useWorkspace) should check this on mount and skip loading from storage if
- * the flag is set (the data has already been written by importWorkspace).
- * Call clearImportReloadFlag() after consuming it.
- */
-export function isImportReload() {
-  try {
-    return sessionStorage.getItem(IMPORT_RELOAD_FLAG) === '1'
-  } catch {
-    return false
-  }
-}
-
-export function clearImportReloadFlag() {
-  try {
-    sessionStorage.removeItem(IMPORT_RELOAD_FLAG)
-  } catch {
-    // ignore
-  }
-}
-
-/**
- * Import a workspace from a JSON backup file.
+ * Parse a workspace backup file and restore its images into IndexedDB.
  *
- * The import data is written to localStorage BEFORE the page reloads. A
- * sentinel flag in sessionStorage prevents the reactive beforeunload autosave
- * (which holds stale pre-import React state) from overwriting the freshly
- * written data during the reload sequence.
+ * Resolves with a fully validated workspace state object that the caller
+ * (useWorkspace.importWorkspaceState) applies directly to React state —
+ * no page reload, no localStorage round-trip, no stale-autosave sentinel.
+ *
+ * @param {File} file
+ * @returns {Promise<object>} validated workspace state
  */
-export async function importWorkspace(workspaceId, file) {
+export function parseWorkspaceBackup(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = async (e) => {
@@ -148,12 +114,10 @@ export async function importWorkspace(workspaceId, file) {
           throw new Error('Invalid export file format. Missing version or workspace.')
         }
 
-        const rawWorkspace = data.workspace
+        const sanitizedWorkspace = validateWorkspaceState(data.workspace)
 
-        // Basic shape validation (similar to getInitialWorkspaceState guards)
-        const sanitizedWorkspace = validateWorkspaceState(rawWorkspace)
-
-        // Restore images into IndexedDB
+        // Restore images into IndexedDB before the state is applied, so picture
+        // cards never point at missing blobs.
         if (data.images && typeof data.images === 'object') {
           for (const [imageId, base64Str] of Object.entries(data.images)) {
             try {
@@ -165,20 +129,7 @@ export async function importWorkspace(workspaceId, file) {
           }
         }
 
-        // Write the imported workspace to localStorage FIRST…
-        const storageKey = `${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`
-        writeJsonStorage(storageKey, sanitizedWorkspace)
-
-        // …then set the sentinel so the beforeunload autosave knows to skip
-        // writing stale React state over the data we just wrote.
-        try {
-          sessionStorage.setItem(IMPORT_RELOAD_FLAG, '1')
-        } catch {
-          // If sessionStorage is unavailable the worst case is the import is
-          // overwritten by the stale autosave — not ideal but non-fatal.
-        }
-
-        resolve()
+        resolve(sanitizedWorkspace)
       } catch (err) {
         reject(new Error('Import failed: ' + err.message))
       }

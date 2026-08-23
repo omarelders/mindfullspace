@@ -1,4 +1,4 @@
-import { useState, memo } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { CardContextMenu } from './CardContextMenu'
 import { Quote } from 'lucide-react'
 
@@ -28,6 +28,11 @@ export const QuoteCard = memo(function QuoteCard({
 
   const [editText, setEditText] = useState(quote.text || '')
   const [editAuthor, setEditAuthor] = useState(quote.author || '')
+
+  // If the card unmounts mid-resize (archive/delete/undo), remove the
+  // document-level listeners so they don't leak.
+  const resizeCleanupRef = useRef(null)
+  useEffect(() => () => resizeCleanupRef.current?.(), [])
 
   const handleResizeStart = (e) => {
     e.preventDefault()
@@ -59,6 +64,7 @@ export const QuoteCard = memo(function QuoteCard({
     }
 
     const handlePointerUp = () => {
+      resizeCleanupRef.current = null
       if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
@@ -67,6 +73,11 @@ export const QuoteCard = memo(function QuoteCard({
       }
     }
 
+    resizeCleanupRef.current = () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+    }
     document.addEventListener('pointermove', handlePointerMove)
     document.addEventListener('pointerup', handlePointerUp)
   }

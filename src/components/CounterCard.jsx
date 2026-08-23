@@ -20,16 +20,18 @@ export const CounterCard = memo(function CounterCard({
   cardId,
 }) {
   const customStyle = counter.fontSize ? { fontSize: `${counter.fontSize}px` } : undefined
-  const initialValue = counter.initialValue ?? 0
-  const [value, setValue] = useState(initialValue)
+  // The store is the single source of truth for the value — no local mirror to
+  // desync. Discrete click events flush before the next one in React 18, so
+  // computing from props is safe even on rapid clicks.
+  const value = counter.initialValue ?? 0
   const [animKey, setAnimKey] = useState(0)
   const [direction, setDirection] = useState(null) // 'up' | 'down' | null
   const [btnAnim, setBtnAnim] = useState(null) // 'inc' | 'dec' | null
   const btnAnimTimer = useRef(null)
 
-  useEffect(() => {
-    setValue(counter.initialValue ?? 0)
-  }, [counter.initialValue, counter.id])
+  useEffect(() => () => {
+    if (btnAnimTimer.current) clearTimeout(btnAnimTimer.current)
+  }, [])
 
   const triggerValueAnim = (dir) => {
     setDirection(dir)
@@ -43,24 +45,19 @@ export const CounterCard = memo(function CounterCard({
   }
 
   const handleIncrement = () => {
-    const nextVal = value + 1
-    setValue(nextVal)
     triggerValueAnim('up')
     triggerBtnAnim('inc')
     playAchievementSound()
-    if (onUpdateValue) onUpdateValue(counter.id, nextVal)
+    if (onUpdateValue) onUpdateValue(counter.id, value + 1)
   }
 
   const handleDecrement = () => {
-    const nextVal = value - 1
-    setValue(nextVal)
     triggerValueAnim('down')
     triggerBtnAnim('dec')
-    if (onUpdateValue) onUpdateValue(counter.id, nextVal)
+    if (onUpdateValue) onUpdateValue(counter.id, value - 1)
   }
 
   const resetCounter = () => {
-    setValue(0)
     setDirection(null)
     if (onUpdateValue) onUpdateValue(counter.id, 0)
   }

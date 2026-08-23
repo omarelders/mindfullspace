@@ -1,13 +1,15 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { getInitialAppState, writeJsonStorage, readJsonStorage } from './utils/storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX, APP_STORAGE_KEY } from './utils/constants'
+import { createId } from './utils/id'
 import { WorkspaceBoard } from './components/WorkspaceBoard'
 import { InstallPrompt } from './components/InstallPrompt'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 const WORKSPACES_LIST_KEY = 'mindfulspace_workspaces'
 
 function generateId() {
-  return `ws-${Date.now()}-${Math.floor(Math.random() * 100000)}`
+  return createId('ws')
 }
 
 function App() {
@@ -24,12 +26,48 @@ function App() {
     }
   }, [])
 
+  // Cross-tab sync for the workspace list. Without this, two open tabs would
+  // clobber each other's list writes (created/deleted/renamed workspaces
+  // would silently vanish).
+  const lastRemoteAppValueRef = useRef(null)
+
   useEffect(() => {
+    const serialized = JSON.stringify({ workspaces: allWorkspaces, activeWorkspaceId })
+    if (serialized === lastRemoteAppValueRef.current) {
+      // Identical to what another tab just sent us — don't echo it back.
+      lastRemoteAppValueRef.current = null
+      return
+    }
     writeJsonStorage(APP_STORAGE_KEY, {
       workspaces: allWorkspaces,
       activeWorkspaceId: activeWorkspaceId
     })
   }, [allWorkspaces, activeWorkspaceId])
+
+  useEffect(() => {
+    const handleStorage = (e) => {
+      if (e.key !== APP_STORAGE_KEY || e.newValue === null) return
+      try {
+        const incoming = JSON.parse(e.newValue)
+        if (!Array.isArray(incoming?.workspaces) || incoming.workspaces.length === 0) return
+        lastRemoteAppValueRef.current = e.newValue
+        setAllWorkspaces(incoming.workspaces)
+        setActiveWorkspaceId(prev => {
+          if (incoming.workspaces.some(ws => ws && ws.id === prev)) return prev
+          const fallbackId =
+            typeof incoming.activeWorkspaceId === 'string' &&
+            incoming.workspaces.some(ws => ws && ws.id === incoming.activeWorkspaceId)
+              ? incoming.activeWorkspaceId
+              : incoming.workspaces[0].id
+          return prev === fallbackId ? prev : fallbackId
+        })
+      } catch {
+        // Ignore malformed payloads from other tabs.
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [])
 
   const handleSwitchWorkspace = useCallback((id) => {
     setActiveWorkspaceId(id)
@@ -78,17 +116,19 @@ function App() {
   return (
     <>
       {activeWorkspace && (
-        <WorkspaceBoard
-          key={activeWorkspace.id}
-          workspace={activeWorkspace}
-          isVisible={true}
-          allWorkspaces={allWorkspaces}
-          onSwitchWorkspace={handleSwitchWorkspace}
-          onUpdateName={handleUpdateWorkspaceName}
-          onDuplicateWorkspace={handleDuplicateWorkspace}
-          onDeleteWorkspace={handleDeleteWorkspace}
-          onCreateWorkspace={handleCreateWorkspace}
-        />
+        <ErrorBoundary key={activeWorkspace.id}>
+          <WorkspaceBoard
+            key={activeWorkspace.id}
+            workspace={activeWorkspace}
+            isVisible={true}
+            allWorkspaces={allWorkspaces}
+            onSwitchWorkspace={handleSwitchWorkspace}
+            onUpdateName={handleUpdateWorkspaceName}
+            onDuplicateWorkspace={handleDuplicateWorkspace}
+            onDeleteWorkspace={handleDeleteWorkspace}
+            onCreateWorkspace={handleCreateWorkspace}
+          />
+        </ErrorBoundary>
       )}
       <InstallPrompt />
     </>

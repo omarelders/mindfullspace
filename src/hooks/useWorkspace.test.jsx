@@ -4,10 +4,10 @@ import { useWorkspace } from './useWorkspace'
 import { writeJsonStorage, getInitialWorkspaceState } from '../utils/storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX } from '../utils/constants'
 
-// Mocking necessary audio utility
+// Mocking necessary audio utility (matches the real module's exports)
 vi.mock('../utils/audio', () => ({
-  playTimerCompleteSound: vi.fn(),
-  playTimerTickSound: vi.fn(),
+  playBeep: vi.fn(),
+  fireNotification: vi.fn(),
   playAchievementSound: vi.fn(),
   playTaskCompleteSound: vi.fn(),
 }))

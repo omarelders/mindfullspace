@@ -1,4 +1,6 @@
-const CACHE_VERSION = 'v1'
+// Bump whenever precached app shell assets change in a way that matters
+// offline (runtime assets are content-hashed and cached on the fly).
+const CACHE_VERSION = 'v2'
 const STATIC_CACHE = `mindful-static-${CACHE_VERSION}`
 const RUNTIME_CACHE = `mindful-runtime-${CACHE_VERSION}`
 const PRECACHE_URLS = [

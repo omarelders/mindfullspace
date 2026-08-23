@@ -21,8 +21,8 @@ body {
   overflow: hidden;
   font-family: 'Livvic', sans-serif;
   font-optical-sizing: auto;
-  background: var(--workspace-bg);
-  color: var(--ui-text);
+  background: var(--workspace-bg, #0d0b14);
+  color: var(--ui-text, #e7e4f1);
 }
 
 button,
@@ -3937,6 +3937,16 @@ html:-webkit-full-screen .app-shell {
   text-decoration: underline;
 }
 
+/* Unsafe/invalid URLs render as inert text, not a clickable link */
+.ql-link-content.ql-link-invalid {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ql-link-content.ql-link-invalid:hover .ql-label {
+  text-decoration: none;
+}
+
 .ql-favicon {
   width: 16px;
   height: 16px;
@@ -4087,8 +4097,19 @@ html:-webkit-full-screen .app-shell {
   color: var(--card-text);
 }
 
-/* PWA Install Prompt */
+/* PWA Install Prompt.
+   NOTE: this component renders outside .app-shell (mounted from App), so the
+   workspace theme variables (--surface-panel, --ui-text-strong, ...) are NOT
+   in scope here. It carries its own dark-glass palette that stays readable
+   over both light and dark boards. */
 .install-prompt-container {
+  --ip-surface: rgba(28, 24, 49, 0.94);
+  --ip-border: rgba(255, 255, 255, 0.14);
+  --ip-text: #f9f7fc;
+  --ip-text-muted: rgba(235, 230, 245, 0.68);
+  --ip-icon-bg: rgba(255, 255, 255, 0.1);
+  --ip-accent: #b98a2e;
+  --ip-accent-text: #17131f;
   position: fixed;
   bottom: 24px;
   left: 50%;
@@ -4117,42 +4138,44 @@ html:-webkit-full-screen .app-shell {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: color-mix(in srgb, var(--surface-panel) 85%, transparent);
-  backdrop-filter: blur(12px) saturate(180%);
-  -webkit-backdrop-filter: blur(12px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--ip-surface);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid var(--ip-border);
   border-radius: 12px;
   padding: 12px 16px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 
 .install-prompt-content {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .install-prompt-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   width: 40px;
   height: 40px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ip-icon-bg);
   border-radius: 10px;
-  color: var(--ui-text-strong);
+  color: var(--ip-text);
 }
 
 .install-prompt-text h3 {
   font-size: 14px;
   font-weight: 600;
-  color: var(--ui-text-strong);
+  color: var(--ip-text);
   margin: 0;
 }
 
 .install-prompt-text p {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--ip-text-muted);
   margin: 2px 0 0 0;
 }
 
@@ -4160,11 +4183,12 @@ html:-webkit-full-screen .app-shell {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .install-button {
-  background: var(--action-primary-bg);
-  color: var(--action-primary-text);
+  background: var(--ip-accent);
+  color: var(--ip-accent-text);
   border: none;
   border-radius: 6px;
   padding: 6px 14px;
@@ -4181,7 +4205,7 @@ html:-webkit-full-screen .app-shell {
 
 .dismiss-button {
   background: transparent;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.5);
   border: none;
   border-radius: 6px;
   width: 30px;
@@ -4194,8 +4218,8 @@ html:-webkit-full-screen .app-shell {
 }
 
 .dismiss-button:hover {
-  color: var(--ui-text-strong);
-  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--ip-text);
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 /* --- Quick Links Card --- */
@@ -4461,6 +4485,75 @@ html:-webkit-full-screen .app-shell {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* --- Error Boundary (renders outside .app-shell — literal colors only) --- */
+.error-boundary {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0d0b14;
+  color: #e7e4f1;
+  font-family: 'Livvic', sans-serif;
+  padding: 24px;
+  z-index: 10000;
+}
+
+.error-boundary-card {
+  max-width: 480px;
+  width: 100%;
+  background: #1f232b;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+.error-boundary-card h1 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.error-boundary-card p {
+  font-size: 14px;
+  opacity: 0.85;
+  margin: 0 0 12px;
+}
+
+.error-boundary-message {
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 140px;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 0 0 16px;
+}
+
+.error-boundary-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.error-boundary-actions button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f6f8;
+}
+
+.error-boundary-actions .error-boundary-reload {
+  background: #4d7ef9;
+  color: #ffffff;
+}
+
 /* --- Confirm Modal --- */
 .confirm-modal-overlay {
   position: fixed;
@@ -4480,15 +4573,15 @@ html:-webkit-full-screen .app-shell {
 }
 
 .confirm-modal-content {
-  background: var(--modal-bg);
-  border: 1px solid var(--modal-border);
+  background: var(--modal-bg, #1f232b);
+  border: 1px solid var(--modal-border, rgba(255, 255, 255, 0.14));
   border-radius: 12px;
   width: 90%;
   max-width: 380px;
   padding: 24px;
   position: relative;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-  color: var(--ui-text-strong);
+  color: var(--ui-text-strong, #f4f6f8);
   animation: modal-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -4503,7 +4596,7 @@ html:-webkit-full-screen .app-shell {
   right: 14px;
   background: transparent;
   border: none;
-  color: var(--menu-text-muted);
+  color: var(--menu-text-muted, rgba(240, 244, 248, 0.55));
   cursor: pointer;
   padding: 6px;
   border-radius: 6px;
@@ -4514,7 +4607,7 @@ html:-webkit-full-screen .app-shell {
 }
 
 .confirm-modal-close:hover {
-  color: var(--ui-text-strong);
+  color: var(--ui-text-strong, #f4f6f8);
   background-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -4526,20 +4619,20 @@ html:-webkit-full-screen .app-shell {
 }
 
 .confirm-modal-icon {
-  color: var(--tone-red);
+  color: var(--tone-red, #b14848);
 }
 
 .confirm-modal-title {
   font-size: 18px;
   font-weight: 700;
-  color: var(--ui-text-strong);
+  color: var(--ui-text-strong, #f4f6f8);
   margin: 0;
   line-height: 1.2;
 }
 
 .confirm-modal-message {
   font-size: 14px;
-  color: var(--ui-text);
+  color: var(--ui-text, rgba(236, 240, 245, 0.85));
   margin-bottom: 24px;
   line-height: 1.5;
 }
@@ -4561,18 +4654,18 @@ html:-webkit-full-screen .app-shell {
 }
 
 .confirm-modal-btn.cancel {
-  background: var(--modal-btn-cancel-bg);
-  color: var(--ui-text-strong);
-  border: 1px solid var(--modal-border);
+  background: var(--modal-btn-cancel-bg, rgba(255, 255, 255, 0.08));
+  color: var(--ui-text-strong, #f4f6f8);
+  border: 1px solid var(--modal-border, rgba(255, 255, 255, 0.14));
 }
 
 .confirm-modal-btn.cancel:hover {
-  background: var(--modal-btn-cancel-hover);
+  background: var(--modal-btn-cancel-hover, rgba(255, 255, 255, 0.15));
 }
 
 .confirm-modal-btn.confirm {
-  background: var(--action-danger-bg);
-  color: var(--action-danger-text);
+  background: var(--action-danger-bg, #b14848);
+  color: var(--action-danger-text, #ffffff);
   box-shadow: 0 2px 8px rgba(177, 72, 72, 0.3);
 }
 

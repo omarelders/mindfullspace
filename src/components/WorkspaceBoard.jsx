@@ -16,9 +16,7 @@ import { TopBar } from './TopBar'
 import { useWorkspace } from '../hooks/useWorkspace'
 import { useDocumentTitleTimer } from '../hooks/useDocumentTitleTimer'
 import { QUICK_CREATE_ACTIONS } from '../utils/constants'
-
-// Note: supportsNativeZoom check omitted for simplicity but would typically come from a utility
-const supportsNativeZoom = 'zoom' in document.createElement('div').style
+import { supportsNativeZoom } from '../utils/browserSupport'
 
 export function WorkspaceBoard({
   workspace,
@@ -50,6 +48,14 @@ export function WorkspaceBoard({
   const handleToggleRail = useCallback(() => setIsRailOpen((isOpen) => !isOpen), [setIsRailOpen])
 
   const noteDimensionsCallbacks = useRef({})
+  const noteIdsKey = notes.map((n) => n.id).join('|')
+  useEffect(() => {
+    // Evict cached callbacks for deleted notes so the cache can't grow forever.
+    const live = new Set(noteIdsKey ? noteIdsKey.split('|') : [])
+    Object.keys(noteDimensionsCallbacks.current)
+      .filter((id) => !live.has(id))
+      .forEach((id) => delete noteDimensionsCallbacks.current[id])
+  }, [noteIdsKey])
   const getUpdateNoteDimensions = useCallback((id) => {
     if (!noteDimensionsCallbacks.current[id]) {
       noteDimensionsCallbacks.current[id] = (w, h) => actions.updateNoteDimensions(id, w, h)
@@ -58,6 +64,13 @@ export function WorkspaceBoard({
   }, [actions.updateNoteDimensions])
 
   const pictureDimensionsCallbacks = useRef({})
+  const pictureIdsKey = pictures.map((p) => p.id).join('|')
+  useEffect(() => {
+    const live = new Set(pictureIdsKey ? pictureIdsKey.split('|') : [])
+    Object.keys(pictureDimensionsCallbacks.current)
+      .filter((id) => !live.has(id))
+      .forEach((id) => delete pictureDimensionsCallbacks.current[id])
+  }, [pictureIdsKey])
   const getUpdatePictureDimensions = useCallback((id) => {
     if (!pictureDimensionsCallbacks.current[id]) {
       pictureDimensionsCallbacks.current[id] = (w, h) => actions.updatePictureDimensions(id, w, h)
@@ -66,6 +79,13 @@ export function WorkspaceBoard({
   }, [actions.updatePictureDimensions])
 
   const quoteDimensionsCallbacks = useRef({})
+  const quoteIdsKey = quotes.map((q) => q.id).join('|')
+  useEffect(() => {
+    const live = new Set(quoteIdsKey ? quoteIdsKey.split('|') : [])
+    Object.keys(quoteDimensionsCallbacks.current)
+      .filter((id) => !live.has(id))
+      .forEach((id) => delete quoteDimensionsCallbacks.current[id])
+  }, [quoteIdsKey])
   const getUpdateQuoteDimensions = useCallback((id) => {
     if (!quoteDimensionsCallbacks.current[id]) {
       quoteDimensionsCallbacks.current[id] = (w, h) => actions.updateQuoteDimensions(id, w, h)
@@ -151,8 +171,6 @@ export function WorkspaceBoard({
         onDuplicateWorkspace={onDuplicateWorkspace}
         onDeleteWorkspace={onDeleteWorkspace}
         onCreateWorkspace={onCreateWorkspace}
-        isWorkspaceMenuOpen={false} // Would need lifting state if we want to share this, but internal to TopBar works for now
-        setIsWorkspaceMenuOpen={() => {}} 
         quickActions={QUICK_CREATE_ACTIONS}
         onQuickAction={actions.handleQuickAction}
         labels={detachedLabels}
@@ -161,6 +179,7 @@ export function WorkspaceBoard({
         habits={habits}
         onRestoreArchivedCard={actions.restoreArchivedCard}
         onImportCards={actions.importCardsFromJson}
+        onImportWorkspace={actions.importWorkspaceState}
         onCaptureSnapshot={actions.captureSnapshot}
       />
 

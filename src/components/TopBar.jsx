@@ -31,7 +31,7 @@ import {
 import { buildDateKey } from '../utils/dateUtils'
 import { ConfirmModal } from './ConfirmModal'
 import { ActionRailIcon } from './ActionRail'
-import { exportWorkspace, importWorkspace } from '../utils/backup'
+import { exportWorkspace, parseWorkspaceBackup } from '../utils/backup'
 import { PALETTE_OPTIONS } from '../utils/constants'
 
 export function TopBar({
@@ -48,8 +48,6 @@ export function TopBar({
   onDuplicateWorkspace,
   onDeleteWorkspace,
   onCreateWorkspace,
-  isWorkspaceMenuOpen,
-  setIsWorkspaceMenuOpen,
   quickActions,
   onQuickAction,
   labels,
@@ -58,6 +56,7 @@ export function TopBar({
   habits,
   onRestoreArchivedCard,
   onImportCards,
+  onImportWorkspace,
   onCaptureSnapshot,
 }) {
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false)
@@ -66,6 +65,7 @@ export function TopBar({
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const [activeAccountTab, setActiveAccountTab] = useState('profile')
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false)
   const [workspaceToDelete, setWorkspaceToDelete] = useState(null)
   const [alertMessage, setAlertMessage] = useState(null)
 
@@ -114,13 +114,20 @@ export function TopBar({
   }
 
   const handleConfirmImport = () => {
-    if (selectedFile) {
-      importWorkspace(workspace.id, selectedFile)
-        .then(() => {
-          window.location.reload()
+    if (selectedFile && onImportWorkspace) {
+      // Parse + restore images, then apply to React state directly — no page
+      // reload. The previous state is pushed onto the undo stack by
+      // importWorkspaceState, so the import can be undone.
+      parseWorkspaceBackup(selectedFile)
+        .then((sanitizedWorkspace) => {
+          onImportWorkspace(sanitizedWorkspace)
+          setIsImportConfirmOpen(false)
+          setSelectedFile(null)
+          setIsAccountMenuOpen(false)
         })
         .catch((err) => {
           setIsImportConfirmOpen(false)
+          setSelectedFile(null)
           setAlertMessage(err.message || 'Import failed.')
         })
     }
@@ -227,6 +234,7 @@ export function TopBar({
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setIsQuickMenuOpen(false)
+        setIsWorkspaceMenuOpen(false)
       }
 
       if (searchRef.current && !searchRef.current.contains(e.target)) {
@@ -282,8 +290,8 @@ export function TopBar({
     return 'Archived Card'
   }
 
-  const profileName = 'Omar Elders'
-  const profileEmail = 'omarelders1968@gmail.com'
+  const profileName = 'Mindful User'
+  const profileSubtitle = 'Local workspace — your data stays on this device'
   const profileLevel = 1
 
   if (isFullscreen) return null
@@ -300,6 +308,7 @@ export function TopBar({
               setIsAccountMenuOpen((open) => !open)
               setIsQuickMenuOpen(false)
               setIsSearchOpen(false)
+              setIsWorkspaceMenuOpen(false)
             }}
           >
             <Menu aria-hidden="true" />
@@ -355,7 +364,7 @@ export function TopBar({
 
                   <div className="account-email-row">
                     <span className="account-email-dot" aria-hidden="true" />
-                    <span>{profileEmail}</span>
+                    <span>{profileSubtitle}</span>
                   </div>
 
                   <div className="account-streak-card">
@@ -668,6 +677,7 @@ export function TopBar({
               onFocus={() => {
                 setIsSearchOpen(true)
                 setIsAccountMenuOpen(false)
+                setIsWorkspaceMenuOpen(false)
               }}
               onChange={(event) => {
                 setSearchQuery(event.target.value)

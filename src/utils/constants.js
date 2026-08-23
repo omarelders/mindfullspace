@@ -4,11 +4,11 @@ export const INITIAL_COLUMNS = [
     tone: 'charcoal',
     positionClass: 'card-left',
     items: [
-      { id: 'l1', text: 'reach page 100 in atomic habits', completed: false },
-      { id: 'l2', text: 'reach page 150 in atomic habits', completed: false },
-      { id: 'l3', text: 'reach page 200 in atomic habits', completed: false },
-      { id: 'l4', text: 'reach page 250 in atomic habits', completed: false },
-      { id: 'l5', text: 'reach page 300 in atomic habits', completed: false },
+      { id: 'l1', text: 'write down my top 3 priorities for today', completed: false },
+      { id: 'l2', text: 'read 20 pages', completed: false },
+      { id: 'l3', text: 'take a 10 minute walk', completed: false },
+      { id: 'l4', text: 'review weekly goals', completed: false },
+      { id: 'l5', text: 'tidy up the desk', completed: false },
     ],
   },
   {
@@ -16,8 +16,8 @@ export const INITIAL_COLUMNS = [
     tone: 'gold',
     positionClass: 'card-middle',
     items: [
-      { id: 'm1', text: 'finish the second course on datacamp', completed: false },
-      { id: 'm2', text: 'finish the tiktok ads setup', completed: false },
+      { id: 'm1', text: 'finish the next course module', completed: false },
+      { id: 'm2', text: 'plan the week ahead', completed: false },
     ],
   },
   {
@@ -25,10 +25,10 @@ export const INITIAL_COLUMNS = [
     tone: 'violet',
     positionClass: 'card-right',
     items: [
-      { id: 'r1', text: 'solve 3 problems in codeforces', completed: true },
-      { id: 'r2', text: 'reach 30 minute in pronounce.com', completed: false },
-      { id: 'r3', text: 'finish oop till inheritance', completed: false },
-      { id: 'r4', text: 'start flutter course', completed: true },
+      { id: 'r1', text: 'solve 3 practice problems', completed: true },
+      { id: 'r2', text: 'practice pronunciation for 30 minutes', completed: false },
+      { id: 'r3', text: 'review class notes', completed: false },
+      { id: 'r4', text: 'start the new course', completed: true },
     ],
   },
 ]
@@ -481,7 +481,7 @@ export const THEME_PALETTES = {
 export const THEME_COLORS = THEME_PALETTES.classic
 
 export const NOTE_TEXT =
-  'ahh fuck how long I have been\nstruggling in this shit ???! the answer\nis years !!\n\n-----------\n\nmy money tell now wiht al-amry is\n350 le + 300 le + 190 le + 600 le'
+  'Welcome to your note!\n\nClick to edit and jot down thoughts, ideas or reminders.\n\n-----------\n\nEverything you create here is stored locally in your browser.'
 
 export const QUICK_CREATE_ACTIONS = [
   { id: 'label', title: 'Label', icon: 'label' },

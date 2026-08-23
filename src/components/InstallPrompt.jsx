@@ -6,7 +6,12 @@ export function InstallPrompt() {
   const { isAvailable, handleInstall } = usePWAInstall();
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(() => {
-    return localStorage.getItem('pwa_prompt_dismissed') === 'true';
+    try {
+      return localStorage.getItem('pwa_prompt_dismissed') === 'true';
+    } catch {
+      // Storage can throw in private-browsing modes — treat as not dismissed.
+      return false;
+    }
   });
 
   useEffect(() => {
@@ -20,7 +25,11 @@ export function InstallPrompt() {
   const handleDismiss = () => {
     setIsVisible(false);
     setIsDismissed(true);
-    localStorage.setItem('pwa_prompt_dismissed', 'true');
+    try {
+      localStorage.setItem('pwa_prompt_dismissed', 'true');
+    } catch {
+      // Non-fatal: the prompt may reappear next session.
+    }
   };
 
   const onInstallClick = () => {

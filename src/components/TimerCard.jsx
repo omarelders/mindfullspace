@@ -56,6 +56,16 @@ export const TimerCard = memo(function TimerCard({
     longBreak: Math.floor(pomodoroLongBreak / 60),
   })
 
+  // Keep the config draft in sync when the stored pomodoro values change
+  // externally (undo, import, cross-tab sync).
+  useEffect(() => {
+    setConfigDraft({
+      work: Math.floor(pomodoroWork / 60),
+      shortBreak: Math.floor(pomodoroShortBreak / 60),
+      longBreak: Math.floor(pomodoroLongBreak / 60),
+    })
+  }, [pomodoroWork, pomodoroShortBreak, pomodoroLongBreak])
+
   // Sync initial render and external updates when paused
   useEffect(() => {
     if (!isRunning) {

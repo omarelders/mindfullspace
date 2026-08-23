@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import { createId } from '../utils/id'
 
 export function useCardCollection({
   initialItems,
@@ -12,6 +13,13 @@ export function useCardCollection({
   onDuplicate,
 }) {
   const [items, setItems] = useState(initialItems)
+
+  // Ref mirror so event handlers can read the current items without depending
+  // on `items` identity (which would defeat memoization downstream).
+  const itemsRef = useRef(items)
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
 
   const update = useCallback((id, patch) => {
     setItems(prev => prev.map(item =>
@@ -33,32 +41,34 @@ export function useCardCollection({
 
   const archive = useCallback((id) => {
     saveSnapshot()
-    setItems(prev => {
-      const src = prev.find(item => item.id === id)
-      if (src) archiveCardSnapshot(idPrefix, src)
-      return prev.filter(item => item.id !== id)
-    })
+    // Read from the ref instead of inside the setItems updater — updaters must
+    // stay pure (React may invoke them more than once, which would archive the
+    // same card twice).
+    const source = itemsRef.current.find(item => item.id === id)
+    if (source) archiveCardSnapshot(idPrefix, source)
+    setItems(prev => prev.filter(item => item.id !== id))
     removeCardPosition(id)
     if (setDraggingCard) setDraggingCard(c => c?.id === id ? null : c)
     if (onDelete) onDelete(id)
   }, [idPrefix, saveSnapshot, archiveCardSnapshot, removeCardPosition, setDraggingCard, onDelete])
 
   const duplicate = useCallback((id) => {
-    setItems(prev => {
-      const source = prev.find(item => item.id === id)
-      if (!source) return prev
-      const dupId = `${idPrefix}-${Date.now()}`
-      setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
-      
-      let dupData = { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }
-      if (onDuplicate) {
-        dupData = onDuplicate(source, dupData, dupId)
-      }
-      return [...prev, dupData]
-    })
+    const source = itemsRef.current.find(item => item.id === id)
+    if (!source) return
+    const dupId = createId(idPrefix)
+    setCardPositions(pos => ({ ...pos, [dupId]: { x: (pos[id]?.x || 0) + 36, y: (pos[id]?.y || 0) + 36 } }))
+
+    let dupData = { ...source, id: dupId, title: source.title ? `${source.title} Copy` : '', minimized: false }
+    if (onDuplicate) {
+      dupData = onDuplicate(source, dupData, dupId)
+    }
+    setItems(prev => [...prev, dupData])
   }, [idPrefix, setCardPositions, onDuplicate])
 
-  return {
+  // Memoized so `[collection]` dependencies in consumers stay stable across
+  // renders that don't touch this collection — this is what makes React.memo
+  // on the card components actually effective.
+  return useMemo(() => ({
     items,
     setItems,
     update,
@@ -68,5 +78,5 @@ export function useCardCollection({
     remove,
     archive,
     duplicate,
-  }
+  }), [items, update, updateTitle, updateColor, toggleMinimize, remove, archive, duplicate])
 }

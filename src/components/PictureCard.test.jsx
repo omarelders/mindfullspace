@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PictureCard } from './PictureCard'
-import { exportWorkspace, importWorkspace } from '../utils/backup'
+import { exportWorkspace, parseWorkspaceBackup } from '../utils/backup'
 import { readJsonStorage, writeJsonStorage } from '../utils/storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX } from '../utils/constants'
 import { saveImage, getImage, deleteImage } from '../utils/imageStore'
@@ -53,13 +53,14 @@ describe('PictureCard', () => {
     vi.clearAllMocks()
   })
 
-  it('renders correctly with given picture properties', () => {
+  it('renders correctly with given picture properties', async () => {
     render(<PictureCard {...defaultProps} />)
-    expect(screen.getByText('Test Picture')).toBeInTheDocument()
+    expect(await screen.findByAltText('Test Picture')).toBeInTheDocument()
   })
 
-  it('resizes card using pointer events at scale 1', () => {
+  it('resizes card using pointer events at scale 1', async () => {
     render(<PictureCard {...defaultProps} scale={1} />)
+    await screen.findByAltText('Test Picture')
 
     // In JSDOM, we have to mock setPointerCapture and releasePointerCapture
     const resizer = document.querySelector('.picture-resizer')
@@ -81,8 +82,9 @@ describe('PictureCard', () => {
     expect(defaultProps.onUpdateDimensions).toHaveBeenCalledWith(250, 180)
   })
 
-  it('scales pointer movement correctly (scale < 1)', () => {
+  it('scales pointer movement correctly (scale < 1)', async () => {
     render(<PictureCard {...defaultProps} scale={0.5} />)
+    await screen.findByAltText('Test Picture')
 
     const resizer = document.querySelector('.picture-resizer')
     resizer.setPointerCapture = vi.fn()
@@ -97,8 +99,9 @@ describe('PictureCard', () => {
     expect(defaultProps.onUpdateDimensions).toHaveBeenCalledWith(300, 210)
   })
 
-  it('scales pointer movement correctly (scale > 1)', () => {
+  it('scales pointer movement correctly (scale > 1)', async () => {
     render(<PictureCard {...defaultProps} scale={2} />)
+    await screen.findByAltText('Test Picture')
 
     const resizer = document.querySelector('.picture-resizer')
     resizer.setPointerCapture = vi.fn()
@@ -113,8 +116,9 @@ describe('PictureCard', () => {
     expect(defaultProps.onUpdateDimensions).toHaveBeenCalledWith(250, 180)
   })
 
-  it('enforces minimum dimensions (180x120)', () => {
+  it('enforces minimum dimensions (180x120)', async () => {
     render(<PictureCard {...defaultProps} scale={1} />)
+    await screen.findByAltText('Test Picture')
 
     const resizer = document.querySelector('.picture-resizer')
     resizer.setPointerCapture = vi.fn()
@@ -128,8 +132,9 @@ describe('PictureCard', () => {
     expect(defaultProps.onUpdateDimensions).toHaveBeenCalledWith(180, 120)
   })
 
-  it('cancels resize properly using pointerCancel', () => {
+  it('cancels resize properly using pointerCancel', async () => {
     render(<PictureCard {...defaultProps} scale={1} />)
+    await screen.findByAltText('Test Picture')
 
     const resizer = document.querySelector('.picture-resizer')
     resizer.setPointerCapture = vi.fn()
@@ -190,7 +195,7 @@ describe('Backup UTF-8 Encoding & Image References', () => {
     global.Blob = OriginalBlob
   })
 
-  it('importWorkspace correctly enforces UTF-8 decoding on readAsText', async () => {
+  it('parseWorkspaceBackup correctly enforces UTF-8 decoding on readAsText', async () => {
     const mockFile = new File(['{"version": 1, "workspace": {}, "images": {}}'], 'backup.json', { type: 'application/json' })
 
     // We mock FileReader
@@ -208,10 +213,12 @@ describe('Backup UTF-8 Encoding & Image References', () => {
       }
     }
 
-    await importWorkspace('ws-1', mockFile)
+    // The parse step no longer writes to localStorage — it resolves with a
+    // validated state object that useWorkspace.importWorkspaceState applies.
+    const parsed = await parseWorkspaceBackup(mockFile)
 
     expect(readAsTextSpy).toHaveBeenCalledWith(mockFile, 'UTF-8')
-    expect(writeJsonStorage).toHaveBeenCalled()
+    expect(parsed).toEqual({})
 
     global.FileReader = OriginalFileReader
   })

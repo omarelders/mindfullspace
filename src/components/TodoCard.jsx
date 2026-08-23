@@ -8,7 +8,6 @@ export const TodoCard = memo(function TodoCard({
   draft,
   onDraftChange,
   onAdd,
-  onToggle,
   onUpdateItemText,
   onDeleteItem,
   onDragStartItem,
