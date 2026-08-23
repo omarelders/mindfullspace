@@ -4,6 +4,7 @@ import {
   readJsonStorage,
   writeJsonStorage,
   getInitialAppState,
+  getInitialWorkspaceState,
 } from '../utils/storage'
 import {
   APP_STORAGE_KEY,
@@ -116,7 +117,7 @@ export async function migrateGuestToCloud(userId, onProgress = null) {
   for (let i = 0; i < localWorkspaces.length; i++) {
     const ws = localWorkspaces[i]
     const storageKey = `${WORKSPACE_STORAGE_KEY_PREFIX}${ws.id}`
-    const wsState = readJsonStorage(storageKey)
+    const wsState = readJsonStorage(storageKey) || getInitialWorkspaceState(ws.id)
 
     if (wsState) {
       // workspaceName lets the server-side RPC create the parent registry
@@ -272,7 +273,7 @@ export async function handleFirstSignIn(userId, onWorkspaceListLoaded = null, on
         if (!existsInCloud) {
           // Local-only workspace: upload under a distinguishable name.
           const suffixedName = `${localWs.name} (Local)`
-          const wsState = readJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${localWs.id}`)
+          const wsState = readJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${localWs.id}`) || getInitialWorkspaceState(localWs.id)
           if (wsState) {
             await pushWorkspace(userId, localWs.id, wsState, { workspaceName: suffixedName })
             await syncAllLocalImages(userId, wsState)
