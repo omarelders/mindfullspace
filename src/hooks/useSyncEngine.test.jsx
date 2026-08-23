@@ -42,8 +42,8 @@ describe('useSyncEngine', () => {
     backupSpy = vi.spyOn(cloudDb, 'saveConflictBackup').mockImplementation(() => 'backup-key')
     metaSpy = vi.spyOn(cloudDb, 'getLastPushMeta').mockReturnValue(null)
 
-    // Defaults: empty cloud — reconcile finds nothing to adopt.
-    pullSpy.mockResolvedValue(null)
+    // Defaults: Mock that the cloud already has a record so reconcile doesn't auto-initialize.
+    pullSpy.mockResolvedValue({ version: 1, data: {} })
     pushSpy.mockResolvedValue({ success: true, version: 1 })
   })
 
@@ -307,7 +307,7 @@ describe('useSyncEngine', () => {
       'u-sync-1',
       'ws-unmount',
       expect.anything(),
-      expect.objectContaining({ expectedVersion: null })
+      expect.objectContaining({ expectedVersion: 1 })
     )
   })
 
@@ -392,6 +392,7 @@ describe('useSyncEngine', () => {
     )
 
     // ── Device A: mounts, edits, writes v1 ──
+    pushSpy.mockImplementation(serverPush)
     const deviceA = renderHook(() =>
       useSyncEngine({
         workspaceId: 'ws-race',
@@ -400,12 +401,8 @@ describe('useSyncEngine', () => {
         debounceMs: 100,
       })
     )
-    await act(async () => {}) // A's reconcile -> empty cloud
+    await act(async () => {}) // A's reconcile -> empty cloud, immediately pushes (initializing cloud)
 
-    pushSpy.mockImplementation(serverPush)
-    act(() => {
-      deviceA.result.current.notifyChange()
-    })
     await act(async () => {
       vi.advanceTimersByTime(200)
     })

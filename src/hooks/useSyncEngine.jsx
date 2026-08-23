@@ -259,6 +259,12 @@ export function useSyncEngine({
         if (cancelled) return
         if (!record) {
           knownVersionRef.current = null
+          const localSnap = captureSnapshotRef.current?.()
+          if (localSnap) {
+            // Cloud is completely empty for this workspace. Initialize it with local data!
+            pendingChangeRef.current = true
+            syncNow()
+          }
           return
         }
 
