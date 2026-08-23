@@ -358,41 +358,41 @@ export function TopBar({
 
               {activeAccountTab === 'profile' && (
                 <div className="account-content">
-                  <div className="account-profile-grid">
-                    <div className="account-avatar-wrap">
-                      <div className="account-avatar">
-                        {profile?.avatar_url ? (
-                          <img
-                            src={profile.avatar_url}
-                            alt={profileName}
-                            style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                          />
-                        ) : (
-                          <UserRound aria-hidden="true" />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="account-meta-stack">
-                      <div className="account-meta-card account-meta-strong">{profileName}</div>
-                      <div className="account-meta-card">
-                        <User aria-hidden="true" />
-                        Level {profileLevel}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="account-email-row">
-                    <span
-                      className="account-email-dot"
-                      style={isAuthenticated ? { background: '#2ecc71', boxShadow: '0 0 8px #2ecc71' } : undefined}
-                      aria-hidden="true"
-                    />
-                    <span>{profileSubtitle}</span>
-                  </div>
-
                   {isAuthenticated ? (
                     <>
+                      <div className="account-profile-grid">
+                        <div className="account-avatar-wrap">
+                          <div className="account-avatar">
+                            {profile?.avatar_url ? (
+                              <img
+                                src={profile.avatar_url}
+                                alt={profileName}
+                                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <UserRound aria-hidden="true" />
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="account-meta-stack">
+                          <div className="account-meta-card account-meta-strong">{profileName}</div>
+                          <div className="account-meta-card">
+                            <User aria-hidden="true" />
+                            Level {profileLevel}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="account-email-row">
+                        <span
+                          className="account-email-dot"
+                          style={{ background: '#2ecc71', boxShadow: '0 0 8px #2ecc71' }}
+                          aria-hidden="true"
+                        />
+                        <span>{profileSubtitle}</span>
+                      </div>
+
                       <SyncStatus
                         status={syncStatus}
                         lastSyncedAt={lastSyncedAt}
@@ -410,24 +410,24 @@ export function TopBar({
                         <LogOut size={15} />
                         <span>Sign Out</span>
                       </button>
+
+                      <div className="account-streak-card">
+                        <div className="account-streak-header">
+                          <span>You're on a</span>
+                          <span>{streakDays} day streak in total 🔥</span>
+                        </div>
+                        <div className="account-streak-main">{streakDays} day streak</div>
+
+                        <div className="account-streak-track" aria-hidden="true">
+                          {streakTimeline.map((node) => (
+                            <span key={node.key} className={`streak-node ${node.status}`} />
+                          ))}
+                        </div>
+                      </div>
                     </>
                   ) : (
                     <AuthForm />
                   )}
-
-                  <div className="account-streak-card">
-                    <div className="account-streak-header">
-                      <span>You're on a</span>
-                      <span>{streakDays} day streak in total 🔥</span>
-                    </div>
-                    <div className="account-streak-main">{streakDays} day streak</div>
-
-                    <div className="account-streak-track" aria-hidden="true">
-                      {streakTimeline.map((node) => (
-                        <span key={node.key} className={`streak-node ${node.status}`} />
-                      ))}
-                    </div>
-                  </div>
                 </div>
               )}
 

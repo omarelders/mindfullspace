@@ -392,6 +392,11 @@ html:-webkit-full-screen .app-shell {
   top: 46px;
   left: 0;
   width: 360px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
   border: 1px solid var(--surface-border);
   border-radius: 10px;
   background: var(--surface-panel);
@@ -399,6 +404,15 @@ html:-webkit-full-screen .app-shell {
   padding: 8px;
   z-index: 560;
   box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+}
+
+.account-panel::-webkit-scrollbar {
+  width: 5px;
+}
+
+.account-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
 .account-tabs {
@@ -773,12 +787,12 @@ html:-webkit-full-screen .app-shell {
 }
 
 .auth-submit-btn {
-  height: 34px;
+  height: 36px;
   margin-top: 4px;
   border: 1px solid var(--action-primary-bg);
   border-radius: 6px;
   background: var(--action-primary-bg);
-  color: var(--action-primary-text);
+  color: #110e1c;
   font-size: 13px;
   font-weight: 700;
   display: inline-flex;
@@ -786,7 +800,7 @@ html:-webkit-full-screen .app-shell {
   justify-content: center;
   gap: 6px;
   cursor: pointer;
-  transition: filter 0.15s ease;
+  transition: filter 0.15s ease, transform 0.15s ease;
 }
 
 .auth-submit-btn:hover:not(:disabled) {
