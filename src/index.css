@@ -1564,9 +1564,6 @@ html:-webkit-full-screen .app-shell {
   height: 1400px;
   transform-origin: top left;
   text-rendering: geometricPrecision;
-  /* Keep the stage on its own compositor layer so wheel zoom/pan animates
-     without repainting every card each frame. */
-  will-change: transform, zoom;
 }
 
 .board {

@@ -51,7 +51,7 @@ export function WorkspaceBoard({
     captureSnapshot: actions.captureSnapshot,
     user,
     workspaceName: workspace.name,
-    onRemoteWorkspaceLoaded: actions.applyRemoteWorkspaceState,
+    onRemoteWorkspaceLoaded: actions.importWorkspaceState,
   })
 
   // Trigger debounced cloud sync whenever local state changes

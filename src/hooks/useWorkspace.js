@@ -52,21 +52,6 @@ function duplicateWithSameData(source, dupData) {
   return { ...source, id: dupData.id }
 }
 
-// Paint the current viewport straight onto the board-stage DOM node. Used by
-// pan and wheel gestures so motion never waits on a React render; React state
-// is committed once the gesture settles. The element is passed in pre-resolved
-// (cached by the hook) so animation frames never pay for a querySelector.
-function applyViewportToDom(boardStageEl, viewport) {
-  if (!boardStageEl) return
-  if (supportsNativeZoom) {
-    boardStageEl.style.left = (viewport.x / viewport.scale) + 'px'
-    boardStageEl.style.top = (viewport.y / viewport.scale) + 'px'
-    boardStageEl.style.zoom = String(viewport.scale)
-  } else {
-    boardStageEl.style.transform = `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`
-  }
-}
-
 export function useWorkspace(workspaceId, workspaceRef) {
   const { user } = useAuth()
   const initialWorkspaceState = useMemo(() => getInitialWorkspaceState(workspaceId), [workspaceId])
@@ -99,14 +84,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const dragRafRef = useRef(null)
   // rAF handle for pan
   const panRafRef = useRef(null)
-  // Deferred React commit after wheel gestures stop
-  const wheelCommitTimerRef = useRef(null)
-  // Wheel gesture target viewport (accumulated while events stream in) and the
-  // rAF id of the easing loop that animates the displayed viewport toward it.
-  const wheelTargetRef = useRef(null)
-  const wheelAnimRafRef = useRef(null)
-  // Cached .board-stage node so per-frame paints skip querySelector.
-  const boardStageElRef = useRef(null)
 
   // Long-press context menu state
   const [longPressMenu, setLongPressMenu] = useState({ visible: false, x: 0, y: 0, canvasX: 0, canvasY: 0 })
@@ -414,15 +391,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
     showToast('Workspace imported')
   }, [saveSnapshot, restoreSnapshot, showToast])
 
-  // Silent variant used by the sync engine when it adopts a remote snapshot
-  // (realtime update from another device, conflict resolution, mount pull).
-  // No toast and no undo entry — the engine already preserves unsynced local
-  // work as a conflict backup, and flooding undo history on every background
-  // sync made Ctrl+Z useless.
-  const applyRemoteWorkspaceState = useCallback((sanitizedWorkspace) => {
-    restoreSnapshot(sanitizedWorkspace)
-  }, [restoreSnapshot])
-
   const activePalette = THEME_PALETTES[themePalette] || THEME_PALETTES.sage || THEME_COLORS
   const theme = activePalette[themeMode] || activePalette.night || THEME_COLORS[themeMode]
   const detachedLabels = useMemo(() => customLabels.map((label) => {
@@ -593,29 +561,13 @@ export function useWorkspace(workspaceId, workspaceRef) {
     })
   }, [renderedCardIds])
 
-  // Stop any in-flight wheel easing so it can't fight a pointer pan or leak
-  // past unmount.
-  const cancelWheelGesture = useCallback(() => {
-    if (wheelCommitTimerRef.current) {
-      clearTimeout(wheelCommitTimerRef.current)
-      wheelCommitTimerRef.current = null
-    }
-    if (wheelAnimRafRef.current) {
-      cancelAnimationFrame(wheelAnimRafRef.current)
-      wheelAnimRafRef.current = null
-    }
-    wheelTargetRef.current = null
-  }, [])
-
   useEffect(() => {
     const popCleanup = popCleanupTimeoutsRef.current
     return () => {
       popCleanup.forEach((timeoutId) => window.clearTimeout(timeoutId))
       popCleanup.clear()
-      cancelWheelGesture()
-      if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
     }
-  }, [cancelWheelGesture])
+  }, [])
 
   // Keep viewportRef in sync with viewport React state
   useEffect(() => {
@@ -1311,56 +1263,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDragState({ columnId: null, itemId: null })
   }, [setColumns, saveSnapshot])
 
-  // Resolve (and cache) the board-stage node used for per-frame paints.
-  const getBoardStageEl = useCallback(() => {
-    if (!boardStageElRef.current || !boardStageElRef.current.isConnected) {
-      boardStageElRef.current = workspaceRef.current?.querySelector('.board-stage') || null
-    }
-    return boardStageElRef.current
-  }, [workspaceRef])
-
-  const commitViewportFromRef = useCallback(() => {
-    wheelCommitTimerRef.current = null
-    setViewport({ ...viewportRef.current })
-  }, [])
-
-  // One easing step: move the displayed viewport a fraction of the way toward
-  // the wheel target. Runs every frame until the gap is visually closed, then
-  // snaps, paints the exact target, and commits to React once.
-  const stepTowardWheelTarget = useCallback(() => {
-    const target = wheelTargetRef.current
-    if (!target) {
-      wheelAnimRafRef.current = null
-      return
-    }
-    const v = viewportRef.current
-    // ~0.35/frame reaches a stop in roughly 4–5 frames (~70ms) — fast enough
-    // to feel direct, smooth enough to hide wheel-notch and pinch stepping.
-    const EASE = 0.35
-    let next = { x: v.x + (target.x - v.x) * EASE, y: v.y + (target.y - v.y) * EASE, scale: v.scale + (target.scale - v.scale) * EASE }
-
-    if (
-      Math.abs(target.scale - next.scale) < 0.0006 &&
-      Math.abs(target.x - next.x) < 0.4 &&
-      Math.abs(target.y - next.y) < 0.4
-    ) {
-      next = { ...target }
-      wheelTargetRef.current = null
-      viewportRef.current = next
-      applyViewportToDom(getBoardStageEl(), next)
-      wheelAnimRafRef.current = null
-      // Gesture fully settled — cancel the pending safety timer and hand the
-      // final value to React immediately.
-      if (wheelCommitTimerRef.current) clearTimeout(wheelCommitTimerRef.current)
-      commitViewportFromRef()
-      return
-    }
-
-    viewportRef.current = next
-    applyViewportToDom(getBoardStageEl(), next)
-    wheelAnimRafRef.current = requestAnimationFrame(stepTowardWheelTarget)
-  }, [getBoardStageEl, commitViewportFromRef])
-
   const handleWheel = useCallback((event) => {
     event.preventDefault()
     const bounds = workspaceRef.current?.getBoundingClientRect()
@@ -1368,66 +1270,42 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
     const isMouseWheel = event.deltaMode !== 0
     const isPinch = event.ctrlKey || event.metaKey
-    // Compose onto the accumulated gesture target, not the displayed value —
-    // events can arrive faster than frames, and building on the displayed
-    // value would drift the anchor while the easing loop lags behind.
-    const base = wheelTargetRef.current || viewportRef.current
 
-    let nextTarget
     if (isPinch || wheelMode === 'zoom') {
       const pointerX = event.clientX - bounds.left; const pointerY = event.clientY - bounds.top
-
+      
       // Use original sensitivity for mouse wheel, use 3x for trackpad pinch
       const sensitivity = isPinch && !isMouseWheel ? (ZOOM_SENSITIVITY * 3.0) : ZOOM_SENSITIVITY
       const zoomFactor = Math.exp(-event.deltaY * sensitivity)
-
-      const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, base.scale * zoomFactor))
-      const contentX = (pointerX - base.x) / base.scale; const contentY = (pointerY - base.y) / base.scale
-      nextTarget = { scale: nextScale, x: pointerX - contentX * nextScale, y: pointerY - contentY * nextScale }
+  
+      setViewport((v) => {
+        const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * zoomFactor))
+        if (nextScale === v.scale) return v
+        const contentX = (pointerX - v.x) / v.scale; const contentY = (pointerY - v.y) / v.scale
+        return { scale: nextScale, x: pointerX - contentX * nextScale, y: pointerY - contentY * nextScale }
+      })
     } else {
       // Pan mode
       const panSpeed = isMouseWheel ? 40 : 1; // Adjust speed for mouse wheel panning
-      nextTarget = { ...base, x: base.x - (event.deltaX * panSpeed), y: base.y - (event.deltaY * panSpeed) }
+      setViewport((v) => ({
+        ...v,
+        x: v.x - (event.deltaX * panSpeed),
+        y: v.y - (event.deltaY * panSpeed)
+      }))
     }
-
-    if (
-      nextTarget.scale === base.scale &&
-      nextTarget.x === base.x &&
-      nextTarget.y === base.y
-    ) return // fully clamped / zero-delta tick — nothing to animate
-
-    wheelTargetRef.current = nextTarget
-
-    // Keep one persistent easing loop alive for the whole gesture instead of
-    // painting once per event — this is what makes zoom feel fluid.
-    if (!wheelAnimRafRef.current) {
-      wheelAnimRafRef.current = requestAnimationFrame(stepTowardWheelTarget)
-    }
-
-    // Safety commit shortly after the last event. Normally the easing loop's
-    // settle path commits first and this timer finds nothing to do; if it
-    // still sees a finished-but-uncommitted gesture, commit now.
-    if (wheelCommitTimerRef.current) clearTimeout(wheelCommitTimerRef.current)
-    wheelCommitTimerRef.current = setTimeout(() => {
-      wheelCommitTimerRef.current = null
-      if (!wheelAnimRafRef.current && !wheelTargetRef.current) {
-        setViewport({ ...viewportRef.current })
-      }
-    }, 200)
-  }, [workspaceRef, wheelMode, stepTowardWheelTarget])
+  }, [workspaceRef, wheelMode])
 
   const startPanning = useCallback((event) => {
     if (window.innerWidth <= 1200) return
     if (event.button !== 2) return
     if (event.target.closest('.action-rail') || event.target.closest('.top-bar') || event.target.closest('.card-menu-wrap')) return
     event.preventDefault()
-    cancelWheelGesture()
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {}
     panRef.current = { active: true, lastX: event.clientX, lastY: event.clientY }
     setIsPanning(true)
-  }, [cancelWheelGesture])
+  }, [])
 
   const handleMiddleClick = useCallback((event) => {
     if (event.button !== 1) return // Middle button
@@ -1459,9 +1337,18 @@ export function useWorkspace(workspaceId, workspaceRef) {
     // Apply to DOM via rAF — no React state update during motion
     if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
     panRafRef.current = requestAnimationFrame(() => {
-      applyViewportToDom(getBoardStageEl(), viewportRef.current)
+      const boardStage = workspaceRef.current?.querySelector('.board-stage')
+      if (boardStage) {
+        const vr = viewportRef.current
+        if (supportsNativeZoom) {
+          boardStage.style.left = (vr.x / vr.scale) + 'px'
+          boardStage.style.top = (vr.y / vr.scale) + 'px'
+        } else {
+          boardStage.style.transform = `translate(${vr.x}px, ${vr.y}px) scale(${vr.scale})`
+        }
+      }
     })
-  }, [getBoardStageEl])
+  }, [workspaceRef])
 
   const endPanning = useCallback((event) => {
     if (!panRef.current.active) return
@@ -1850,7 +1737,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       handleCardPointerDown, handleWheel, startPanning, movePanning, endPanning, handleMiddleClick,
       handleQuickAction, focusLabelCard, restoreArchivedCard, moveCardToTarget,
       handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,
-      importWorkspaceState, applyRemoteWorkspaceState,
+      importWorkspaceState,
       updateTodoCardTitle, updateTodoCardColor, toggleTodoCardMinimize, updateTodoCardFontSize, duplicateTodoCard, archiveTodoCard, deleteTodoCard,
       updateLabelText, updateLabelColor, toggleLabelMinimize, updateLabelFontSize, duplicateLabelCard, archiveLabelCard, deleteLabelCard,
       updateSingleNoteText, updateSingleNoteColor, updateSingleNoteFontSize, updateSingleNoteShape, toggleSingleNoteMinimize, duplicateSingleNoteCard, archiveSingleNoteCard, deleteSingleNoteCard,
