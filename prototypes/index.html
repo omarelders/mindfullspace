@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Action Rail Design Concepts Showcase - Mindful Space</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg: #090c10;
+      --panel: #161b22;
+      --border: rgba(255, 255, 255, 0.12);
+      --text: #f0f6fc;
+      --text-muted: #8b949e;
+      --accent: #7b68c9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Top Control Bar */
+    .showcase-bar {
+      height: 64px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 100;
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .brand svg { color: var(--accent); }
+
+    .concept-switchers {
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .concept-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+    .concept-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .concept-btn.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(123, 104, 201, 0.4);
+    }
+
+    .open-standalone-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .open-standalone-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+
+    /* Iframe Live Stage */
+    .preview-frame {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Showcase Navigation -->
+  <div class="showcase-bar">
+    <div class="brand">
+      <i data-lucide="sparkles"></i>
+      <span>Action Rail Design Lab</span>
+    </div>
+
+    <!-- 5 Concept Switchers -->
+    <div class="concept-switchers">
+      <button class="concept-btn active" onclick="switchConcept('prototype-1-magnification-dock.html', this)">
+        <i data-lucide="waves" style="width: 15px; height: 15px;"></i>
+        <span>1. Magnification Dock</span>
+      </button>
+      <button class="concept-btn" onclick="switchConcept('prototype-2-dynamic-island-capsule.html', this)">
+        <i data-lucide="maximize-2" style="width: 15px; height: 15px;"></i>
+        <span>2. Dynamic Island Capsule</span>
+      </button>
+      <button class="concept-btn" onclick="switchConcept('prototype-3-orbital-arc-fan.html', this)">
+        <i data-lucide="compass" style="width: 15px; height: 15px;"></i>
+        <span>3. Orbital Arc Fan</span>
+      </button>
+      <button class="concept-btn" onclick="switchConcept('prototype-4-3d-cylindrical-dial.html', this)">
+        <i data-lucide="box" style="width: 15px; height: 15px;"></i>
+        <span>4. 3D Cylindrical Dial</span>
+      </button>
+      <button class="concept-btn" onclick="switchConcept('prototype-5-speed-rail-command.html', this)">
+        <i data-lucide="zap" style="width: 15px; height: 15px;"></i>
+        <span>5. Speed Rail Hotkeys</span>
+      </button>
+    </div>
+
+    <a id="standaloneLink" href="prototype-1-magnification-dock.html" target="_blank" class="open-standalone-btn">
+      <i data-lucide="external-link" style="width: 14px; height: 14px;"></i>
+      <span>Open Standalone</span>
+    </a>
+  </div>
+
+  <!-- Live Embedded View -->
+  <iframe id="conceptFrame" class="preview-frame" src="prototype-1-magnification-dock.html"></iframe>
+
+  <script>
+    lucide.createIcons();
+
+    function switchConcept(url, btn) {
+      document.querySelectorAll('.concept-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('conceptFrame').src = url;
+      document.getElementById('standaloneLink').href = url;
+    }
+  </script>
+</body>
+</html>

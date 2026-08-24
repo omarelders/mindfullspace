@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concept 4: 3D Cylindrical Perspective Dial - Mindful Space</title>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg: #0b0d13;
+      --bg-canvas: #10131a;
+      --dial-bg: rgba(20, 24, 34, 0.88);
+      --dial-border: rgba(255, 255, 255, 0.14);
+      --text: #f0f6fc;
+      --text-muted: #8b949e;
+      --accent: #06b6d4;
+      --accent-glow: rgba(6, 182, 212, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Canvas Backdrop ── */
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      background-color: var(--bg-canvas);
+      background-image: 
+        radial-gradient(circle at 75% 75%, rgba(6, 182, 212, 0.08) 0%, transparent 60%),
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+    }
+
+    /* Top Demo Header */
+    .demo-header {
+      position: fixed;
+      top: 18px;
+      left: 24px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(18, 22, 30, 0.82);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 12px 18px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .demo-title {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #fff;
+    }
+    .demo-title span {
+      color: var(--accent);
+      background: rgba(6, 182, 212, 0.18);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    .demo-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      max-width: 340px;
+      line-height: 1.4;
+    }
+    .demo-instructions {
+      font-size: 11px;
+      color: #22d3ee;
+    }
+
+    /* ── Spawning Canvas Cards ── */
+    .spawned-card {
+      position: absolute;
+      background: rgba(20, 26, 38, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 14px;
+      padding: 16px;
+      color: #fff;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      backdrop-filter: blur(20px);
+      animation: cardPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      cursor: grab;
+      min-width: 190px;
+      z-index: 20;
+    }
+    .spawned-card:active { cursor: grabbing; }
+    .spawned-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--card-accent, #06b6d4);
+    }
+    .spawned-card-body {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    @keyframes cardPop {
+      0% { opacity: 0; transform: scale(0.5) translateY(20px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    /* ── The 3D Cylindrical Dial Container ── */
+    .dial-wrapper {
+      position: fixed;
+      right: 28px;
+      bottom: 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 90;
+    }
+
+    /* 3D Stage / Viewport */
+    .cylinder-stage {
+      perspective: 750px;
+      perspective-origin: 50% 50%;
+      width: 72px;
+      height: 380px;
+      position: relative;
+      margin-bottom: 14px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(20px) scale(0.85);
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .cylinder-stage.is-open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+
+    /* The Rotating Cylinder Ring */
+    .cylinder-rotor {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      transform-style: preserve-3d;
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Each 3D Item Node */
+    .cylinder-slot {
+      position: absolute;
+      left: 12px;
+      top: calc(50% - 24px);
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(25, 32, 46, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(14px);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      backface-visibility: hidden;
+      transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, filter 0.2s;
+    }
+
+    .cylinder-slot:hover {
+      background: rgba(40, 50, 72, 0.98);
+      border-color: rgba(255, 255, 255, 0.4);
+      box-shadow: 0 12px 32px var(--item-glow, rgba(6, 182, 212, 0.5));
+    }
+
+    .cylinder-slot svg {
+      width: 22px;
+      height: 22px;
+      stroke-width: 2.2;
+      color: var(--item-color, #fff);
+    }
+
+    /* Tooltip */
+    .cylinder-tooltip {
+      position: absolute;
+      right: calc(100% + 14px);
+      top: 50%;
+      transform: translateY(-50%) translateX(6px) scale(0.92);
+      background: rgba(18, 22, 34, 0.95);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+    }
+    .cylinder-slot:hover .cylinder-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(-50%) translateX(0) scale(1);
+    }
+
+    /* HUD Laser Sight Line */
+    .hud-sight-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.6), transparent);
+      pointer-events: none;
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.8);
+    }
+
+    /* ── Central Trigger Button ── */
+    .dial-trigger {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #06b6d4, #0284c7);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 8px 28px rgba(6, 182, 212, 0.45), 0 2px 6px rgba(0,0,0,0.3);
+      transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+    }
+    .dial-trigger:hover {
+      transform: scale(1.08);
+      box-shadow: 0 12px 36px rgba(6, 182, 212, 0.65);
+    }
+    .dial-trigger svg {
+      width: 26px;
+      height: 26px;
+      stroke-width: 2.3;
+      transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .cylinder-stage.is-open + .dial-trigger svg {
+      transform: rotate(135deg);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Canvas Backdrop -->
+  <div id="canvas-container"></div>
+
+  <!-- Header Info -->
+  <div class="demo-header">
+    <div class="demo-title">Concept 4: 3D Cylindrical Perspective Dial <span>PROTOTYPE</span></div>
+    <div class="demo-desc">
+      A mechanical 3D cylinder roll effect. Scroll mouse wheel over the dial to rotate through cards in 3D perspective.
+    </div>
+    <div class="demo-instructions">✨ Mouse-wheel or drag over the column to spin the dial; click an icon to drop it.</div>
+  </div>
+
+  <!-- The 3D Dial Component -->
+  <div class="dial-wrapper">
+    <div class="cylinder-stage is-open" id="cylinderStage">
+      <div class="hud-sight-line"></div>
+      <div class="cylinder-rotor" id="rotor"></div>
+    </div>
+
+    <!-- Trigger -->
+    <button class="dial-trigger" id="dialTrigger" title="Toggle 3D Dial">
+      <i data-lucide="plus"></i>
+    </button>
+  </div>
+
+  <script>
+    // Audio Synthesizer
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTickSound(freq = 550) {
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.04);
+      } catch (e) {}
+    }
+
+    const CARDS = [
+      { id: 'label', title: 'Label', icon: 'tag', color: '#EF4444', glow: 'rgba(239, 68, 68, 0.45)' },
+      { id: 'singlenote', title: 'Single Note', icon: 'sticky-note', color: '#F59E0B', glow: 'rgba(245, 158, 11, 0.45)' },
+      { id: 'note', title: 'Note', icon: 'file-text', color: '#EAB308', glow: 'rgba(234, 179, 8, 0.45)' },
+      { id: 'todo-list', title: 'Todo List', icon: 'list-todo', color: '#10B981', glow: 'rgba(16, 185, 129, 0.45)' },
+      { id: 'counter', title: 'Counter', icon: 'hash', color: '#06B6D4', glow: 'rgba(6, 182, 212, 0.45)' },
+      { id: 'timer', title: 'Timer', icon: 'timer', color: '#3B82F6', glow: 'rgba(59, 130, 246, 0.45)' },
+      { id: 'stopwatch', title: 'Stopwatch', icon: 'timer-reset', color: '#6366F1', glow: 'rgba(99, 102, 241, 0.45)' },
+      { id: 'picture', title: 'Picture', icon: 'image', color: '#EC4899', glow: 'rgba(236, 72, 153, 0.45)' },
+      { id: 'quick-links', title: 'Quick Links', icon: 'link-2', color: '#14B8A6', glow: 'rgba(20, 184, 166, 0.45)' },
+      { id: 'calendar', title: 'Calendar', icon: 'calendar-days', color: '#8B5CF6', glow: 'rgba(139, 92, 246, 0.45)' },
+      { id: 'habit', title: 'Habit', icon: 'circle-check', color: '#F97316', glow: 'rgba(249, 115, 22, 0.45)' },
+      { id: 'quote', title: 'Quote', icon: 'quote', color: '#D946EF', glow: 'rgba(217, 70, 239, 0.45)' }
+    ];
+
+    const rotor = document.getElementById('rotor');
+    const stage = document.getElementById('cylinderStage');
+    const trigger = document.getElementById('dialTrigger');
+    const canvasContainer = document.getElementById('canvas-container');
+
+    const totalItems = CARDS.length;
+    const angleStep = 360 / totalItems; // 30 degrees per item
+    const radius = 175; // cylinder radius in pixels
+    let currentRotation = 0;
+
+    // Render 3D Cylinder Slots
+    CARDS.forEach((card, idx) => {
+      const slot = document.createElement('div');
+      slot.className = 'cylinder-slot';
+      slot.style.setProperty('--item-color', card.color);
+      slot.style.setProperty('--item-glow', card.glow);
+
+      const angle = idx * angleStep;
+      // Position along 3D cylinder
+      slot.style.transform = `rotateX(${angle}deg) translateZ(${radius}px)`;
+
+      slot.innerHTML = `
+        <i data-lucide="${card.icon}"></i>
+        <div class="cylinder-tooltip">${card.title}</div>
+      `;
+
+      slot.addEventListener('click', (e) => {
+        e.stopPropagation();
+        spawnCard(card);
+        playTickSound(700);
+      });
+
+      rotor.appendChild(slot);
+    });
+
+    lucide.createIcons();
+
+    // 3D Wheel Rotation Physics
+    stage.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -angleStep : angleStep;
+      currentRotation += delta;
+      rotor.style.transform = `rotateX(${currentRotation}deg)`;
+      playTickSound(450 + Math.abs(currentRotation % 360) * 0.5);
+    }, { passive: false });
+
+    // Drag-to-spin
+    let isDragging = false, startY = 0, startRot = 0;
+    stage.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      startY = e.clientY;
+      startRot = currentRotation;
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const diffY = e.clientY - startY;
+      currentRotation = startRot - diffY * 0.8;
+      rotor.style.transform = `rotateX(${currentRotation}deg)`;
+    });
+    window.addEventListener('mouseup', () => isDragging = false);
+
+    // Toggle Stage
+    trigger.addEventListener('click', () => {
+      stage.classList.toggle('is-open');
+      playTickSound(stage.classList.contains('is-open') ? 600 : 350);
+    });
+
+    // Spawn card logic
+    function spawnCard(card) {
+      const cardEl = document.createElement('div');
+      cardEl.className = 'spawned-card';
+      cardEl.style.setProperty('--card-accent', card.color);
+
+      const x = Math.max(80, Math.min(window.innerWidth - 340, window.innerWidth / 2 - 120 + (Math.random() * 220 - 110)));
+      const y = Math.max(80, Math.min(window.innerHeight - 260, window.innerHeight / 2 - 90 + (Math.random() * 180 - 90)));
+      cardEl.style.left = `${x}px`;
+      cardEl.style.top = `${y}px`;
+
+      cardEl.innerHTML = `
+        <div class="spawned-card-header">
+          <i data-lucide="${card.icon}" style="width: 16px; height: 16px;"></i>
+          <span>${card.title}</span>
+        </div>
+        <div class="spawned-card-body">
+          Sample card dropped from 3D Perspective Dial.
+        </div>
+      `;
+
+      let isDragging = false, startX, startY, initX, initY;
+      cardEl.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        initX = cardEl.offsetLeft;
+        initY = cardEl.offsetTop;
+        cardEl.style.zIndex = 50;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        cardEl.style.left = `${initX + (e.clientX - startX)}px`;
+        cardEl.style.top = `${initY + (e.clientY - startY)}px`;
+      });
+      window.addEventListener('mouseup', () => isDragging = false);
+
+      canvasContainer.appendChild(cardEl);
+      lucide.createIcons();
+    }
+  </script>
+</body>
+</html>

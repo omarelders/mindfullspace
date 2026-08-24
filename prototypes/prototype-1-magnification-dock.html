@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concept 1: macOS Magnification Spring Dock - Mindful Space</title>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg-canvas: #14171f;
+      --surface-dock: rgba(22, 27, 34, 0.78);
+      --dock-border: rgba(255, 255, 255, 0.12);
+      --text: #f0f6fc;
+      --text-muted: #8b949e;
+      --accent: #7b68c9;
+      --accent-glow: rgba(123, 104, 201, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+    }
+
+    /* ── Canvas Backdrop ── */
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      background-color: var(--bg-canvas);
+      background-image: 
+        radial-gradient(circle at 50% 50%, rgba(123, 104, 201, 0.08) 0%, transparent 60%),
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+      overflow: hidden;
+    }
+
+    /* Top Demo Header */
+    .demo-header {
+      position: fixed;
+      top: 18px;
+      left: 24px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(18, 22, 30, 0.75);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 12px 18px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .demo-title {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #fff;
+    }
+    .demo-title span {
+      color: var(--accent);
+      background: rgba(123, 104, 201, 0.18);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    .demo-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      max-width: 320px;
+      line-height: 1.4;
+    }
+    .demo-instructions {
+      font-size: 11px;
+      color: #58a6ff;
+      margin-top: 2px;
+    }
+
+    /* ── Interactive Spawned Cards ── */
+    .spawned-card {
+      position: absolute;
+      background: rgba(22, 27, 34, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 14px;
+      padding: 16px;
+      color: #fff;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      backdrop-filter: blur(20px);
+      animation: cardPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      cursor: grab;
+      min-width: 180px;
+    }
+    .spawned-card:active {
+      cursor: grabbing;
+    }
+    .spawned-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--card-accent, #7b68c9);
+    }
+    .spawned-card-body {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    @keyframes cardPop {
+      0% { opacity: 0; transform: scale(0.5) translateY(20px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    /* ── The Magnification Dock ── */
+    .dock-container {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 90;
+    }
+
+    /* The Vertical Floating Glass Spine */
+    .dock-spine {
+      background: var(--surface-dock);
+      backdrop-filter: blur(24px) saturate(200%);
+      -webkit-backdrop-filter: blur(24px) saturate(200%);
+      border: 1px solid var(--dock-border);
+      border-radius: 36px;
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 
+        0 20px 50px rgba(0, 0, 0, 0.6),
+        0 1px 0 rgba(255, 255, 255, 0.15) inset,
+        0 0 20px rgba(123, 104, 201, 0.1);
+      margin-bottom: 12px;
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-origin: bottom center;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(20px) scale(0.85);
+      position: relative;
+    }
+
+    .dock-spine.is-open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+
+    /* Ambient Cursor Glow Follower inside Dock */
+    .dock-glow-follower {
+      position: absolute;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--hover-color, rgba(123, 104, 201, 0.45)) 0%, transparent 70%);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease, background 0.25s ease;
+      filter: blur(8px);
+      z-index: 1;
+    }
+    .dock-spine:hover .dock-glow-follower {
+      opacity: 1;
+    }
+
+    /* Magnification Icon Item */
+    .dock-item {
+      --base-size: 38px;
+      --scale: 1;
+      width: calc(var(--base-size) * var(--scale));
+      height: calc(var(--base-size) * var(--scale));
+      border-radius: 50%;
+      background: rgba(30, 36, 46, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      z-index: 2;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+      flex-shrink: 0;
+    }
+
+    .dock-item:hover {
+      background: rgba(45, 54, 68, 0.95);
+      border-color: rgba(255, 255, 255, 0.35);
+      box-shadow: 0 8px 24px var(--item-glow, rgba(123, 104, 201, 0.5));
+    }
+
+    .dock-item:active {
+      transform: scale(0.9) !important;
+    }
+
+    .dock-item svg {
+      width: calc(18px * var(--scale));
+      height: calc(18px * var(--scale));
+      stroke-width: 2.2;
+      color: var(--item-color, #fff);
+      transition: width 0.1s, height 0.1s;
+    }
+
+    /* Spring-loaded Tooltip */
+    .dock-tooltip {
+      position: absolute;
+      right: calc(100% + 14px);
+      top: 50%;
+      transform: translateY(-50%) translateX(6px) scale(0.9);
+      background: rgba(18, 22, 30, 0.95);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 9px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  visibility 0.18s;
+      z-index: 100;
+    }
+    .dock-tooltip::after {
+      content: '';
+      position: absolute;
+      left: 100%;
+      top: 50%;
+      transform: translateY(-50%);
+      border-width: 5px 0 5px 6px;
+      border-style: solid;
+      border-color: transparent transparent transparent rgba(18, 22, 30, 0.95);
+    }
+    .dock-item:hover .dock-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(-50%) translateX(0) scale(1);
+    }
+
+    /* ── Main Trigger Button (+ Button) ── */
+    .dock-trigger {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #7b68c9, #5d48b0);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 8px 25px rgba(123, 104, 201, 0.45), 0 2px 6px rgba(0,0,0,0.3);
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+    }
+    .dock-trigger:hover {
+      transform: translateY(-2px) scale(1.08);
+      box-shadow: 0 12px 32px rgba(123, 104, 201, 0.65);
+    }
+    .dock-trigger:active {
+      transform: scale(0.92);
+    }
+    .dock-trigger svg {
+      width: 26px;
+      height: 26px;
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .dock-trigger.is-open svg {
+      transform: rotate(135deg);
+    }
+
+    /* Controls Panel */
+    .controls-panel {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      background: rgba(18, 22, 30, 0.75);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 10px 16px;
+      border-radius: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      font-size: 12px;
+    }
+    .btn-clear {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-clear:hover {
+      background: rgba(255, 255, 255, 0.18);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Interactive Infinite Canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- Header Info -->
+  <div class="demo-header">
+    <div class="demo-title">Concept 1: macOS Magnification Spring Dock <span>PROTOTYPE</span></div>
+    <div class="demo-desc">
+      Hover your mouse smoothly up and down the vertical single rail. Notice the natural distance-weighted magnification and spring physics.
+    </div>
+    <div class="demo-instructions">✨ Click any icon to drop an interactive card onto the canvas.</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls-panel">
+    <span>Canvas Items: <strong id="card-count">0</strong></span>
+    <button class="btn-clear" onclick="clearCanvas()">Clear Canvas</button>
+  </div>
+
+  <!-- The Action Dock Component -->
+  <div class="dock-container">
+    <div class="dock-spine is-open" id="dockSpine">
+      <div class="dock-glow-follower" id="dockGlow"></div>
+      <!-- 12 Items generated dynamically -->
+    </div>
+    <button class="dock-trigger is-open" id="dockTrigger" title="Toggle Dock" aria-label="Toggle Dock">
+      <i data-lucide="plus"></i>
+    </button>
+  </div>
+
+  <script>
+    // Audio Synthesizer for Micro-Haptics
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playPopSound(freq = 440, type = 'sine') {
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.5, audioCtx.currentTime + 0.06);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.06);
+      } catch (e) {}
+    }
+
+    const CARD_TYPES = [
+      { id: 'label', title: 'Label', icon: 'tag', color: '#EF4444', glow: 'rgba(239, 68, 68, 0.4)' },
+      { id: 'singlenote', title: 'Single Note', icon: 'sticky-note', color: '#F59E0B', glow: 'rgba(245, 158, 11, 0.4)' },
+      { id: 'note', title: 'Note', icon: 'file-text', color: '#EAB308', glow: 'rgba(234, 179, 8, 0.4)' },
+      { id: 'todo-list', title: 'Todo List', icon: 'list-todo', color: '#10B981', glow: 'rgba(16, 185, 129, 0.4)' },
+      { id: 'counter', title: 'Counter', icon: 'hash', color: '#06B6D4', glow: 'rgba(6, 182, 212, 0.4)' },
+      { id: 'timer', title: 'Timer', icon: 'timer', color: '#3B82F6', glow: 'rgba(59, 130, 246, 0.4)' },
+      { id: 'stopwatch', title: 'Stopwatch', icon: 'timer-reset', color: '#6366F1', glow: 'rgba(99, 102, 241, 0.4)' },
+      { id: 'picture', title: 'Picture', icon: 'image', color: '#EC4899', glow: 'rgba(236, 72, 153, 0.4)' },
+      { id: 'quick-links', title: 'Quick Links', icon: 'link-2', color: '#14B8A6', glow: 'rgba(20, 184, 166, 0.4)' },
+      { id: 'calendar', title: 'Calendar', icon: 'calendar-days', color: '#8B5CF6', glow: 'rgba(139, 92, 246, 0.4)' },
+      { id: 'habit', title: 'Habit', icon: 'circle-check', color: '#F97316', glow: 'rgba(249, 115, 22, 0.4)' },
+      { id: 'quote', title: 'Quote', icon: 'quote', color: '#D946EF', glow: 'rgba(217, 70, 239, 0.4)' }
+    ];
+
+    const dockSpine = document.getElementById('dockSpine');
+    const dockGlow = document.getElementById('dockGlow');
+    const dockTrigger = document.getElementById('dockTrigger');
+    const canvasContainer = document.getElementById('canvas-container');
+    const cardCountEl = document.getElementById('card-count');
+    let cardCount = 0;
+
+    // Render 12 Dock Items
+    CARD_TYPES.forEach((card, idx) => {
+      const item = document.createElement('div');
+      item.className = 'dock-item';
+      item.dataset.index = idx;
+      item.dataset.color = card.color;
+      item.dataset.glow = card.glow;
+      item.style.setProperty('--item-color', card.color);
+      item.style.setProperty('--item-glow', card.glow);
+      
+      item.innerHTML = `
+        <i data-lucide="${card.icon}"></i>
+        <div class="dock-tooltip">${card.title}</div>
+      `;
+
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        spawnCard(card);
+        playPopSound(580, 'triangle');
+      });
+
+      dockSpine.appendChild(item);
+    });
+
+    lucide.createIcons();
+
+    // Toggle Dock Open/Close
+    dockTrigger.addEventListener('click', () => {
+      dockSpine.classList.toggle('is-open');
+      dockTrigger.classList.toggle('is-open');
+      playPopSound(dockSpine.classList.contains('is-open') ? 520 : 380);
+    });
+
+    // macOS Magnification Physics Calculation
+    const dockItems = Array.from(document.querySelectorAll('.dock-item'));
+    const maxDistance = 140; // Pixel radius of magnification influence
+    const maxMagnification = 1.48; // Max scale when cursor is directly over icon
+
+    let targetScales = new Array(dockItems.length).fill(1);
+    let currentScales = new Array(dockItems.length).fill(1);
+    let isHoveringDock = false;
+
+    dockSpine.addEventListener('mousemove', (e) => {
+      isHoveringDock = true;
+      const rect = dockSpine.getBoundingClientRect();
+      const mouseY = e.clientY;
+      const glowY = mouseY - rect.top;
+      dockGlow.style.top = `${glowY}px`;
+
+      dockItems.forEach((item, i) => {
+        const itemRect = item.getBoundingClientRect();
+        const itemCenterY = itemRect.top + itemRect.height / 2;
+        const dist = Math.abs(mouseY - itemCenterY);
+
+        if (dist < maxDistance) {
+          // Cosine smoothing curve for buttery organic wave
+          const normDist = dist / maxDistance;
+          const factor = Math.cos(normDist * (Math.PI / 2));
+          targetScales[i] = 1 + (maxMagnification - 1) * Math.pow(factor, 1.5);
+          
+          if (dist < 25) {
+            dockGlow.style.setProperty('--hover-color', item.dataset.glow);
+          }
+        } else {
+          targetScales[i] = 1;
+        }
+      });
+    });
+
+    dockSpine.addEventListener('mouseleave', () => {
+      isHoveringDock = false;
+      targetScales.fill(1);
+    });
+
+    // Smooth Spring Animation Loop
+    function animateDock() {
+      dockItems.forEach((item, i) => {
+        // Spring lerp
+        currentScales[i] += (targetScales[i] - currentScales[i]) * 0.22;
+        item.style.setProperty('--scale', currentScales[i].toFixed(3));
+      });
+      requestAnimationFrame(animateDock);
+    }
+    animateDock();
+
+    // Spawning Cards onto Canvas
+    function spawnCard(card) {
+      cardCount++;
+      cardCountEl.innerText = cardCount;
+      const cardEl = document.createElement('div');
+      cardEl.className = 'spawned-card';
+      cardEl.style.setProperty('--card-accent', card.color);
+
+      // Random position near center
+      const x = Math.max(80, Math.min(window.innerWidth - 320, window.innerWidth / 2 - 100 + (Math.random() * 200 - 100)));
+      const y = Math.max(80, Math.min(window.innerHeight - 250, window.innerHeight / 2 - 80 + (Math.random() * 160 - 80)));
+      cardEl.style.left = `${x}px`;
+      cardEl.style.top = `${y}px`;
+
+      cardEl.innerHTML = `
+        <div class="spawned-card-header">
+          <i data-lucide="${card.icon}" style="width: 16px; height: 16px;"></i>
+          <span>${card.title}</span>
+        </div>
+        <div class="spawned-card-body">
+          Sample card created via Magnification Dock. Drag me around!
+        </div>
+      `;
+
+      // Draggable logic
+      let isDragging = false, startX, startY, initX, initY;
+      cardEl.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        initX = cardEl.offsetLeft;
+        initY = cardEl.offsetTop;
+        cardEl.style.zIndex = 50;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        cardEl.style.left = `${initX + (e.clientX - startX)}px`;
+        cardEl.style.top = `${initY + (e.clientY - startY)}px`;
+      });
+      window.addEventListener('mouseup', () => isDragging = false);
+
+      canvasContainer.appendChild(cardEl);
+      lucide.createIcons();
+    }
+
+    function clearCanvas() {
+      canvasContainer.innerHTML = '';
+      cardCount = 0;
+      cardCountEl.innerText = '0';
+      playPopSound(300, 'sawtooth');
+    }
+  </script>
+</body>
+</html>

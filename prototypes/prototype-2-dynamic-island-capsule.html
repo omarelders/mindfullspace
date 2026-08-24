@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concept 2: Dynamic Island Morphing Capsule - Mindful Space</title>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg: #090c10;
+      --bg-canvas: #0f1319;
+      --island-bg: rgba(18, 24, 34, 0.88);
+      --island-border: rgba(255, 255, 255, 0.14);
+      --text: #f0f6fc;
+      --text-muted: #8b949e;
+      --accent: #4d8ef7;
+      --accent-glow: rgba(77, 142, 247, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Interactive Grid Canvas ── */
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      background-color: var(--bg-canvas);
+      background-image: 
+        radial-gradient(circle at 80% 80%, rgba(77, 142, 247, 0.08) 0%, transparent 60%),
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+    }
+
+    /* Top Demo Header */
+    .demo-header {
+      position: fixed;
+      top: 18px;
+      left: 24px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(18, 24, 34, 0.82);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 12px 18px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .demo-title {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #fff;
+    }
+    .demo-title span {
+      color: var(--accent);
+      background: rgba(77, 142, 247, 0.18);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    .demo-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      max-width: 330px;
+      line-height: 1.4;
+    }
+    .demo-instructions {
+      font-size: 11px;
+      color: #58a6ff;
+    }
+
+    /* ── Spawning Canvas Cards ── */
+    .spawned-card {
+      position: absolute;
+      background: rgba(22, 30, 42, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 14px;
+      padding: 16px;
+      color: #fff;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      backdrop-filter: blur(20px);
+      animation: cardPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      cursor: grab;
+      min-width: 190px;
+      z-index: 20;
+    }
+    .spawned-card:active { cursor: grabbing; }
+    .spawned-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--card-accent, #4d8ef7);
+    }
+    .spawned-card-body {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    @keyframes cardPop {
+      0% { opacity: 0; transform: scale(0.5) translateY(20px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    /* ── The Morphing Dynamic Island ── */
+    .island-wrapper {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 90;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    /* Liquid Morphing Capsule */
+    .dynamic-island {
+      background: var(--island-bg);
+      backdrop-filter: blur(24px) saturate(190%);
+      -webkit-backdrop-filter: blur(24px) saturate(190%);
+      border: 1px solid var(--island-border);
+      box-shadow: 
+        0 24px 60px rgba(0, 0, 0, 0.7),
+        0 1px 0 rgba(255, 255, 255, 0.2) inset;
+      border-radius: 28px;
+      width: 56px;
+      height: 56px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: 
+        width 0.45s cubic-bezier(0.34, 1.35, 0.64, 1),
+        height 0.45s cubic-bezier(0.34, 1.35, 0.64, 1),
+        border-radius 0.45s cubic-bezier(0.34, 1.35, 0.64, 1),
+        box-shadow 0.3s ease;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .dynamic-island.is-expanded {
+      width: 260px;
+      height: 520px;
+      border-radius: 22px;
+      cursor: default;
+      box-shadow: 
+        0 30px 70px rgba(0, 0, 0, 0.85),
+        0 0 30px rgba(77, 142, 247, 0.15),
+        0 1px 0 rgba(255, 255, 255, 0.25) inset;
+    }
+
+    /* Compact Idle State (The + Button inside Island) */
+    .island-fab-view {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      transition: opacity 0.2s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 10;
+    }
+    .island-fab-view svg {
+      width: 26px;
+      height: 26px;
+      stroke-width: 2.3;
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .dynamic-island:hover .island-fab-view svg {
+      transform: scale(1.15) rotate(45deg);
+    }
+
+    .dynamic-island.is-expanded .island-fab-view {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.6) rotate(90deg);
+    }
+
+    /* Expanded Content State */
+    .island-content-view {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      opacity: 0;
+      transform: translateY(12px) scale(0.95);
+      transition: opacity 0.28s ease 0.12s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1) 0.12s;
+      pointer-events: none;
+    }
+
+    .dynamic-island.is-expanded .island-content-view {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    /* Header & Tabs */
+    .island-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .island-header-title {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .island-close-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .island-close-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+      transform: rotate(90deg);
+    }
+
+    /* Segmented Filter Pills */
+    .island-tabs {
+      display: flex;
+      padding: 8px 12px 4px;
+      gap: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .tab-pill {
+      flex: 1;
+      text-align: center;
+      padding: 5px 0;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 8px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .tab-pill.active {
+      background: rgba(77, 142, 247, 0.2);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(77, 142, 247, 0.25);
+    }
+
+    /* Scrollable Cards Grid inside Island */
+    .island-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      scrollbar-width: none;
+    }
+    .island-body::-webkit-scrollbar { display: none; }
+
+    .island-item-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.18s, transform 0.18s, border-color 0.18s;
+    }
+    .island-item-row:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.12);
+      transform: translateX(-3px);
+    }
+    .island-item-row:active {
+      transform: scale(0.97);
+    }
+    .item-icon-box {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--item-bg, rgba(77, 142, 247, 0.15));
+      border: 1px solid var(--item-border, rgba(77, 142, 247, 0.3));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--item-color, #4d8ef7);
+      flex-shrink: 0;
+    }
+    .item-icon-box svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 2.2;
+    }
+    .item-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .item-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .item-subtitle {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    /* Category Divider Header */
+    .category-divider {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: rgba(255, 255, 255, 0.4);
+      text-transform: uppercase;
+      padding: 8px 4px 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Canvas Backdrop -->
+  <div id="canvas-container"></div>
+
+  <!-- Header Info -->
+  <div class="demo-header">
+    <div class="demo-title">Concept 2: Dynamic Island Morphing Capsule <span>PROTOTYPE</span></div>
+    <div class="demo-desc">
+      The floating FAB button dynamically morphs into an expansive liquid-glass command capsule with categorized cards.
+    </div>
+    <div class="demo-instructions">✨ Click the morphing capsule or items to test instant creation.</div>
+  </div>
+
+  <!-- The Dynamic Island Morphing Component -->
+  <div class="island-wrapper">
+    <div class="dynamic-island" id="island">
+      
+      <!-- Idle State (+ Button) -->
+      <div class="island-fab-view">
+        <i data-lucide="plus"></i>
+      </div>
+
+      <!-- Expanded State (Content) -->
+      <div class="island-content-view">
+        <div class="island-header">
+          <div class="island-header-title">
+            <i data-lucide="sparkles" style="width: 15px; height: 15px; color: var(--accent);"></i>
+            <span>Add to Space</span>
+          </div>
+          <button class="island-close-btn" id="closeBtn" title="Collapse">
+            <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+          </button>
+        </div>
+
+        <!-- Segmented Category Tabs -->
+        <div class="island-tabs">
+          <button class="tab-pill active" onclick="filterCategory('all', this)">All (12)</button>
+          <button class="tab-pill" onclick="filterCategory('notes', this)">Notes</button>
+          <button class="tab-pill" onclick="filterCategory('tasks', this)">Tasks</button>
+          <button class="tab-pill" onclick="filterCategory('tools', this)">Tools</button>
+        </div>
+
+        <!-- Body Items List -->
+        <div class="island-body" id="islandItemsList">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Audio Synthesizer
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playAudioTone(freq = 480, type = 'sine') {
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.3, audioCtx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.09, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.08);
+      } catch (e) {}
+    }
+
+    const ALL_CARDS = [
+      { id: 'label', category: 'notes', title: 'Label', desc: 'Sticky title tag', icon: 'tag', color: '#EF4444' },
+      { id: 'singlenote', category: 'notes', title: 'Single Note', desc: 'Quick memo note', icon: 'sticky-note', color: '#F59E0B' },
+      { id: 'note', category: 'notes', title: 'Note', desc: 'Rich markdown note', icon: 'file-text', color: '#EAB308' },
+      { id: 'quote', category: 'notes', title: 'Quote', desc: 'Inspiring thought', icon: 'quote', color: '#D946EF' },
+      { id: 'todo-list', category: 'tasks', title: 'Todo List', desc: 'Checkable task card', icon: 'list-todo', color: '#10B981' },
+      { id: 'habit', category: 'tasks', title: 'Habit', desc: 'Streak tracker', icon: 'circle-check', color: '#F97316' },
+      { id: 'calendar', category: 'tasks', title: 'Calendar', desc: 'Monthly schedule', icon: 'calendar-days', color: '#8B5CF6' },
+      { id: 'counter', category: 'tools', title: 'Counter', desc: 'Tally clicker', icon: 'hash', color: '#06B6D4' },
+      { id: 'timer', category: 'tools', title: 'Timer', desc: 'Countdown focus', icon: 'timer', color: '#3B82F6' },
+      { id: 'stopwatch', category: 'tools', title: 'Stopwatch', desc: 'Lap timing clock', icon: 'timer-reset', color: '#6366F1' },
+      { id: 'picture', category: 'tools', title: 'Picture', desc: 'Image attachment', icon: 'image', color: '#EC4899' },
+      { id: 'quick-links', category: 'tools', title: 'Quick Links', desc: 'Saved bookmarks', icon: 'link-2', color: '#14B8A6' }
+    ];
+
+    const island = document.getElementById('island');
+    const closeBtn = document.getElementById('closeBtn');
+    const itemsList = document.getElementById('islandItemsList');
+    const canvasContainer = document.getElementById('canvas-container');
+
+    // Render items list
+    function renderItems(filter = 'all') {
+      itemsList.innerHTML = '';
+      const filtered = filter === 'all' ? ALL_CARDS : ALL_CARDS.filter(c => c.category === filter);
+
+      filtered.forEach(card => {
+        const row = document.createElement('div');
+        row.className = 'island-item-row';
+        row.innerHTML = `
+          <div class="item-icon-box" style="--item-color: ${card.color}; --item-bg: ${card.color}22; --item-border: ${card.color}44;">
+            <i data-lucide="${card.icon}"></i>
+          </div>
+          <div class="item-info">
+            <span class="item-title">${card.title}</span>
+            <span class="item-subtitle">${card.desc}</span>
+          </div>
+        `;
+
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          spawnCard(card);
+          playAudioTone(620, 'triangle');
+        });
+
+        itemsList.appendChild(row);
+      });
+
+      lucide.createIcons();
+    }
+
+    renderItems('all');
+
+    // Filter categories
+    window.filterCategory = function(cat, btn) {
+      document.querySelectorAll('.tab-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderItems(cat);
+      playAudioTone(440);
+    };
+
+    // Island Toggle
+    island.addEventListener('click', (e) => {
+      if (!island.classList.contains('is-expanded')) {
+        island.classList.add('is-expanded');
+        playAudioTone(520, 'sine');
+      }
+    });
+
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      island.classList.remove('is-expanded');
+      playAudioTone(380, 'sine');
+    });
+
+    // Spawn card logic
+    function spawnCard(card) {
+      const cardEl = document.createElement('div');
+      cardEl.className = 'spawned-card';
+      cardEl.style.setProperty('--card-accent', card.color);
+
+      const x = Math.max(80, Math.min(window.innerWidth - 340, window.innerWidth / 2 - 120 + (Math.random() * 220 - 110)));
+      const y = Math.max(80, Math.min(window.innerHeight - 260, window.innerHeight / 2 - 90 + (Math.random() * 180 - 90)));
+      cardEl.style.left = `${x}px`;
+      cardEl.style.top = `${y}px`;
+
+      cardEl.innerHTML = `
+        <div class="spawned-card-header">
+          <i data-lucide="${card.icon}" style="width: 16px; height: 16px;"></i>
+          <span>${card.title}</span>
+        </div>
+        <div class="spawned-card-body">
+          ${card.desc}. Created with Morphing Capsule.
+        </div>
+      `;
+
+      // Draggable logic
+      let isDragging = false, startX, startY, initX, initY;
+      cardEl.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        initX = cardEl.offsetLeft;
+        initY = cardEl.offsetTop;
+        cardEl.style.zIndex = 50;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        cardEl.style.left = `${initX + (e.clientX - startX)}px`;
+        cardEl.style.top = `${initY + (e.clientY - startY)}px`;
+      });
+      window.addEventListener('mouseup', () => isDragging = false);
+
+      canvasContainer.appendChild(cardEl);
+      lucide.createIcons();
+    }
+  </script>
+</body>
+</html>

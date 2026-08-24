@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concept 3: Orbital Arc Quarter-Dial Fan - Mindful Space</title>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    :root {
+      --bg: #0c0f17;
+      --bg-canvas: #121622;
+      --text: #f0f6fc;
+      --text-muted: #8b949e;
+      --orbit-glow: rgba(139, 92, 246, 0.4);
+      --accent: #8b5cf6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Canvas Backdrop ── */
+    #canvas-container {
+      position: absolute;
+      inset: 0;
+      background-color: var(--bg-canvas);
+      background-image: 
+        radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.16) 0%, transparent 65%),
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+    }
+
+    /* Top Demo Header */
+    .demo-header {
+      position: fixed;
+      top: 18px;
+      left: 24px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: rgba(18, 22, 34, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 12px 18px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+    .demo-title {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #fff;
+    }
+    .demo-title span {
+      color: var(--accent);
+      background: rgba(139, 92, 246, 0.18);
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    .demo-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      max-width: 360px;
+      line-height: 1.4;
+    }
+    .demo-instructions {
+      font-size: 11px;
+      color: #a78bfa;
+    }
+
+    /* ── Spawning Canvas Cards ── */
+    .spawned-card {
+      position: absolute;
+      background: rgba(22, 28, 42, 0.94);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 14px;
+      padding: 16px;
+      color: #fff;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      backdrop-filter: blur(20px);
+      animation: cardPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      cursor: grab;
+      min-width: 190px;
+      z-index: 20;
+    }
+    .spawned-card:active { cursor: grabbing; }
+    .spawned-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--card-accent, #8b5cf6);
+    }
+    .spawned-card-body {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    @keyframes cardPop {
+      0% { opacity: 0; transform: scale(0.5) translateY(20px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    /* ── The Orbital Fan Container (380x380 px) ── */
+    .orbital-wrapper {
+      position: fixed;
+      right: 28px;
+      bottom: 28px;
+      width: 360px;
+      height: 360px;
+      pointer-events: none;
+      z-index: 90;
+    }
+
+    /* Glowing Orbital SVG Track Lines */
+    .orbital-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0;
+      transform: scale(0.85);
+      transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-origin: bottom right;
+    }
+    .orbital-wrapper.is-open .orbital-svg {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Satellite Button Nodes */
+    .satellite-btn {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: rgba(28, 34, 50, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(0, 0) scale(0.2);
+      transition: 
+        transform 0.45s cubic-bezier(0.34, 1.45, 0.64, 1),
+        opacity 0.28s ease,
+        background 0.2s,
+        box-shadow 0.2s;
+      z-index: 10;
+    }
+
+    .orbital-wrapper.is-open .satellite-btn {
+      pointer-events: auto;
+      opacity: 1;
+      transform: translate(var(--tx, 0), var(--ty, 0)) scale(1);
+    }
+
+    .satellite-btn:hover {
+      background: rgba(46, 56, 80, 0.98);
+      border-color: rgba(255, 255, 255, 0.45);
+      box-shadow: 0 12px 32px var(--item-glow, rgba(139, 92, 246, 0.6)), 0 2px 8px rgba(0,0,0,0.3);
+      transform: translate(var(--tx, 0), var(--ty, 0)) scale(1.18);
+      z-index: 50;
+    }
+
+    .satellite-btn:active {
+      transform: translate(var(--tx, 0), var(--ty, 0)) scale(0.92);
+    }
+
+    .satellite-btn svg {
+      width: 21px;
+      height: 21px;
+      stroke-width: 2.2;
+      color: var(--item-color, #fff);
+      transition: transform 0.2s ease;
+    }
+
+    /* Satellite Tooltip */
+    .satellite-tooltip {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%) translateY(4px) scale(0.92);
+      background: rgba(18, 22, 34, 0.95);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      padding: 5px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.25px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      visibility: hidden;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+      z-index: 100;
+    }
+    .satellite-btn:hover .satellite-tooltip {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+
+    /* ── Central Pivot Trigger Button ── */
+    .orbital-trigger {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 8px 32px rgba(139, 92, 246, 0.55), 0 2px 8px rgba(0,0,0,0.35);
+      pointer-events: auto;
+      transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+      z-index: 60;
+    }
+    .orbital-trigger:hover {
+      transform: scale(1.08);
+      box-shadow: 0 14px 40px rgba(139, 92, 246, 0.75);
+    }
+    .orbital-trigger:active {
+      transform: scale(0.92);
+    }
+    .orbital-trigger svg {
+      width: 28px;
+      height: 28px;
+      stroke-width: 2.3;
+      transition: transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .orbital-wrapper.is-open .orbital-trigger svg {
+      transform: rotate(135deg);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Canvas Backdrop -->
+  <div id="canvas-container"></div>
+
+  <!-- Header Info -->
+  <div class="demo-header">
+    <div class="demo-title">Concept 3: Orbital Arc Quarter-Dial Fan <span>FIXED & POLISHED</span></div>
+    <div class="demo-desc">
+      All 12 items fan out along 2 concentric orbital arcs into the upper-left open canvas.
+    </div>
+    <div class="demo-instructions">✨ Click the core button to toggle orbit fan; click any satellite to drop a card.</div>
+  </div>
+
+  <!-- The Orbital Fan Component -->
+  <div class="orbital-wrapper is-open" id="orbitalWrapper">
+    <!-- 12 Satellite Nodes (Generated dynamically in 2 concentric orbits) -->
+    <div id="satelliteNodes"></div>
+
+    <!-- Central Orbit Core Trigger -->
+    <button class="orbital-trigger" id="orbitalTrigger" title="Toggle Orbital Fan">
+      <i data-lucide="plus"></i>
+    </button>
+  </div>
+
+  <script>
+    // Audio Synthesizer
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playAudioTone(freq = 520, type = 'sine') {
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(freq * 1.4, audioCtx.currentTime + 0.07);
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.07);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.07);
+      } catch (e) {}
+    }
+
+    const CARDS = [
+      // Outer Arc (7 items, Radius 272px, Angle 6° to 84° up & left)
+      { id: 'label', title: 'Label', icon: 'tag', color: '#FF6B6B', glow: 'rgba(255, 107, 107, 0.5)', arc: 'outer', angle: 6 },
+      { id: 'singlenote', title: 'Single Note', icon: 'sticky-note', color: '#FBBF24', glow: 'rgba(251, 191, 36, 0.5)', arc: 'outer', angle: 19 },
+      { id: 'note', title: 'Note', icon: 'file-text', color: '#FACC15', glow: 'rgba(250, 204, 21, 0.5)', arc: 'outer', angle: 32 },
+      { id: 'todo-list', title: 'Todo List', icon: 'list-todo', color: '#34D399', glow: 'rgba(52, 211, 153, 0.5)', arc: 'outer', angle: 45 },
+      { id: 'counter', title: 'Counter', icon: 'hash', color: '#22D3EE', glow: 'rgba(34, 211, 238, 0.5)', arc: 'outer', angle: 58 },
+      { id: 'timer', title: 'Timer', icon: 'timer', color: '#60A5FA', glow: 'rgba(96, 165, 250, 0.5)', arc: 'outer', angle: 71 },
+      { id: 'stopwatch', title: 'Stopwatch', icon: 'timer-reset', color: '#818CF8', glow: 'rgba(129, 140, 248, 0.5)', arc: 'outer', angle: 84 },
+
+      // Inner Arc (5 items, Radius 166px, Angle 8° to 82° up & left)
+      { id: 'picture', title: 'Picture', icon: 'image', color: '#F472B6', glow: 'rgba(244, 114, 182, 0.5)', arc: 'inner', angle: 8 },
+      { id: 'quick-links', title: 'Quick Links', icon: 'link-2', color: '#2DD4BF', glow: 'rgba(45, 212, 191, 0.5)', arc: 'inner', angle: 26.5 },
+      { id: 'calendar', title: 'Calendar', icon: 'calendar-days', color: '#A78BFA', glow: 'rgba(167, 139, 250, 0.5)', arc: 'inner', angle: 45 },
+      { id: 'habit', title: 'Habit', icon: 'circle-check', color: '#FB923C', glow: 'rgba(251, 146, 60, 0.5)', arc: 'inner', angle: 63.5 },
+      { id: 'quote', title: 'Quote', icon: 'quote', color: '#E879F9', glow: 'rgba(232, 121, 249, 0.5)', arc: 'inner', angle: 82 }
+    ];
+
+    const wrapper = document.getElementById('orbitalWrapper');
+    const trigger = document.getElementById('orbitalTrigger');
+    const nodesContainer = document.getElementById('satelliteNodes');
+    const canvasContainer = document.getElementById('canvas-container');
+
+    // Mathematically exact Polar coordinates fanning UP and LEFT into the canvas
+    CARDS.forEach((card, idx) => {
+      const radius = card.arc === 'outer' ? 260 : 155;
+      // Angle in radians (0° = straight left, 90° = straight up)
+      const rad = (card.angle * Math.PI) / 180;
+      const tx = -(radius * Math.cos(rad));
+      const ty = -(radius * Math.sin(rad));
+
+      const btn = document.createElement('button');
+      btn.className = 'satellite-btn';
+      btn.style.setProperty('--tx', `${tx.toFixed(1)}px`);
+      btn.style.setProperty('--ty', `${ty.toFixed(1)}px`);
+      btn.style.setProperty('--item-color', card.color);
+      btn.style.setProperty('--item-glow', card.glow);
+      btn.style.transitionDelay = `${idx * 24}ms`;
+
+      btn.innerHTML = `
+        <i data-lucide="${card.icon}"></i>
+        <div class="satellite-tooltip">${card.title}</div>
+      `;
+
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        spawnCard(card);
+        playAudioTone(640, 'triangle');
+      });
+
+      nodesContainer.appendChild(btn);
+    });
+
+    lucide.createIcons();
+
+    // Toggle Fan
+    trigger.addEventListener('click', () => {
+      wrapper.classList.toggle('is-open');
+      playAudioTone(wrapper.classList.contains('is-open') ? 560 : 380);
+    });
+
+    // Spawning card onto canvas
+    function spawnCard(card) {
+      const cardEl = document.createElement('div');
+      cardEl.className = 'spawned-card';
+      cardEl.style.setProperty('--card-accent', card.color);
+
+      const x = Math.max(80, Math.min(window.innerWidth - 340, window.innerWidth / 2 - 120 + (Math.random() * 220 - 110)));
+      const y = Math.max(80, Math.min(window.innerHeight - 260, window.innerHeight / 2 - 90 + (Math.random() * 180 - 90)));
+      cardEl.style.left = `${x}px`;
+      cardEl.style.top = `${y}px`;
+
+      cardEl.innerHTML = `
+        <div class="spawned-card-header">
+          <i data-lucide="${card.icon}" style="width: 16px; height: 16px;"></i>
+          <span>${card.title}</span>
+        </div>
+        <div class="spawned-card-body">
+          Sample card created via Orbital Arc Dial. Drag around freely!
+        </div>
+      `;
+
+      // Draggable logic
+      let isDragging = false, startX, startY, initX, initY;
+      cardEl.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        initX = cardEl.offsetLeft;
+        initY = cardEl.offsetTop;
+        cardEl.style.zIndex = 50;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        cardEl.style.left = `${initX + (e.clientX - startX)}px`;
+        cardEl.style.top = `${initY + (e.clientY - startY)}px`;
+      });
+      window.addEventListener('mouseup', () => isDragging = false);
+
+      canvasContainer.appendChild(cardEl);
+      lucide.createIcons();
+    }
+  </script>
+</body>
+</html>
