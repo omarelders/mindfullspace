@@ -345,15 +345,18 @@ html:-webkit-full-screen .app-shell {
   border-color: var(--card-ui-mid);
 }
 
-.welcome-box .caret-icon {
+.welcome-box .caret-icon,
+.quick-box .caret-icon {
   transition: transform 0.16s ease;
 }
 
-.welcome-box.is-open {
+.welcome-box.is-open,
+.quick-box.is-open {
   border-color: var(--card-ui-mid);
 }
 
-.welcome-box.is-open .caret-icon {
+.welcome-box.is-open .caret-icon,
+.quick-box.is-open .caret-icon {
   transform: rotate(180deg);
 }
 
@@ -1377,12 +1380,12 @@ html:-webkit-full-screen .app-shell {
 }
 
 .quick-menu-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--card-ui-soft);
   color: var(--ui-text-strong);
 }
 
 .quick-menu-item.active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--card-ui-mid);
   color: var(--ui-text-strong);
 }
 

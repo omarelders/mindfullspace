@@ -160,4 +160,96 @@ describe('TopBar', () => {
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }))
     expect(mockAuthValue.signOut).toHaveBeenCalled()
   })
+
+  it('opens Add Card quick menu and triggers onQuickAction when card type is selected', () => {
+    const onQuickAction = vi.fn()
+    const sampleQuickActions = [
+      { id: 'todo-list', title: 'Todo List', icon: 'todo-list' },
+      { id: 'note', title: 'Note', icon: 'note' },
+      { id: 'timer', title: 'Timer', icon: 'timer' },
+    ]
+
+    render(
+      <TopBar
+        {...defaultProps}
+        quickActions={sampleQuickActions}
+        onQuickAction={onQuickAction}
+      />
+    )
+
+    // Quick menu should be closed initially
+    expect(screen.queryByRole('menu', { name: /add card menu/i })).not.toBeInTheDocument()
+
+    // Click Add Card button
+    const addCardBtn = screen.getByRole('button', { name: /add card/i })
+    fireEvent.click(addCardBtn)
+
+    // Quick menu is now open with card options
+    const quickMenu = screen.getByRole('menu', { name: /add card menu/i })
+    expect(quickMenu).toBeInTheDocument()
+    expect(screen.getByText('Todo List')).toBeInTheDocument()
+    expect(screen.getByText('Note')).toBeInTheDocument()
+    expect(screen.getByText('Timer')).toBeInTheDocument()
+    expect(screen.getByText('Import Cards from JSON')).toBeInTheDocument()
+
+    // Clicking on Todo List option triggers onQuickAction and closes menu
+    const todoOption = screen.getByRole('menuitem', { name: /todo list/i })
+    fireEvent.click(todoOption)
+
+    expect(onQuickAction).toHaveBeenCalledTimes(1)
+    expect(onQuickAction).toHaveBeenCalledWith('todo-list')
+    expect(screen.queryByRole('menu', { name: /add card menu/i })).not.toBeInTheDocument()
+  })
+
+  it('handles mousedown inside quick-menu-wrap without unmounting menu before click event', () => {
+    const onQuickAction = vi.fn()
+    const sampleQuickActions = [
+      { id: 'timer', title: 'Timer', icon: 'timer' },
+    ]
+
+    render(
+      <TopBar
+        {...defaultProps}
+        quickActions={sampleQuickActions}
+        onQuickAction={onQuickAction}
+      />
+    )
+
+    // Open quick menu
+    const addCardBtn = screen.getByRole('button', { name: /add card/i })
+    fireEvent.click(addCardBtn)
+
+    const timerOption = screen.getByRole('menuitem', { name: /timer/i })
+
+    // Simulate mouse down on the option (previously would close menu before click)
+    fireEvent.mouseDown(timerOption)
+    expect(screen.getByRole('menu', { name: /add card menu/i })).toBeInTheDocument()
+
+    // Simulate mouse click on the option
+    fireEvent.click(timerOption)
+    expect(onQuickAction).toHaveBeenCalledWith('timer')
+    expect(screen.queryByRole('menu', { name: /add card menu/i })).not.toBeInTheDocument()
+  })
+
+  it('closes Add Card quick menu when clicking outside', () => {
+    const sampleQuickActions = [
+      { id: 'note', title: 'Note', icon: 'note' },
+    ]
+
+    render(
+      <TopBar
+        {...defaultProps}
+        quickActions={sampleQuickActions}
+      />
+    )
+
+    // Open quick menu
+    const addCardBtn = screen.getByRole('button', { name: /add card/i })
+    fireEvent.click(addCardBtn)
+    expect(screen.getByRole('menu', { name: /add card menu/i })).toBeInTheDocument()
+
+    // Click outside on the document body
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('menu', { name: /add card menu/i })).not.toBeInTheDocument()
+  })
 })

@@ -166,6 +166,7 @@ export const TopBar = memo(function TopBar({
     }
   }
   const menuRef = useRef(null)
+  const quickMenuRef = useRef(null)
   const searchRef = useRef(null)
   const accountRef = useRef(null)
   const labelOptions = useMemo(() => (Array.isArray(labels) ? labels : []), [labels])
@@ -244,8 +245,11 @@ export const TopBar = memo(function TopBar({
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setIsQuickMenuOpen(false)
         setIsWorkspaceMenuOpen(false)
+      }
+
+      if (quickMenuRef.current && !quickMenuRef.current.contains(e.target)) {
+        setIsQuickMenuOpen(false)
       }
 
       if (searchRef.current && !searchRef.current.contains(e.target)) {
@@ -683,13 +687,18 @@ export const TopBar = memo(function TopBar({
           )}
         </div>
 
-        <div style={{ position: 'relative' }}>
+        <div className="quick-menu-wrap" ref={quickMenuRef} style={{ position: 'relative' }}>
           <button
-            className="quick-box"
-            aria-label="quick create"
+            type="button"
+            className={`quick-box ${isQuickMenuOpen ? 'is-open' : ''}`}
+            aria-label="Add card"
+            title="Add card"
+            aria-expanded={isQuickMenuOpen}
+            aria-haspopup="menu"
             onClick={() => {
               setIsQuickMenuOpen((open) => !open)
               setIsAccountMenuOpen(false)
+              setIsWorkspaceMenuOpen(false)
               setIsSearchOpen(false)
             }}
           >
@@ -698,31 +707,43 @@ export const TopBar = memo(function TopBar({
           </button>
 
           {isQuickMenuOpen && (
-            <div className="quick-menu">
-              {quickActions.map((action) => (
+            <div className="quick-menu" role="menu" aria-label="Add card menu">
+              {(quickActions || []).map((action) => (
                 <button
                   key={action.id}
+                  type="button"
+                  role="menuitem"
                   className="quick-menu-item"
                   onClick={() => {
-                    onQuickAction(action.id)
+                    onQuickAction?.(action.id)
                     setIsQuickMenuOpen(false)
                   }}
                 >
                   <ActionRailIcon kind={action.icon} />
-                  {action.title}
+                  <span>{action.title}</span>
                 </button>
               ))}
-              <div style={{ height: '1px', background: 'var(--surface-border)', margin: '4px 0' }} />
+              <div
+                style={{
+                  height: '1px',
+                  background: 'var(--surface-border)',
+                  margin: '4px 0',
+                  gridColumn: '1 / -1',
+                }}
+                aria-hidden="true"
+              />
               <button
                 type="button"
+                role="menuitem"
                 className="quick-menu-item"
+                style={{ gridColumn: '1 / -1' }}
                 onClick={() => {
                   handleImportCardsClick()
                   setIsQuickMenuOpen(false)
                 }}
               >
                 <FilePlus2 aria-hidden="true" style={{ width: 16, height: 16 }} />
-                Import Cards from JSON
+                <span>Import Cards from JSON</span>
               </button>
             </div>
           )}
