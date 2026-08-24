@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useMemo } from 'react'
 import { ActionRail, ActionRailIcon } from './ActionRail'
 import { TodoCard } from './TodoCard'
 import { LabelCard } from './LabelCard'
@@ -13,10 +13,17 @@ import { PictureCard } from './PictureCard'
 import { QuickLinksCard } from './QuickLinksCard'
 import { QuoteCard } from './QuoteCard'
 import { TopBar } from './TopBar'
+import { LazyMount } from './LazyMount'
+import { SwipeableCard } from './SwipeableCard'
+import { MobileCardOrderProvider } from './MobileCardOrderContext'
 import { useWorkspace } from '../hooks/useWorkspace'
+import { usePointerListDrag } from '../hooks/usePointerListDrag'
 import { useDocumentTitleTimer } from '../hooks/useDocumentTitleTimer'
 import { useAuth } from '../hooks/useAuth'
 import { useSyncEngine } from '../hooks/useSyncEngine'
+import { useIsColumnLayout } from '../hooks/useIsColumnLayout'
+import { useKeyboardAwareScroll } from '../hooks/useKeyboardAwareScroll'
+import { usePullToSync } from '../hooks/usePullToSync'
 import { QUICK_CREATE_ACTIONS } from '../utils/constants'
 import { supportsNativeZoom } from '../utils/browserSupport'
 
@@ -35,8 +42,8 @@ export function WorkspaceBoard({
   const {
     state: {
       columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, themePalette, theme,
-      dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
-      archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
+      notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
+      archivedCards, detachedLabels, singleNotes, cardPositions, mobileCardOrder, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
     setters: {
@@ -44,6 +51,12 @@ export function WorkspaceBoard({
     },
     actions,
   } = useWorkspace(workspace.id, workspaceRef)
+
+  // Pointer-event drag for todo rows (works on touch; replaces HTML5 DnD).
+  const todoDrag = usePointerListDrag({
+    onReorder: actions.handlePointerReorderItem,
+    onMoveBetween: actions.handlePointerMoveBetweenColumns,
+  })
 
   const { user } = useAuth()
   const { syncStatus, lastSyncedAt, syncError, syncNow, notifyChange } = useSyncEngine({
@@ -127,7 +140,357 @@ export function WorkspaceBoard({
         transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
       }
 
+  // ---------------------------------------------------------------------
+  // Mobile column layout: card ordering + lazy mounting.
+  //
+  // Every card type registers its element under its id, then cards are
+  // emitted in the persisted mobile order (<=1200px) or natural creation
+  // order (desktop canvas). Elements are rebuilt each render exactly like
+  // the previous inline .map() calls; the memoized card components still
+  // limit real DOM work to changed inputs.
+  // ---------------------------------------------------------------------
+  const isColumnLayout = useIsColumnLayout()
+  useKeyboardAwareScroll({ enabled: isColumnLayout })
+
+  // Pull-to-sync on mobile: dragging down at the top of the stack triggers a
+  // manual cloud sync (Step 6.1 of the mobile plan).
+  const pullToSync = usePullToSync({ enabled: isColumnLayout, onRefresh: syncNow })
+
+  // Natural order mirrors useWorkspace's renderedCardIds.
+  const naturalCardIds = [
+    ...columns.map((column) => column.id),
+    ...detachedLabels.map((label) => label.id),
+    ...singleNotes.map((note) => note.id),
+    ...notes.map((note) => note.id),
+    ...timers.map((timer) => timer.id),
+    ...counters.map((counter) => counter.id),
+    ...stopwatches.map((stopwatch) => stopwatch.id),
+    ...calendars.map((calendar) => calendar.id),
+    ...habits.map((habit) => habit.id),
+    ...pictures.map((picture) => picture.id),
+    ...quickLinks.map((qlCard) => qlCard.id),
+    ...quotes.map((quote) => quote.id),
+  ]
+
+  const savedOrderList = isColumnLayout && mobileCardOrder && Array.isArray(mobileCardOrder.list)
+    ? mobileCardOrder.list
+    : []
+  const naturalIdSet = new Set(naturalCardIds)
+  const orderedHead = savedOrderList.filter((id) => naturalIdSet.has(id))
+  const orderedHeadSet = new Set(orderedHead)
+  // Effective mobile stack order: the persisted arrangement first, then any
+  // cards created or synced after it was saved, appended in natural order.
+  const effectiveMobileIds = [...orderedHead, ...naturalCardIds.filter((id) => !orderedHeadSet.has(id))]
+
+  const mobileOrderActions = {
+    canMove: (cardId, direction) => {
+      const index = effectiveMobileIds.indexOf(cardId)
+      if (index < 0) return false
+      return direction === 'up' ? index > 0 : index < effectiveMobileIds.length - 1
+    },
+    move: (cardId, direction) => actions.moveCardInMobileOrder(cardId, direction),
+  }
+
+  const cardRenderers = new Map()
+  columns.forEach((column) => {
+    cardRenderers.set(column.id, (
+      <TodoCard
+        cardId={column.id}
+        column={column}
+        draft={drafts[column.id]}
+        onDraftChange={actions.setDraft}
+        onAdd={actions.addItem}
+        onUpdateItemText={actions.updateItemText}
+        onUpdateItemDetails={actions.updateItemDetails}
+        onDeleteItem={actions.deleteItem}
+        onItemDragStart={todoDrag.beginItemDrag}
+        draggingItemId={todoDrag.draggingItemId}
+        overItemId={todoDrag.overItemId}
+        position={cardPositions[column.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateTodoCardTitle}
+        onUpdateColor={actions.updateTodoCardColor}
+        onUpdateFontSize={actions.updateTodoCardFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleTodoCardMinimize}
+        onDuplicateCard={actions.duplicateTodoCard}
+        onArchiveCard={actions.archiveTodoCard}
+        onDeleteCard={actions.deleteTodoCard}
+        isPopping={poppingCardIds.has(column.id)}
+      />
+    ))
+  })
+  detachedLabels.forEach((label) => {
+    cardRenderers.set(label.id, (
+      <LabelCard
+        cardId={label.id}
+        label={label}
+        labelTextColor={theme.labelText}
+        position={cardPositions[label.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateText={actions.updateLabelText}
+        onUpdateColor={actions.updateLabelColor}
+        onUpdateFontSize={actions.updateLabelFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleLabelMinimize}
+        onDuplicateCard={actions.duplicateLabelCard}
+        onArchiveCard={actions.archiveLabelCard}
+        onDeleteCard={actions.deleteLabelCard}
+        isPopping={poppingCardIds.has(label.id)}
+      />
+    ))
+  })
+  singleNotes.forEach((note) => {
+    cardRenderers.set(note.id, (
+      <SingleNoteCard
+        cardId={note.id}
+        singleNote={note}
+        position={cardPositions[note.id]}
+        textColor="var(--label-text)"
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateText={actions.updateSingleNoteText}
+        onUpdateColor={actions.updateSingleNoteColor}
+        onUpdateFontSize={actions.updateSingleNoteFontSize}
+        onUpdateShape={actions.updateSingleNoteShape}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleSingleNoteMinimize}
+        onDuplicateCard={actions.duplicateSingleNoteCard}
+        onArchiveCard={actions.archiveSingleNoteCard}
+        onDeleteCard={actions.deleteSingleNoteCard}
+        isPopping={poppingCardIds.has(note.id)}
+      />
+    ))
+  })
+  notes.forEach((note) => {
+    cardRenderers.set(note.id, (
+      <NoteCard
+        cardId={note.id}
+        note={note}
+        position={cardPositions[note.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateNoteTitle}
+        onUpdateText={actions.updateNoteText}
+        onUpdateColor={actions.updateNoteColor}
+        onUpdateFontSize={actions.updateNoteFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleNoteMinimize}
+        onDuplicateCard={actions.duplicateNoteCard}
+        onArchiveCard={actions.archiveNoteCard}
+        onDeleteCard={actions.deleteNoteCard}
+        onUpdateDimensions={getUpdateNoteDimensions(note.id)}
+        scale={viewport.scale}
+        isPopping={poppingCardIds.has(note.id)}
+      />
+    ))
+  })
+  timers.forEach((timer) => {
+    cardRenderers.set(timer.id, (
+      <TimerCard
+        cardId={timer.id}
+        timer={timer}
+        position={cardPositions[timer.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateTimerTitle}
+        onUpdateColor={actions.updateTimerColor}
+        onUpdateFontSize={actions.updateTimerFontSize}
+        onUpdateTimerState={actions.updateTimerState}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleTimerMinimize}
+        onDuplicateCard={actions.duplicateTimerCard}
+        onArchiveCard={actions.archiveTimerCard}
+        onDeleteCard={actions.deleteTimerCard}
+        isPopping={poppingCardIds.has(timer.id)}
+      />
+    ))
+  })
+  counters.forEach((counter) => {
+    cardRenderers.set(counter.id, (
+      <CounterCard
+        cardId={counter.id}
+        counter={counter}
+        position={cardPositions[counter.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateCounterTitle}
+        onUpdateValue={actions.updateCounterValue}
+        onUpdateColor={actions.updateCounterColor}
+        onUpdateFontSize={actions.updateCounterFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleCounterMinimize}
+        onDuplicateCard={actions.duplicateCounterCard}
+        onArchiveCard={actions.archiveCounterCard}
+        onDeleteCard={actions.deleteCounterCard}
+        isPopping={poppingCardIds.has(counter.id)}
+      />
+    ))
+  })
+  stopwatches.forEach((stopwatch) => {
+    cardRenderers.set(stopwatch.id, (
+      <StopwatchCard
+        cardId={stopwatch.id}
+        stopwatch={stopwatch}
+        position={cardPositions[stopwatch.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateStopwatchTitle}
+        onUpdateColor={actions.updateStopwatchColor}
+        onUpdateFontSize={actions.updateStopwatchFontSize}
+        onUpdateStopwatchState={actions.updateStopwatchState}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleStopwatchMinimize}
+        onDuplicateCard={actions.duplicateStopwatchCard}
+        onArchiveCard={actions.archiveStopwatchCard}
+        onDeleteCard={actions.deleteStopwatchCard}
+        isPopping={poppingCardIds.has(stopwatch.id)}
+      />
+    ))
+  })
+  calendars.forEach((calendar) => {
+    cardRenderers.set(calendar.id, (
+      <CalendarCard
+        cardId={calendar.id}
+        calendar={calendar}
+        allHabits={habits}
+        position={cardPositions[calendar.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateCalendarTitle}
+        onUpdateColor={actions.updateCalendarColor}
+        onUpdateFontSize={actions.updateCalendarFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleCalendarMinimize}
+        onDuplicateCard={actions.duplicateCalendarCard}
+        onArchiveCard={actions.archiveCalendarCard}
+        onDeleteCard={actions.deleteCalendarCard}
+        onChangeMonth={actions.changeCalendarMonth}
+        onOpenDay={actions.openCalendarDay}
+        onCloseDay={actions.closeCalendarDay}
+        onUpdateEntry={actions.updateCalendarEntry}
+        isPopping={poppingCardIds.has(calendar.id)}
+      />
+    ))
+  })
+  habits.forEach((habit) => {
+    cardRenderers.set(habit.id, (
+      <HabitCard
+        cardId={habit.id}
+        habit={habit}
+        position={cardPositions[habit.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateHabitTitle}
+        onUpdateIcon={actions.updateHabitIcon}
+        onUpdateColor={actions.updateHabitColor}
+        onUpdateFontSize={actions.updateHabitFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleHabitMinimize}
+        onDuplicateCard={actions.duplicateHabitCard}
+        onArchiveCard={actions.archiveHabitCard}
+        onDeleteCard={actions.deleteHabitCard}
+        onSetView={actions.setHabitView}
+        onChangeMonth={actions.changeHabitMonth}
+        onToggleDate={actions.toggleHabitDate}
+        isPopping={poppingCardIds.has(habit.id)}
+      />
+    ))
+  })
+  pictures.forEach((picture) => {
+    cardRenderers.set(picture.id, (
+      <PictureCard
+        cardId={picture.id}
+        picture={picture}
+        position={cardPositions[picture.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updatePictureTitle}
+        onUpdateColor={actions.updatePictureColor}
+        onUpdateFontSize={actions.updatePictureFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.togglePictureMinimize}
+        onDuplicateCard={actions.duplicatePictureCard}
+        onArchiveCard={actions.archivePictureCard}
+        onDeleteCard={actions.deletePictureCard}
+        onUpdateImageId={actions.updatePictureImageId}
+        onUpdateDimensions={getUpdatePictureDimensions(picture.id)}
+        onUpdateFitMode={actions.updatePictureFitMode}
+        scale={viewport.scale}
+        isPopping={poppingCardIds.has(picture.id)}
+      />
+    ))
+  })
+  quickLinks.forEach((qlCard) => {
+    cardRenderers.set(qlCard.id, (
+      <QuickLinksCard
+        cardId={qlCard.id}
+        quickLinkCard={qlCard}
+        position={cardPositions[qlCard.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateQuickLinksTitle}
+        onUpdateColor={actions.updateQuickLinksColor}
+        onUpdateFontSize={actions.updateQuickLinksFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleQuickLinksMinimize}
+        onDuplicateCard={actions.duplicateQuickLinksCard}
+        onArchiveCard={actions.archiveQuickLinksCard}
+        onDeleteCard={actions.deleteQuickLinksCard}
+        onAddLink={actions.addQuickLinkItem}
+        onUpdateLink={actions.updateQuickLinkItem}
+        onRemoveLink={actions.removeQuickLinkItem}
+        onReorderLinks={actions.reorderQuickLinkItems}
+        isPopping={poppingCardIds.has(qlCard.id)}
+      />
+    ))
+  })
+  quotes.forEach((quote) => {
+    cardRenderers.set(quote.id, (
+      <QuoteCard
+        cardId={quote.id}
+        quote={quote}
+        position={cardPositions[quote.id]}
+        onPointerDown={actions.handleCardPointerDown}
+        onUpdateTitle={actions.updateQuoteTitle}
+        onUpdateText={actions.updateQuoteText}
+        onUpdateAuthor={actions.updateQuoteAuthor}
+        onUpdateColor={actions.updateQuoteColor}
+        onUpdateFontSize={actions.updateQuoteFontSize}
+        onMoveCard={actions.moveCardToTarget}
+        onToggleMinimize={actions.toggleQuoteMinimize}
+        onDuplicateCard={actions.duplicateQuoteCard}
+        onArchiveCard={actions.archiveQuoteCard}
+        onDeleteCard={actions.deleteQuoteCard}
+        onUpdateDimensions={getUpdateQuoteDimensions(quote.id)}
+        scale={viewport.scale}
+        isPopping={poppingCardIds.has(quote.id)}
+      />
+    ))
+  })
+
+  // Emit cards in effective order, lazily mounting everything past the first
+  // few on mobile so busy workspaces don't mount 30+ subtrees at once.
+  const LAZY_MOUNT_FIRST_N = 4
+  const seenCardIds = new Set()
+  const orderedCards = []
+  const emitCard = (id) => {
+    if (seenCardIds.has(id)) return
+    let card = cardRenderers.get(id)
+    if (!card) return
+    seenCardIds.add(id)
+    if (isColumnLayout) {
+      card = (
+        <SwipeableCard
+          onArchive={() => actions.swipeActionDispatch(id, 'archive')}
+          onDelete={() => actions.swipeActionDispatch(id, 'delete')}
+        >
+          {card}
+        </SwipeableCard>
+      )
+    }
+    const isDeferred = isColumnLayout && orderedCards.length >= LAZY_MOUNT_FIRST_N
+    orderedCards.push(<LazyMount key={id} isDeferred={isDeferred}>{card}</LazyMount>)
+  }
+  if (isColumnLayout) {
+    effectiveMobileIds.forEach(emitCard)
+  } else {
+    naturalCardIds.forEach(emitCard)
+  }
+
   return (
+    <MobileCardOrderProvider value={mobileOrderActions}>
     <div
       className={`app-shell theme-${themeMode} palette-${themePalette} ${isFocusMode ? 'is-focus-mode' : ''}`}
       style={{
@@ -210,6 +573,19 @@ export function WorkspaceBoard({
       />
 
       <div className={`focus-overlay ${isFocusMode ? 'is-active' : ''}`} aria-hidden="true" />
+      {pullToSync.isPulling && (
+        <div
+          className="pull-sync-indicator"
+          style={{ transform: `translateX(-50%) translateY(${Math.round(pullToSync.pullDistance * 0.5)}px)` }}
+          role="status"
+        >
+          <span
+            className="pull-sync-spinner"
+            style={{ opacity: 0.4 + pullToSync.pullProgress * 0.6 }}
+            aria-hidden="true"
+          />
+        </div>
+      )}
       <WorkspaceWheelHandler workspaceRef={workspaceRef} onWheel={actions.handleWheel} />
       <div
         className={`workspace ${isPanning ? 'is-panning' : ''} ${draggingCard ? 'is-card-dragging' : ''}`}
@@ -222,275 +598,7 @@ export function WorkspaceBoard({
       >
         <div className="board-stage" style={boardStageStyle}>
           <main className="board">
-            {columns.map((column) => (
-              <TodoCard
-                key={column.id}
-                cardId={column.id}
-                column={column}
-                draft={drafts[column.id]}
-                onDraftChange={actions.setDraft}
-                onAdd={actions.addItem}
-                onUpdateItemText={actions.updateItemText}
-                onUpdateItemDetails={actions.updateItemDetails}
-                onDeleteItem={actions.deleteItem}
-                onDragStartItem={actions.handleDragStartItem}
-                onDragOverItem={actions.handleDragOverItem}
-                onDropOnItem={actions.handleDropOnItem}
-                onDropOnList={actions.handleDropOnList}
-                onDragEndItem={actions.handleDragEndItem}
-                draggingItemId={dragState.columnId === column.id ? dragState.itemId : null}
-                position={cardPositions[column.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateTodoCardTitle}
-                onUpdateColor={actions.updateTodoCardColor}
-                onUpdateFontSize={actions.updateTodoCardFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleTodoCardMinimize}
-                onDuplicateCard={actions.duplicateTodoCard}
-                onArchiveCard={actions.archiveTodoCard}
-                onDeleteCard={actions.deleteTodoCard}
-                isPopping={poppingCardIds.has(column.id)}
-              />
-            ))}
-
-            {detachedLabels.map((label) => (
-              <LabelCard
-                key={label.id}
-                cardId={label.id}
-                label={label}
-                labelTextColor={theme.labelText}
-                position={cardPositions[label.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateText={actions.updateLabelText}
-                onUpdateColor={actions.updateLabelColor}
-                onUpdateFontSize={actions.updateLabelFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleLabelMinimize}
-                onDuplicateCard={actions.duplicateLabelCard}
-                onArchiveCard={actions.archiveLabelCard}
-                onDeleteCard={actions.deleteLabelCard}
-                isPopping={poppingCardIds.has(label.id)}
-              />
-            ))}
-
-            {singleNotes.map((note) => (
-              <SingleNoteCard
-                key={note.id}
-                cardId={note.id}
-                singleNote={note}
-                position={cardPositions[note.id]}
-                textColor="var(--label-text)"
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateText={actions.updateSingleNoteText}
-                onUpdateColor={actions.updateSingleNoteColor}
-                onUpdateFontSize={actions.updateSingleNoteFontSize}
-                onUpdateShape={actions.updateSingleNoteShape}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleSingleNoteMinimize}
-                onDuplicateCard={actions.duplicateSingleNoteCard}
-                onArchiveCard={actions.archiveSingleNoteCard}
-                onDeleteCard={actions.deleteSingleNoteCard}
-                isPopping={poppingCardIds.has(note.id)}
-              />
-            ))}
-
-            {notes.map((note) => (
-              <NoteCard
-                key={note.id}
-                cardId={note.id}
-                note={note}
-                position={cardPositions[note.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateNoteTitle}
-                onUpdateText={actions.updateNoteText}
-                onUpdateColor={actions.updateNoteColor}
-                onUpdateFontSize={actions.updateNoteFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleNoteMinimize}
-                onDuplicateCard={actions.duplicateNoteCard}
-                onArchiveCard={actions.archiveNoteCard}
-                onDeleteCard={actions.deleteNoteCard}
-                onUpdateDimensions={getUpdateNoteDimensions(note.id)}
-                scale={viewport.scale}
-                isPopping={poppingCardIds.has(note.id)}
-              />
-            ))}
-            
-            {timers.map((timer) => (
-              <TimerCard
-                key={timer.id}
-                cardId={timer.id}
-                timer={timer}
-                position={cardPositions[timer.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateTimerTitle}
-                onUpdateColor={actions.updateTimerColor}
-                onUpdateFontSize={actions.updateTimerFontSize}
-                onUpdateTimerState={actions.updateTimerState}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleTimerMinimize}
-                onDuplicateCard={actions.duplicateTimerCard}
-                onArchiveCard={actions.archiveTimerCard}
-                onDeleteCard={actions.deleteTimerCard}
-                isPopping={poppingCardIds.has(timer.id)}
-              />
-            ))}
-            
-            {counters.map((counter) => (
-              <CounterCard
-                key={counter.id}
-                cardId={counter.id}
-                counter={counter}
-                position={cardPositions[counter.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateCounterTitle}
-                onUpdateValue={actions.updateCounterValue}
-                onUpdateColor={actions.updateCounterColor}
-                onUpdateFontSize={actions.updateCounterFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleCounterMinimize}
-                onDuplicateCard={actions.duplicateCounterCard}
-                onArchiveCard={actions.archiveCounterCard}
-                onDeleteCard={actions.deleteCounterCard}
-                isPopping={poppingCardIds.has(counter.id)}
-              />
-            ))}
-
-            {stopwatches.map((stopwatch) => (
-              <StopwatchCard
-                key={stopwatch.id}
-                cardId={stopwatch.id}
-                stopwatch={stopwatch}
-                position={cardPositions[stopwatch.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateStopwatchTitle}
-                onUpdateColor={actions.updateStopwatchColor}
-                onUpdateFontSize={actions.updateStopwatchFontSize}
-                onUpdateStopwatchState={actions.updateStopwatchState}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleStopwatchMinimize}
-                onDuplicateCard={actions.duplicateStopwatchCard}
-                onArchiveCard={actions.archiveStopwatchCard}
-                onDeleteCard={actions.deleteStopwatchCard}
-                isPopping={poppingCardIds.has(stopwatch.id)}
-              />
-            ))}
-
-            {calendars.map((calendar) => (
-              <CalendarCard
-                key={calendar.id}
-                cardId={calendar.id}
-                calendar={calendar}
-                allHabits={habits}
-                position={cardPositions[calendar.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateCalendarTitle}
-                onUpdateColor={actions.updateCalendarColor}
-                onUpdateFontSize={actions.updateCalendarFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleCalendarMinimize}
-                onDuplicateCard={actions.duplicateCalendarCard}
-                onArchiveCard={actions.archiveCalendarCard}
-                onDeleteCard={actions.deleteCalendarCard}
-                onChangeMonth={actions.changeCalendarMonth}
-                onOpenDay={actions.openCalendarDay}
-                onCloseDay={actions.closeCalendarDay}
-                onUpdateEntry={actions.updateCalendarEntry}
-                isPopping={poppingCardIds.has(calendar.id)}
-              />
-            ))}
-
-            {habits.map((habit) => (
-              <HabitCard
-                key={habit.id}
-                cardId={habit.id}
-                habit={habit}
-                position={cardPositions[habit.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateHabitTitle}
-                onUpdateIcon={actions.updateHabitIcon}
-                onUpdateColor={actions.updateHabitColor}
-                onUpdateFontSize={actions.updateHabitFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleHabitMinimize}
-                onDuplicateCard={actions.duplicateHabitCard}
-                onArchiveCard={actions.archiveHabitCard}
-                onDeleteCard={actions.deleteHabitCard}
-                onSetView={actions.setHabitView}
-                onChangeMonth={actions.changeHabitMonth}
-                onToggleDate={actions.toggleHabitDate}
-                isPopping={poppingCardIds.has(habit.id)}
-              />
-            ))}
-
-            {pictures.map((picture) => (
-              <PictureCard
-                key={picture.id}
-                cardId={picture.id}
-                picture={picture}
-                position={cardPositions[picture.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updatePictureTitle}
-                onUpdateColor={actions.updatePictureColor}
-                onUpdateFontSize={actions.updatePictureFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.togglePictureMinimize}
-                onDuplicateCard={actions.duplicatePictureCard}
-                onArchiveCard={actions.archivePictureCard}
-                onDeleteCard={actions.deletePictureCard}
-                onUpdateImageId={actions.updatePictureImageId}
-                onUpdateDimensions={getUpdatePictureDimensions(picture.id)}
-                onUpdateFitMode={actions.updatePictureFitMode}
-                scale={viewport.scale}
-                isPopping={poppingCardIds.has(picture.id)}
-              />
-            ))}
-
-            {quickLinks.map((qlCard) => (
-              <QuickLinksCard
-                key={qlCard.id}
-                cardId={qlCard.id}
-                quickLinkCard={qlCard}
-                position={cardPositions[qlCard.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateQuickLinksTitle}
-                onUpdateColor={actions.updateQuickLinksColor}
-                onUpdateFontSize={actions.updateQuickLinksFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleQuickLinksMinimize}
-                onDuplicateCard={actions.duplicateQuickLinksCard}
-                onArchiveCard={actions.archiveQuickLinksCard}
-                onDeleteCard={actions.deleteQuickLinksCard}
-                onAddLink={actions.addQuickLinkItem}
-                onUpdateLink={actions.updateQuickLinkItem}
-                onRemoveLink={actions.removeQuickLinkItem}
-                onReorderLinks={actions.reorderQuickLinkItems}
-                isPopping={poppingCardIds.has(qlCard.id)}
-              />
-            ))}
-
-            {quotes.map((quote) => (
-              <QuoteCard
-                key={quote.id}
-                cardId={quote.id}
-                quote={quote}
-                position={cardPositions[quote.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateQuoteTitle}
-                onUpdateText={actions.updateQuoteText}
-                onUpdateAuthor={actions.updateQuoteAuthor}
-                onUpdateColor={actions.updateQuoteColor}
-                onUpdateFontSize={actions.updateQuoteFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleQuoteMinimize}
-                onDuplicateCard={actions.duplicateQuoteCard}
-                onArchiveCard={actions.archiveQuoteCard}
-                onDeleteCard={actions.deleteQuoteCard}
-                onUpdateDimensions={getUpdateQuoteDimensions(quote.id)}
-                scale={viewport.scale}
-                isPopping={poppingCardIds.has(quote.id)}
-              />
-            ))}
+            {orderedCards}
           </main>
         </div>
 
@@ -530,6 +638,7 @@ export function WorkspaceBoard({
         />
       )}
     </div>
+    </MobileCardOrderProvider>
   )
 }
 

@@ -1,5 +1,5 @@
 import { useState, memo } from 'react'
-import { GripVertical, Check, Clock3, Pencil, ChevronDown, Trash2 } from 'lucide-react'
+import { GripVertical, Check, Clock3, ChevronDown, Trash2 } from 'lucide-react'
 import { CardContextMenu } from './CardContextMenu'
 import { playTaskCompleteSound } from '../utils/audio'
 
@@ -10,12 +10,12 @@ export const TodoCard = memo(function TodoCard({
   onAdd,
   onUpdateItemText,
   onDeleteItem,
-  onDragStartItem,
-  onDragOverItem,
-  onDropOnItem,
-  onDropOnList,
-  onDragEndItem,
+  // Pointer-event drag system (touch-compatible). onItemDragStart receives the
+  // grip's pointerdown; the workspace-level usePointerListDrag tracks motion
+  // and commits reorder/move-between on release.
+  onItemDragStart,
   draggingItemId,
+  overItemId,
   position,
   onPointerDown,
   onUpdateTitle,
@@ -34,7 +34,6 @@ export const TodoCard = memo(function TodoCard({
   const [editingItemId, setEditingItemId] = useState(null)
   const [editingValue, setEditingValue] = useState('')
   const [expandedItems, setExpandedItems] = useState(new Set())
-  const [activeDragHandleId, setActiveDragHandleId] = useState(null)
 
   const toggleItemExpanded = (itemId, e) => {
     e.stopPropagation()
@@ -113,27 +112,29 @@ export const TodoCard = memo(function TodoCard({
 
       {!column.minimized && (
         <>
-          <ul className="todo-list" onDragOver={onDragOverItem} onDrop={(event) => onDropOnList(column.id, event)}>
+          <ul className="todo-list" data-todo-column={column.id}>
             {column.items.map((item) => {
               const isExpanded = expandedItems.has(item.id)
               const status = item.status || (item.completed ? 'Done' : 'Todo')
               return (
               <li
-                className={`todo-row ${item.completed ? 'is-done' : ''} ${draggingItemId === item.id ? 'dragging' : ''} ${isExpanded ? 'is-expanded' : ''}`}
+                className={`todo-row ${item.completed ? 'is-done' : ''} ${draggingItemId === item.id ? 'dragging' : ''} ${overItemId === item.id && draggingItemId !== item.id ? 'is-drop-target' : ''} ${isExpanded ? 'is-expanded' : ''}`}
                 key={item.id}
-                draggable={activeDragHandleId === item.id}
-                onDragOver={onDragOverItem}
-                onDrop={(event) => onDropOnItem(column.id, item.id, event)}
-                onDragStart={(event) => onDragStartItem(column.id, item.id, event)}
-                onDragEnd={onDragEndItem}
+                data-item-id={item.id}
               >
                 <div className="todo-row-main">
                   <button
                     type="button"
                     className="drag-grid"
                     aria-label={`drag ${item.text}`}
-                    onMouseEnter={() => setActiveDragHandleId(item.id)}
-                    onMouseLeave={() => setActiveDragHandleId(null)}
+                    // Pointer capture lives here: press-and-move reorders the
+                    // row on both touch and desktop. stopPropagation keeps the
+                    // card-drag handler from also claiming the gesture.
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                      event.preventDefault()
+                      if (onItemDragStart) onItemDragStart(column.id, item.id, event)
+                    }}
                   >
                     <GripVertical aria-hidden="true" />
                   </button>
@@ -187,10 +188,10 @@ export const TodoCard = memo(function TodoCard({
                   )}
 
                   <div className="todo-actions">
-                    <button 
-                      type="button" 
-                      className="todo-arrow-btn" 
-                      onClick={(e) => toggleItemExpanded(item.id, e)} 
+                    <button
+                      type="button"
+                      className="todo-arrow-btn"
+                      onClick={(e) => toggleItemExpanded(item.id, e)}
                       aria-label={`more actions for ${item.text}`}
                     >
                       <ChevronDown

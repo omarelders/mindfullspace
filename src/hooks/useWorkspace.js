@@ -21,23 +21,17 @@ import { saveImage, deleteImage as deleteImageBlob, MAX_IMAGE_SIZE } from '../ut
 import { parseImportedCards } from '../utils/backup'
 import { sanitizeUrl } from '../utils/urlSafety'
 import { createId } from '../utils/id'
+import {
+  LONGPRESS_INTENT_DELAY_MS,
+  longPressHoldMsFor,
+  longPressSlopFor,
+} from '../utils/gestures'
+import { reorderItems, insertItemInto, removeItem } from '../utils/itemOrder'
 import { supportsNativeZoom } from '../utils/browserSupport'
 import { useUndoRedo } from './useUndoRedo'
 import { useCardCollection } from './useCardCollection'
 import { useAuth } from './useAuth'
 import { uploadImageToCloud, deleteImageFromCloud } from '../lib/imageSync'
-
-function reorderListItems(list, itemId, targetItemId) {
-  const currentIndex = list.findIndex((item) => item.id === itemId)
-  const targetIndex = list.findIndex((item) => item.id === targetItemId)
-  if (currentIndex < 0 || targetIndex < 0 || currentIndex === targetIndex) {
-    return list
-  }
-  const nextList = [...list]
-  const [removedItem] = nextList.splice(currentIndex, 1)
-  nextList.splice(targetIndex, 0, removedItem)
-  return nextList
-}
 
 function normalizeHabitIconId(iconId) {
   if (HABIT_ICON_OPTIONS.some((option) => option.id === iconId)) {
@@ -65,9 +59,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const [isFocusMode, setIsFocusMode] = useState(false)
   const [themeMode, setThemeMode] = useState(() => initialWorkspaceState.themeMode)
   const [themePalette, setThemePalette] = useState(() => initialWorkspaceState.themePalette || 'sage')
-  const [dragState, setDragState] = useState({ columnId: null, itemId: null })
   const [archivedCards, setArchivedCards] = useState(() => initialWorkspaceState.archivedCards)
   const [cardPositions, setCardPositions] = useState(() => initialWorkspaceState.cardPositions)
+  // Per-workspace card ordering for the mobile single-column layout.
+  const [mobileCardOrder, setMobileCardOrder] = useState(() => initialWorkspaceState.mobileCardOrder)
   const [draggingCard, setDraggingCard] = useState(null)
   const [poppingCardIds, setPoppingCardIds] = useState(() => new Set())
   const [toastMessage, setToastMessage] = useState(null)
@@ -91,6 +86,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const [longPressPos, setLongPressPos] = useState({ x: 0, y: 0 })
   const longPressTimerRef = useRef(null)
   const longPressStartRef = useRef({ x: 0, y: 0 })
+  // Touch: 100ms intent timer that gates the ring visual, plus the pointerId
+  // that owns the active hold so stray fingers/scroll events can't cancel it.
+  const longPressIntentTimerRef = useRef(null)
+  const longPressPointerIdRef = useRef(null)
 
   const { pushSnapshot, undo, redo } = useUndoRedo()
 
@@ -126,6 +125,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       customLabels: s.customLabels,
       singleNotes: s.singleNotes,
       cardPositions: s.cardPositions,
+      mobileCardOrder: s.mobileCardOrder,
     }
   }, [])
 
@@ -201,7 +201,6 @@ export function useWorkspace(workspaceId, workspaceRef) {
     }, [setDrafts]),
     onDelete: useCallback((id) => {
       clearCardDraft(id)
-      setDragState(d => d.columnId === id ? { columnId: null, itemId: null } : d)
     }, [clearCardDraft])
   })
 
@@ -335,10 +334,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
   useEffect(() => {
     stateRefsForSnapshot.current = {
       columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions
+      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, mobileCardOrder
     }
   }, [columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions])
+      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, mobileCardOrder])
 
   const restoreSnapshot = useCallback((snapshot) => {
     setColumns(snapshot.columns)
@@ -359,7 +358,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setCustomLabels(snapshot.customLabels)
     if (snapshot.singleNotes) setSingleNotes(snapshot.singleNotes)
     setCardPositions(snapshot.cardPositions)
-  }, [setColumns, setDrafts, setViewport, setThemeMode, setThemePalette, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setSingleNotes, setCardPositions])
+    setMobileCardOrder(snapshot.mobileCardOrder || {})
+  }, [setColumns, setDrafts, setViewport, setThemeMode, setThemePalette, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setSingleNotes, setCardPositions, setMobileCardOrder])
 
   const handleUndo = useCallback(() => {
     const snapshot = undo(captureSnapshot())
@@ -1190,78 +1190,85 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const updateQuoteDimensions = useCallback((id, width, height) => quoteCol.update(id, { width, height }), [quoteCol])
   const updateQuoteFontSize = useCallback((id, fontSize) => quoteCol.update(id, { fontSize }), [quoteCol])
 
-  const readDragPayload = (event) => {
-    const rawPayload = event.dataTransfer?.getData('text/plain')
-    if (rawPayload) {
-      try { const cur = JSON.parse(rawPayload); if (cur?.columnId && cur?.itemId) return cur } catch { /* ignore */ }
-    }
-    return null
-  }
-
-  const handleDragStartItem = useCallback((columnId, itemId, event) => {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', JSON.stringify({ columnId, itemId }))
-    setDragState({ columnId, itemId })
-  }, [])
-  const handleDragEndItem = useCallback(() => setDragState({ columnId: null, itemId: null }), [])
-  const handleDragOverItem = useCallback((event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }, [])
-
-  const handleDropOnItem = useCallback((columnId, targetItemId, event) => {
-    event.preventDefault(); event.stopPropagation()
-    const payload = readDragPayload(event)
-    if (!payload || (payload.columnId === columnId && payload.itemId === targetItemId)) return
+  const handlePointerReorderItem = useCallback(({ columnId, itemId, overItemId }) => {
     saveSnapshot('todo-items')
+    setColumns((currentColumns) => currentColumns.map((col) => (
+      col.id === columnId ? { ...col, items: reorderItems(col.items, itemId, overItemId) } : col
+    )))
+  }, [setColumns, saveSnapshot])
 
+  const handlePointerMoveBetweenColumns = useCallback(({ sourceColumnId, itemId, overColumnId, overItemId }) => {
+    if (sourceColumnId === overColumnId) {
+      handlePointerReorderItem({ columnId: sourceColumnId, itemId, overItemId })
+      return
+    }
+    saveSnapshot('todo-items')
     setColumns((currentColumns) => {
-      if (payload.columnId === columnId) {
-        return currentColumns.map((col) => col.id === columnId ? { ...col, items: reorderListItems(col.items, payload.itemId, targetItemId) } : col)
-      }
-      const sourceCol = currentColumns.find((c) => c.id === payload.columnId)
+      const sourceCol = currentColumns.find((c) => c.id === sourceColumnId)
       if (!sourceCol) return currentColumns
-      const movedItem = sourceCol.items.find((item) => item.id === payload.itemId)
+      const movedItem = sourceCol.items.find((item) => item.id === itemId)
       if (!movedItem) return currentColumns
 
       return currentColumns.map((col) => {
-        if (col.id === payload.columnId) return { ...col, items: col.items.filter(i => i.id !== payload.itemId) }
-        if (col.id === columnId) {
-          const targetIndex = col.items.findIndex((item) => item.id === targetItemId)
-          const newItems = [...col.items]; newItems.splice(targetIndex < 0 ? newItems.length : targetIndex, 0, movedItem)
-          return { ...col, items: newItems }
-        }
+        if (col.id === sourceColumnId) return { ...col, items: removeItem(col.items, itemId) }
+        if (col.id === overColumnId) return { ...col, items: insertItemInto(col.items, movedItem, overItemId) }
         return col
       })
     })
-    setDragState({ columnId: null, itemId: null })
-  }, [setColumns, saveSnapshot])
+  }, [setColumns, saveSnapshot, handlePointerReorderItem])
 
-  const handleDropOnList = useCallback((columnId, event) => {
-    event.preventDefault()
-    const payload = readDragPayload(event)
-    if (!payload) return
-    saveSnapshot('todo-items')
+  // Type-aware archive/delete dispatch for swipe actions: card ids carry
+  // their collection prefix (createId('<type>')), so the first dash-segment
+  // identifies which collection's action to invoke.
+  const swipeActionDispatch = useCallback((cardId, kind) => {
+    const prefix = String(cardId || '').split('-')[0]
+    const actionsByPrefix = {
+      col: { archive: archiveTodoCard, delete: deleteTodoCard },
+      label: { archive: archiveLabelCard, delete: deleteLabelCard },
+      singlenote: { archive: archiveSingleNoteCard, delete: deleteSingleNoteCard },
+      note: { archive: archiveNoteCard, delete: deleteNoteCard },
+      timer: { archive: archiveTimerCard, delete: deleteTimerCard },
+      counter: { archive: archiveCounterCard, delete: deleteCounterCard },
+      stopwatch: { archive: archiveStopwatchCard, delete: deleteStopwatchCard },
+      calendar: { archive: archiveCalendarCard, delete: deleteCalendarCard },
+      habit: { archive: archiveHabitCard, delete: deleteHabitCard },
+      picture: { archive: archivePictureCard, delete: deletePictureCard },
+      'quick-links': { archive: archiveQuickLinksCard, delete: deleteQuickLinksCard },
+      quote: { archive: archiveQuoteCard, delete: deleteQuoteCard },
+    }
+    // 'quick-links' contains a dash; match it before the generic split.
+    const normalized = cardId.startsWith('quick-links-') ? 'quick-links' : prefix
+    const entry = actionsByPrefix[normalized] || actionsByPrefix[prefix]
+    if (!entry) return false
+    const fn = kind === 'archive' ? entry.archive : entry.delete
+    if (typeof fn !== 'function') return false
+    fn(cardId)
+    return true
+  }, [archiveTodoCard, deleteTodoCard, archiveLabelCard, deleteLabelCard,
+      archiveSingleNoteCard, deleteSingleNoteCard, archiveNoteCard, deleteNoteCard,
+      archiveTimerCard, deleteTimerCard, archiveCounterCard, deleteCounterCard,
+      archiveStopwatchCard, deleteStopwatchCard, archiveCalendarCard, deleteCalendarCard,
+      archiveHabitCard, deleteHabitCard, archivePictureCard, deletePictureCard,
+      archiveQuickLinksCard, deleteQuickLinksCard, archiveQuoteCard, deleteQuoteCard])
 
-    setColumns((currentColumns) => {
-      if (payload.columnId !== columnId) {
-        const sourceCol = currentColumns.find((c) => c.id === payload.columnId)
-        if (!sourceCol) return currentColumns
-        const movedItem = sourceCol.items.find((item) => item.id === payload.itemId)
-        if (!movedItem) return currentColumns
-        return currentColumns.map((col) => {
-          if (col.id === payload.columnId) return { ...col, items: col.items.filter(i => i.id !== payload.itemId) }
-          if (col.id === columnId) return { ...col, items: [...col.items, movedItem] }
-          return col
-        })
-      }
-      return currentColumns.map((col) => {
-        if (col.id !== columnId) return col
-        const currentIndex = col.items.findIndex(i => i.id === payload.itemId)
-        if (currentIndex < 0 || currentIndex === col.items.length - 1) return col
-        const nextItems = [...col.items]; const [moved] = nextItems.splice(currentIndex, 1); nextItems.push(moved)
-        return { ...col, items: nextItems }
-      })
-    })
-    setDragState({ columnId: null, itemId: null })
-  }, [setColumns, saveSnapshot])
+  // Mobile column layout: move a card up/down within the vertical stack.
+  // The whole visible order is persisted as one id list; unknown/deleted ids
+  // are filtered out and new cards append at the end (see WorkspaceBoard).
+  const moveCardInMobileOrder = useCallback((cardId, direction) => {
+    const ids = renderedCardIds
+    const currentIndex = ids.indexOf(cardId)
+    if (currentIndex < 0) return
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (targetIndex < 0 || targetIndex >= ids.length) return
+
+    const nextIds = [...ids]
+    const [moved] = nextIds.splice(currentIndex, 1)
+    nextIds.splice(targetIndex, 0, moved)
+
+    saveSnapshot('card-order')
+    setMobileCardOrder({ list: nextIds, version: Date.now() })
+    showToast(direction === 'up' ? 'Moved up' : 'Moved down')
+  }, [renderedCardIds, saveSnapshot, showToast])
 
   const handleWheel = useCallback((event) => {
     event.preventDefault()
@@ -1296,6 +1303,22 @@ export function useWorkspace(workspaceId, workspaceRef) {
   }, [workspaceRef, wheelMode])
 
   const startPanning = useCallback((event) => {
+    // Touch ALWAYS pans the canvas (drag-to-pan is the only navigation on a
+    // touch screen wider than the mobile breakpoint — e.g. iPad landscape or
+    // touch laptops). Below 1200px the column layout scrolls instead.
+    if (event.pointerType === 'touch') {
+      if (window.innerWidth <= 1200) return
+      if (event.target.closest('.action-rail') || event.target.closest('.top-bar') || event.target.closest('.card-menu-wrap')) return
+      // Card headers handle their own drag via stopPropagation; empty canvas
+      // and non-interactive board areas pan.
+      event.preventDefault()
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {}
+      panRef.current = { active: true, lastX: event.clientX, lastY: event.clientY }
+      setIsPanning(true)
+      return
+    }
     if (window.innerWidth <= 1200) return
     if (event.button !== 2) return
     if (event.target.closest('.action-rail') || event.target.closest('.top-bar') || event.target.closest('.card-menu-wrap')) return
@@ -1491,17 +1514,25 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setIsRailOpen(false)
   }, [viewport, workspaceRef, handleAddLabel, handleAddSingleNote, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks, handleAddQuote])
 
-  // Long-press callbacks
+  // Long-press callbacks. Thresholds and timing come from utils/gestures.js
+  // (unit-tested): touch gets a wider slop radius, a longer hold, and a short
+  // intent delay before the ring appears so scroll gestures never trigger it.
   const startLongPress = useCallback((event) => {
     if (event.button !== 1 && event.pointerType !== 'touch') return
     // Only trigger on empty canvas (not on cards)
     if (event.target !== event.currentTarget && !event.target.classList.contains('board-stage') && !event.target.classList.contains('board')) return
+    const isTouch = event.pointerType === 'touch'
     const x = event.clientX
     const y = event.clientY
     longPressStartRef.current = { x, y }
-    setLongPressPos({ x, y })
-    setIsLongPressHolding(true)
+    longPressPointerIdRef.current = event.pointerId
     clearTimeout(longPressTimerRef.current)
+    clearTimeout(longPressIntentTimerRef.current)
+
+    const beginHold = () => {
+      setLongPressPos({ x: longPressStartRef.current.x, y: longPressStartRef.current.y })
+      setIsLongPressHolding(true)
+    }
     longPressTimerRef.current = setTimeout(() => {
       const bounds = workspaceRef.current?.getBoundingClientRect()
       if (bounds) {
@@ -1510,22 +1541,38 @@ export function useWorkspace(workspaceId, workspaceRef) {
         setLongPressMenu({ visible: true, x, y, canvasX, canvasY })
       }
       setIsLongPressHolding(false)
-    }, 650)
+      longPressPointerIdRef.current = null
+    }, longPressHoldMsFor(event.pointerType))
+
+    // On touch, delay the hold-ring visual by LONGPRESS_INTENT_DELAY_MS so a
+    // finger that immediately becomes a scroll never flashes the ring.
+    if (isTouch) {
+      longPressIntentTimerRef.current = setTimeout(beginHold, LONGPRESS_INTENT_DELAY_MS)
+    } else {
+      beginHold()
+    }
   }, [viewport, workspaceRef])
 
   const moveLongPress = useCallback((event) => {
     if (!isLongPressHolding) return
+    // Only the pointer that started the hold may move/cancel it.
+    if (longPressPointerIdRef.current !== null && event.pointerId !== longPressPointerIdRef.current) return
     const dx = event.clientX - longPressStartRef.current.x
     const dy = event.clientY - longPressStartRef.current.y
-    if (Math.sqrt(dx * dx + dy * dy) > 5) {
+    const limit = longPressSlopFor(event.pointerType)
+    if (Math.sqrt(dx * dx + dy * dy) > limit) {
       clearTimeout(longPressTimerRef.current)
+      clearTimeout(longPressIntentTimerRef.current)
       setIsLongPressHolding(false)
+      longPressPointerIdRef.current = null
     }
   }, [isLongPressHolding])
 
   const cancelLongPress = useCallback(() => {
     clearTimeout(longPressTimerRef.current)
+    clearTimeout(longPressIntentTimerRef.current)
     setIsLongPressHolding(false)
+    longPressPointerIdRef.current = null
   }, [])
 
   const closeLongPressMenu = useCallback(() => {
@@ -1724,8 +1771,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
   return {
     state: {
       columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, themePalette, theme,
-      dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
-      archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
+      notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
+      archivedCards, detachedLabels, singleNotes, cardPositions, mobileCardOrder, draggingCard, poppingCardIds, toastMessage,
       longPressMenu, isLongPressHolding, longPressPos
     },
     setters: {
@@ -1733,7 +1780,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     },
     actions: {
       setDraft, addItem, updateItemText, updateItemDetails, deleteItem,
-      handleDragStartItem, handleDragEndItem, handleDragOverItem, handleDropOnItem, handleDropOnList,
+      handlePointerReorderItem, handlePointerMoveBetweenColumns, moveCardInMobileOrder, swipeActionDispatch,
       handleCardPointerDown, handleWheel, startPanning, movePanning, endPanning, handleMiddleClick,
       handleQuickAction, focusLabelCard, restoreArchivedCard, moveCardToTarget,
       handleUndo, handleRedo, startLongPress, moveLongPress, cancelLongPress, closeLongPressMenu,

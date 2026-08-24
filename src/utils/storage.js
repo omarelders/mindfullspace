@@ -170,6 +170,10 @@ export function validateWorkspaceState(stored) {
       stored?.cardPositions && typeof stored.cardPositions === 'object'
         ? { ...createDefaultCardPositions(), ...stored.cardPositions }
         : createDefaultCardPositions(),
+    mobileCardOrder:
+      stored?.mobileCardOrder && typeof stored.mobileCardOrder === 'object' && !Array.isArray(stored.mobileCardOrder)
+        ? stored.mobileCardOrder
+        : {},
   }
 }
 

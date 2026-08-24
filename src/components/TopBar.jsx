@@ -256,8 +256,10 @@ export const TopBar = memo(function TopBar({
         setIsAccountMenuOpen(false)
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    // pointerdown (not mousedown): touch taps must dismiss panels reliably,
+    // and synthesized mouse events after scroll can target a different element.
+    document.addEventListener('pointerdown', handleClickOutside)
+    return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [])
 
   useEffect(() => {
@@ -309,10 +311,37 @@ export const TopBar = memo(function TopBar({
     : 'Local workspace — your data stays on this device'
   const profileLevel = 1
 
+  // Any open dropdown panel gets a dismiss backdrop; body scroll locks while
+  // one is open on mobile so background content doesn't scroll-bleed.
+  // Declared BEFORE the early fullscreen return to keep hook order stable.
+  const anyPanelOpen = isAccountMenuOpen || isWorkspaceMenuOpen || isQuickMenuOpen || isSearchOpen
+
+  useEffect(() => {
+    if (!anyPanelOpen) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [anyPanelOpen])
+
   if (isFullscreen) return null
 
   return (
     <header className="top-bar">
+      {anyPanelOpen && (
+        <button
+          type="button"
+          className="panel-backdrop"
+          aria-label="close panels"
+          onClick={() => {
+            setIsAccountMenuOpen(false)
+            setIsWorkspaceMenuOpen(false)
+            setIsQuickMenuOpen(false)
+            setIsSearchOpen(false)
+          }}
+        />
+      )}
       <div className="top-left">
         <div className="account-menu-wrap" ref={accountRef}>
           <button

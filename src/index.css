@@ -1536,7 +1536,9 @@ html:-webkit-full-screen .app-shell {
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, var(--workspace-bg) 0%, var(--workspace-bg-alt) 100%);
-  touch-action: none;
+  /* Touch pointers may pan (x+y); mouse wheel/pinch-zoom is JS-driven via a
+     non-touch wheel listener, so it stays disabled here. */
+  touch-action: pan-x pan-y;
 }
 
 .workspace.is-panning {
@@ -3620,7 +3622,11 @@ html:-webkit-full-screen .app-shell {
 
   .workspace {
     overflow: auto;
-    padding: 18px 14px 120px;
+    /* touch-action: pan-y lets the browser own vertical touch scrolling —
+       panning/long-press are desktop-gated and must not fight native
+       momentum scrolling on phones. */
+    touch-action: pan-y;
+    padding: 18px 14px calc(120px + env(safe-area-inset-bottom, 0px));
   }
 
   .board-stage {
@@ -3716,7 +3722,7 @@ html:-webkit-full-screen .app-shell {
     transform: translateX(-50%);
     right: auto;
     top: auto;
-    bottom: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     flex-direction: row;
     align-items: center;
     gap: 6px;
@@ -5309,6 +5315,248 @@ html:-webkit-full-screen .app-shell {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
     z-index: 100;
     background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* ============================================================
+   MOBILE / TOUCH LAYER
+   Appended by the mobile optimization plan. Later blocks win
+   the cascade over identical-specificity rules above.
+   ============================================================ */
+
+/* ---- Touch devices: reveal controls that hide behind :hover ---- */
+@media (hover: none) {
+  .picture-fit-btn {
+    opacity: 0.85;
+    transform: none;
+  }
+
+  .picture-actions {
+    opacity: 0.85;
+  }
+
+  .ql-item-actions {
+    opacity: 0.7;
+  }
+
+  .ql-drag-handle {
+    opacity: 0.4;
+  }
+
+  .ql-label {
+    text-decoration: underline;
+  }
+}
+
+/* ---- Phones/tablets (column layout): 44px touch targets + usable handles ---- */
+@media (max-width: 1200px) {
+  .nav-box,
+  .icon-box,
+  .quick-box {
+    width: 44px;
+    height: 44px;
+  }
+
+  .rail-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .card-menu {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .drag-grid {
+    width: 28px;
+    height: 40px;
+    touch-action: none;
+  }
+
+  .todo-arrow-btn,
+  .todo-delete-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .picture-resizer,
+  .note-resizer,
+  .quote-resizer {
+    width: 28px;
+    height: 28px;
+  }
+
+  .picture-resizer::after,
+  .note-resizer::after {
+    width: 10px;
+    height: 10px;
+    border-right-width: 3px;
+    border-bottom-width: 3px;
+    bottom: 6px;
+    right: 6px;
+  }
+}
+
+/* ---- Pointer drag affordances (todo rows, all devices) ---- */
+.todo-row.is-drop-target {
+  box-shadow: inset 0 2px 0 0 var(--tone-blue);
+  background: rgba(90, 120, 255, 0.08);
+}
+
+/* ---- Card context menu backdrop (mounted only while a menu is open) ---- */
+.card-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 135;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.card-menu-item.is-disabled {
+  opacity: 0.4;
+}
+
+/* ---- TopBar dropdown backdrop + scroll lock ---- */
+.panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 60;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+/* ---- Pull-to-sync indicator ---- */
+.pull-sync-indicator {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+  z-index: 80;
+}
+
+.pull-sync-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: rgba(255, 255, 255, 0.85);
+  animation: pull-sync-spin 0.9s linear infinite;
+}
+
+@keyframes pull-sync-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Swipe actions on mobile cards ---- */
+.swipe-wrap {
+  position: relative;
+}
+
+.swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto; /* right edge */
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding-left: 12px;
+  pointer-events: none;
+}
+
+.swipe-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  min-height: 44px;
+  align-self: stretch;
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.swipe-action svg {
+  width: 20px;
+  height: 20px;
+}
+
+.swipe-archive { background: var(--tone-violet, '#7C6FF0'); }
+.swipe-delete { background: var(--tone-red, '#E5484D'); }
+
+.swipe-card {
+  position: relative;
+  background: transparent;
+  will-change: transform;
+}
+
+/* ---- Phones: card context menu becomes a bottom sheet ---- */
+@media (max-width: 700px) {
+  .card-menu-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    max-width: 100vw;
+    max-height: 72vh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+    border-bottom: none;
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    transform-origin: bottom center;
+    animation: sheet-slide-up 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 140;
+  }
+
+  .card-menu-backdrop {
+    animation: fade-in 0.2s ease both;
+  }
+}
+
+@keyframes sheet-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- Ultra-narrow phones (320–400px): tighten grids ---- */
+@media (max-width: 400px) {
+  .label-stack {
+    grid-template-columns: repeat(2, 1fr);
+    width: calc(100vw - 28px);
+  }
+
+  .calendar-days-grid {
+    gap: 4px;
+    padding: 0 6px 6px;
+  }
+
+  .calendar-day {
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .todo-card,
+  .card-note,
+  .card-timer,
+  .card-counter,
+  .card-calendar,
+  .card-habit {
+    width: calc(100vw - 28px);
   }
 }
 

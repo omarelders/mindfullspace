@@ -4,11 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover exposes env(safe-area-inset-*) so the fixed action
+         rail clears the iOS home indicator and content respects the notch. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#18181B" />
     <meta name="application-name" content="Mindful Space" />
-    <meta name="description" content="Desktop-focused mindful productivity workspace." />
+    <meta name="description" content="Mindful productivity workspace." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Mindful" />
     <title>Mindful Space</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

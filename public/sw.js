@@ -1,6 +1,6 @@
 // Bump whenever precached app shell assets change in a way that matters
 // offline (runtime assets are content-hashed and cached on the fly).
-const CACHE_VERSION = 'v2'
+const CACHE_VERSION = 'v3'
 const STATIC_CACHE = `mindful-static-${CACHE_VERSION}`
 const RUNTIME_CACHE = `mindful-runtime-${CACHE_VERSION}`
 const PRECACHE_URLS = [
@@ -90,6 +90,14 @@ self.addEventListener('fetch', (event) => {
   }
 
   const requestUrl = new URL(event.request.url)
+
+  // Google Fonts (cross-origin): stale-while-revalidate so typography survives
+  // offline on mobile. Opaque responses are stored and matched without issue.
+  if (requestUrl.hostname === 'fonts.googleapis.com' || requestUrl.hostname === 'fonts.gstatic.com') {
+    event.respondWith(staleWhileRevalidate(event.request))
+    return
+  }
+
   if (requestUrl.origin !== self.location.origin) {
     return
   }
