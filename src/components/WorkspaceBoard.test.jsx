@@ -1,15 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen } from '@solidjs/testing-library'
 import { WorkspaceBoard } from './WorkspaceBoard'
 import { AuthProvider } from '../hooks/useAuth'
-import { QUICK_CREATE_ACTIONS } from '../utils/constants'
 
 // Full-board render smoke test. Guards against runtime ReferenceErrors on
-// mount (e.g. a setter destructured away from useWorkspace's `setters`),
+// mount (e.g. a setter missing from the workspace `setters` object),
 // a crash class that previously shipped because no test rendered the board.
 describe('WorkspaceBoard smoke', () => {
   it('renders the full board without crashing in guest mode', () => {
-    render(
+    render(() => (
       <AuthProvider>
         <WorkspaceBoard
           workspace={{ id: 'ws-smoke', name: 'Smoke Board' }}
@@ -20,12 +19,9 @@ describe('WorkspaceBoard smoke', () => {
           onDuplicateWorkspace={() => {}}
           onDeleteWorkspace={() => {}}
           onCreateWorkspace={() => {}}
-          quickActions={QUICK_CREATE_ACTIONS}
-          labels={[]}
-          habits={[]}
         />
       </AuthProvider>
-    )
+    ))
 
     // TopBar chrome mounted…
     expect(screen.getByRole('button', { name: /^menu$/i })).toBeInTheDocument()

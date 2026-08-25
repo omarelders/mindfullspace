@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect, memo } from 'react'
-import { Plus, Trash2, Edit2, Check, X, GripVertical, Link2 } from 'lucide-react'
+import { createSignal, Show, For } from 'solid-js'
+import { Plus, Trash2, Edit2, Check, X, GripVertical, Link2 } from 'lucide-solid'
 import { CardContextMenu } from './CardContextMenu'
 import { sanitizeUrl } from '../utils/urlSafety'
 
@@ -12,37 +12,19 @@ function getFaviconUrl(url) {
   }
 }
 
-export const QuickLinksCard = memo(function QuickLinksCard({
-  quickLinkCard,
-  position,
-  onPointerDown,
-  onUpdateTitle,
-  onUpdateColor,
-  onMoveCard,
-  onToggleMinimize,
-  onDuplicateCard,
-  onArchiveCard,
-  onDeleteCard,
-  onAddLink,
-  onUpdateLink,
-  onRemoveLink,
-  onReorderLinks,
-  onUpdateFontSize,
-  isPopping,
-  cardId
-}) {
-  const cardStyle = quickLinkCard.color ? { '--card-custom-bg': quickLinkCard.color } : {}
-  const fontStyle = quickLinkCard.fontSize ? { fontSize: `${quickLinkCard.fontSize}px` } : undefined
-  const [isAdding, setIsAdding] = useState(false)
-  const [editingItemId, setEditingItemId] = useState(null)
-  
+export function QuickLinksCard(props) {
+  const cardStyle = () => props.quickLinkCard.color ? { '--card-custom-bg': props.quickLinkCard.color } : {}
+  const fontStyle = () => props.quickLinkCard.fontSize ? { "font-size": `${props.quickLinkCard.fontSize}px` } : undefined
+  const [isAdding, setIsAdding] = createSignal(false)
+  const [editingItemId, setEditingItemId] = createSignal(null)
+
   // Form state
-  const [formUrl, setFormUrl] = useState('')
-  const [formLabel, setFormLabel] = useState('')
+  const [formUrl, setFormUrl] = createSignal('')
+  const [formLabel, setFormLabel] = createSignal('')
 
   // Drag state for reordering
-  const [draggedItem, setDraggedItem] = useState(null)
-  const [dragOverItem, setDragOverItem] = useState(null)
+  const [draggedItem, setDraggedItem] = createSignal(null)
+  const [dragOverItem, setDragOverItem] = createSignal(null)
 
   const handleStartAdd = () => {
     setFormUrl('')
@@ -65,11 +47,11 @@ export const QuickLinksCard = memo(function QuickLinksCard({
 
   const handleSubmitForm = (e) => {
     e.preventDefault()
-    if (!formUrl.trim()) return
+    if (!formUrl().trim()) return
 
     // Single source of truth for URL validation: rejects dangerous schemes
     // (javascript:, data:, ...) and prepends https:// to bare domains.
-    const finalUrl = sanitizeUrl(formUrl)
+    const finalUrl = sanitizeUrl(formUrl())
     if (!finalUrl) return
 
     let parsedHostname = ''
@@ -79,12 +61,12 @@ export const QuickLinksCard = memo(function QuickLinksCard({
       return
     }
 
-    const finalLabel = formLabel.trim() || parsedHostname
+    const finalLabel = formLabel().trim() || parsedHostname
 
-    if (isAdding) {
-      onAddLink(quickLinkCard.id, finalUrl, finalLabel)
-    } else if (editingItemId) {
-      onUpdateLink(quickLinkCard.id, editingItemId, finalUrl, finalLabel)
+    if (isAdding()) {
+      props.onAddLink(props.quickLinkCard.id, finalUrl, finalLabel)
+    } else if (editingItemId()) {
+      props.onUpdateLink(props.quickLinkCard.id, editingItemId(), finalUrl, finalLabel)
     }
 
     handleCancelForm()
@@ -103,8 +85,8 @@ export const QuickLinksCard = memo(function QuickLinksCard({
 
   const handleItemDrop = (e, dropIndex) => {
     e.preventDefault()
-    if (draggedItem !== null && draggedItem !== dropIndex) {
-      onReorderLinks(quickLinkCard.id, draggedItem, dropIndex)
+    if (draggedItem() !== null && draggedItem() !== dropIndex) {
+      props.onReorderLinks(props.quickLinkCard.id, draggedItem(), dropIndex)
     }
     setDraggedItem(null)
     setDragOverItem(null)
@@ -117,151 +99,151 @@ export const QuickLinksCard = memo(function QuickLinksCard({
 
   return (
     <section
-      className={`floating-card quick-links-card ${quickLinkCard.color ? 'has-custom-color' : ''} ${isPopping ? 'is-popping' : ''}`}
+      class={`floating-card quick-links-card ${props.quickLinkCard.color ? 'has-custom-color' : ''} ${props.isPopping ? 'is-popping' : ''}`}
       style={{
-        left: position?.x,
-        top: position?.y,
-        margin: position ? 0 : undefined,
-        ...cardStyle,
-        ...fontStyle,
+        left: props.position?.x !== undefined ? `${props.position.x}px` : undefined,
+        top: props.position?.y !== undefined ? `${props.position.y}px` : undefined,
+        margin: props.position ? '0' : undefined,
+        ...cardStyle(),
+        ...fontStyle(),
       }}
-      onPointerDown={(e) => onPointerDown(cardId, e)}
-      data-card-id={cardId}
+      onPointerDown={(e) => props.onPointerDown?.(props.cardId, e)}
+      data-card-id={props.cardId}
     >
-      <header className="card-header">
+      <header class="card-header">
         <input
-          className="card-title-input"
-          value={quickLinkCard.title}
-          onChange={(e) => onUpdateTitle(quickLinkCard.id, e.target.value)}
+          class="card-title-input"
+          value={props.quickLinkCard.title}
+          onInput={(e) => props.onUpdateTitle(props.quickLinkCard.id, e.currentTarget.value)}
           placeholder="Quick Links"
-          spellCheck="false"
+          spellcheck={false}
         />
         <CardContextMenu
           showTitleInput={false}
-          minimized={quickLinkCard.minimized}
-          fontSize={quickLinkCard.fontSize || 13}
-          onColorChange={(color) => onUpdateColor(quickLinkCard.id, color)}
-          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(quickLinkCard.id, nextSize)}
-          onMove={(targetId) => onMoveCard(quickLinkCard.id, targetId)}
-          onToggleMinimize={() => onToggleMinimize(quickLinkCard.id)}
-          onDuplicate={() => onDuplicateCard(quickLinkCard.id)}
-          onArchive={() => onArchiveCard(quickLinkCard.id)}
-          onDelete={() => onDeleteCard(quickLinkCard.id)}
+          minimized={props.quickLinkCard.minimized}
+          fontSize={props.quickLinkCard.fontSize || 13}
+          onColorChange={(color) => props.onUpdateColor(props.quickLinkCard.id, color)}
+          onFontSizeChange={(nextSize) => props.onUpdateFontSize && props.onUpdateFontSize(props.quickLinkCard.id, nextSize)}
+          onMove={(targetId) => props.onMoveCard(props.quickLinkCard.id, targetId)}
+          onToggleMinimize={() => props.onToggleMinimize(props.quickLinkCard.id)}
+          onDuplicate={() => props.onDuplicateCard(props.quickLinkCard.id)}
+          onArchive={() => props.onArchiveCard(props.quickLinkCard.id)}
+          onDelete={() => props.onDeleteCard(props.quickLinkCard.id)}
         />
       </header>
 
-      {!quickLinkCard.minimized && (
-        <div className="quick-links-body">
-          <ul className="quick-links-list">
-            {(quickLinkCard.links || []).map((link, index) => {
-              const isEditingThis = editingItemId === link.id
-              // Render-boundary validation: imported/legacy data may contain
-              // unsafe schemes, so the href is always re-checked here.
-              const safeUrl = sanitizeUrl(link.url)
-              const faviconUrl = safeUrl ? getFaviconUrl(safeUrl) : null
-              const linkContent = (
-                <>
-                  {faviconUrl ? (
-                    <img src={faviconUrl} alt="" className="ql-favicon" onError={(e) => e.target.style.display = 'none'} />
-                  ) : (
-                    <Link2 size={14} className="ql-favicon-fallback" />
-                  )}
-                  <span className="ql-label" style={fontStyle} title={link.url}>{link.label}</span>
-                </>
-              )
+      <Show when={!props.quickLinkCard.minimized}>
+        <div class="quick-links-body">
+          <ul class="quick-links-list">
+            <For each={props.quickLinkCard.links || []}>
+              {(link, index) => {
+                const isEditingThis = () => editingItemId() === link.id
+                // Render-boundary validation: imported/legacy data may contain
+                // unsafe schemes, so the href is always re-checked here.
+                const safeUrl = sanitizeUrl(link.url)
+                const faviconUrl = safeUrl ? getFaviconUrl(safeUrl) : null
 
-              if (isEditingThis) {
                 return (
-                  <li key={link.id} className="quick-links-form-item">
-                    <form onSubmit={handleSubmitForm} className="quick-links-form">
-                      <input
-                        autoFocus
-                        placeholder="URL (e.g., example.com)"
-                        value={formUrl}
-                        onChange={(e) => setFormUrl(e.target.value)}
-                        className="quick-links-input"
-                      />
-                      <input
-                        placeholder="Label (optional)"
-                        value={formLabel}
-                        onChange={(e) => setFormLabel(e.target.value)}
-                        className="quick-links-input"
-                      />
-                      <div className="quick-links-form-actions">
-                        <button type="submit" className="ql-btn ql-btn-primary"><Check size={14} /></button>
-                        <button type="button" onClick={handleCancelForm} className="ql-btn ql-btn-secondary"><X size={14} /></button>
+                  <Show when={isEditingThis()} fallback={
+                    <li
+                      class={`quick-links-item ${dragOverItem() === index() ? 'is-drag-over' : ''} ${draggedItem() === index() ? 'is-dragging' : ''}`}
+                      draggable
+                      onDragStart={(e) => handleItemDragStart(e, index())}
+                      onDragOver={(e) => handleItemDragOver(e, index())}
+                      onDrop={(e) => handleItemDrop(e, index())}
+                      onDragEnd={handleItemDragEnd}
+                    >
+                      <div class="ql-drag-handle">
+                        <GripVertical size={14} />
                       </div>
-                    </form>
-                  </li>
+
+                      {safeUrl ? (
+                        <a href={safeUrl} target="_blank" rel="noopener noreferrer" class="ql-link-content" onPointerDown={(e) => e.stopPropagation()}>
+                          {faviconUrl ? (
+                            <img src={faviconUrl} alt="" class="ql-favicon" onError={(e) => e.currentTarget.style.display = 'none'} />
+                          ) : (
+                            <Link2 size={14} class="ql-favicon-fallback" />
+                          )}
+                          <span class="ql-label" style={fontStyle()} title={link.url}>{link.label}</span>
+                        </a>
+                      ) : (
+                        <span class="ql-link-content ql-link-invalid" title="Invalid or unsafe link" onPointerDown={(e) => e.stopPropagation()}>
+                          {faviconUrl ? (
+                            <img src={faviconUrl} alt="" class="ql-favicon" onError={(e) => e.currentTarget.style.display = 'none'} />
+                          ) : (
+                            <Link2 size={14} class="ql-favicon-fallback" />
+                          )}
+                          <span class="ql-label" style={fontStyle()} title={link.url}>{link.label}</span>
+                        </span>
+                      )}
+
+                      <div class="ql-item-actions">
+                        <button type="button" onClick={() => handleStartEdit(link)} class="ql-action-btn" title="Edit">
+                          <Edit2 size={12} />
+                        </button>
+                        <button type="button" onClick={() => props.onRemoveLink(props.quickLinkCard.id, link.id)} class="ql-action-btn ql-action-delete" title="Delete">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </li>
+                  }>
+                    <li class="quick-links-form-item">
+                      <form onSubmit={handleSubmitForm} class="quick-links-form">
+                        <input
+                          placeholder="URL (e.g., example.com)"
+                          value={formUrl()}
+                          onInput={(e) => setFormUrl(e.currentTarget.value)}
+                          class="quick-links-input"
+                        />
+                        <input
+                          placeholder="Label (optional)"
+                          value={formLabel()}
+                          onInput={(e) => setFormLabel(e.currentTarget.value)}
+                          class="quick-links-input"
+                        />
+                        <div class="quick-links-form-actions">
+                          <button type="submit" class="ql-btn ql-btn-primary"><Check size={14} /></button>
+                          <button type="button" onClick={handleCancelForm} class="ql-btn ql-btn-secondary"><X size={14} /></button>
+                        </div>
+                      </form>
+                    </li>
+                  </Show>
                 )
-              }
-
-              return (
-                <li
-                  key={link.id}
-                  className={`quick-links-item ${dragOverItem === index ? 'is-drag-over' : ''} ${draggedItem === index ? 'is-dragging' : ''}`}
-                  draggable
-                  onDragStart={(e) => handleItemDragStart(e, index)}
-                  onDragOver={(e) => handleItemDragOver(e, index)}
-                  onDrop={(e) => handleItemDrop(e, index)}
-                  onDragEnd={handleItemDragEnd}
-                >
-                  <div className="ql-drag-handle">
-                    <GripVertical size={14} />
-                  </div>
-
-                  {safeUrl ? (
-                    <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="ql-link-content" onPointerDown={(e) => e.stopPropagation()}>
-                      {linkContent}
-                    </a>
-                  ) : (
-                    <span className="ql-link-content ql-link-invalid" title="Invalid or unsafe link" onPointerDown={(e) => e.stopPropagation()}>
-                      {linkContent}
-                    </span>
-                  )}
-
-                  <div className="ql-item-actions">
-                    <button type="button" onClick={() => handleStartEdit(link)} className="ql-action-btn" title="Edit">
-                      <Edit2 size={12} />
-                    </button>
-                    <button type="button" onClick={() => onRemoveLink(quickLinkCard.id, link.id)} className="ql-action-btn ql-action-delete" title="Delete">
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
+              }}
+            </For>
           </ul>
 
-          {isAdding ? (
-            <div className="quick-links-form-item">
-              <form onSubmit={handleSubmitForm} className="quick-links-form">
+          <Show
+            when={isAdding()}
+            fallback={
+              <button type="button" class="quick-links-add-btn" onClick={handleStartAdd}>
+                <Plus size={14} /> Add Link
+              </button>
+            }
+          >
+            <div class="quick-links-form-item">
+              <form onSubmit={handleSubmitForm} class="quick-links-form">
                 <input
-                  autoFocus
                   placeholder="URL (e.g., example.com)"
-                  value={formUrl}
-                  onChange={(e) => setFormUrl(e.target.value)}
-                  className="quick-links-input"
+                  value={formUrl()}
+                  onInput={(e) => setFormUrl(e.currentTarget.value)}
+                  class="quick-links-input"
                 />
                 <input
                   placeholder="Label (optional)"
-                  value={formLabel}
-                  onChange={(e) => setFormLabel(e.target.value)}
-                  className="quick-links-input"
+                  value={formLabel()}
+                  onInput={(e) => setFormLabel(e.currentTarget.value)}
+                  class="quick-links-input"
                 />
-                <div className="quick-links-form-actions">
-                  <button type="submit" className="ql-btn ql-btn-primary" disabled={!formUrl.trim()}><Check size={14} /></button>
-                  <button type="button" onClick={handleCancelForm} className="ql-btn ql-btn-secondary"><X size={14} /></button>
+                <div class="quick-links-form-actions">
+                  <button type="submit" class="ql-btn ql-btn-primary" disabled={!formUrl().trim()}><Check size={14} /></button>
+                  <button type="button" onClick={handleCancelForm} class="ql-btn ql-btn-secondary"><X size={14} /></button>
                 </div>
               </form>
             </div>
-          ) : (
-            <button className="quick-links-add-btn" onClick={handleStartAdd}>
-              <Plus size={14} /> Add Link
-            </button>
-          )}
+          </Show>
         </div>
-      )}
+      </Show>
     </section>
   )
-})
+}

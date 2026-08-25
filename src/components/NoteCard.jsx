@@ -1,31 +1,14 @@
-import { useState, useEffect, useRef, memo } from 'react'
+import { createSignal, onCleanup, Show } from 'solid-js'
 import { CardContextMenu } from './CardContextMenu'
 
-export const NoteCard = memo(function NoteCard({
-  note,
-  position,
-  onPointerDown,
-  onUpdateTitle,
-  onUpdateColor,
-  onUpdateFontSize,
-  onMoveCard,
-  onToggleMinimize,
-  onDuplicateCard,
-  onArchiveCard,
-  onDeleteCard,
-  onUpdateText,
-  onUpdateDimensions,
-  scale,
-  isPopping,
-  cardId,
-}) {
-  const [isEditing, setIsEditing] = useState(false)
-  const [editValue, setEditValue] = useState(note.text)
+export function NoteCard(props) {
+  const [isEditing, setIsEditing] = createSignal(false)
+  const [editValue, setEditValue] = createSignal(props.note.text)
 
   // If the card unmounts mid-resize (archive/delete/undo), remove the
   // document-level listeners so they don't leak.
-  const resizeCleanupRef = useRef(null)
-  useEffect(() => () => resizeCleanupRef.current?.(), [])
+  let resizeCleanup = null
+  onCleanup(() => resizeCleanup?.())
 
   const handleResizeStart = (e) => {
     e.preventDefault()
@@ -34,11 +17,13 @@ export const NoteCard = memo(function NoteCard({
     const cardEl = e.currentTarget.closest('.note-card')
     const startX = e.clientX
     const startY = e.clientY
-    const startWidth = note.width || 280
-    const startHeight = note.height || 220
+    const startWidth = props.note.width || 280
+    const startHeight = props.note.height || 220
     let currentWidth = startWidth
     let currentHeight = startHeight
     let rafId = null
+
+    const scale = typeof props.scale === 'function' ? props.scale() : props.scale
 
     const handlePointerMove = (moveEvent) => {
       const deltaX = (moveEvent.clientX - startX) / scale
@@ -57,16 +42,16 @@ export const NoteCard = memo(function NoteCard({
     }
 
     const handlePointerUp = () => {
-      resizeCleanupRef.current = null
+      resizeCleanup = null
       if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
-      if (onUpdateDimensions && (currentWidth !== startWidth || currentHeight !== startHeight)) {
-        onUpdateDimensions(currentWidth, currentHeight)
+      if (props.onUpdateDimensions && (currentWidth !== startWidth || currentHeight !== startHeight)) {
+        props.onUpdateDimensions(currentWidth, currentHeight)
       }
     }
 
-    resizeCleanupRef.current = () => {
+    resizeCleanup = () => {
       if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
@@ -77,21 +62,21 @@ export const NoteCard = memo(function NoteCard({
 
   const handleStartEdit = (e) => {
     e.stopPropagation()
-    setEditValue(note.text)
+    setEditValue(props.note.text)
     setIsEditing(true)
   }
 
   const handleCommitEdit = () => {
     setIsEditing(false)
-    if (onUpdateText && editValue !== note.text) {
-      onUpdateText(note.id, editValue)
+    if (props.onUpdateText && editValue() !== props.note.text) {
+      props.onUpdateText(props.note.id, editValue())
     }
   }
 
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') {
       setIsEditing(false)
-      setEditValue(note.text)
+      setEditValue(props.note.text)
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       handleCommitEdit()
     }
@@ -99,60 +84,66 @@ export const NoteCard = memo(function NoteCard({
 
   return (
     <section
-      data-card-id={cardId}
-      className={`floating-card note-card card-note ${note.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
+      data-card-id={props.cardId}
+      class={`floating-card note-card card-note ${props.note.minimized ? 'is-minimized' : ''} ${props.isPopping ? 'is-popping' : ''}`}
       style={{
-        left: position?.x,
-        top: position?.y,
-        width: note.width || undefined,
-        height: note.height || undefined,
-        margin: position ? 0 : undefined,
-        backgroundColor: note.color || undefined,
+        left: props.position?.x !== undefined ? `${props.position.x}px` : undefined,
+        top: props.position?.y !== undefined ? `${props.position.y}px` : undefined,
+        width: props.note.width !== undefined ? `${props.note.width}px` : undefined,
+        height: props.note.height !== undefined ? `${props.note.height}px` : undefined,
+        margin: props.position ? '0' : undefined,
+        "background-color": props.note.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
-        <span className="card-title">{note.title}</span>
+      <header class="card-header" onPointerDown={(e) => props.onPointerDown?.(props.cardId, e)} style={{ cursor: props.onPointerDown ? 'grab' : 'default' }}>
+        <span class="card-title">{props.note.title}</span>
         <CardContextMenu
-          title={note.title}
-          minimized={Boolean(note.minimized)}
-          fontSize={note.fontSize || 14}
+          title={props.note.title}
+          minimized={Boolean(props.note.minimized)}
+          fontSize={props.note.fontSize || 14}
           maxFontSize={48}
-          onTitleChange={(nextTitle) => onUpdateTitle(note.id, nextTitle)}
-          onColorChange={(color) => onUpdateColor(note.id, color)}
-          onFontSizeChange={(nextSize) => onUpdateFontSize(note.id, nextSize)}
-          onMove={(targetId) => onMoveCard(note.id, targetId)}
-          onToggleMinimize={() => onToggleMinimize(note.id)}
-          onDuplicate={() => onDuplicateCard(note.id)}
-          onArchive={() => onArchiveCard(note.id)}
-          onDelete={() => onDeleteCard(note.id)}
+          onTitleChange={(nextTitle) => props.onUpdateTitle(props.note.id, nextTitle)}
+          onColorChange={(color) => props.onUpdateColor(props.note.id, color)}
+          onFontSizeChange={(nextSize) => props.onUpdateFontSize(props.note.id, nextSize)}
+          onMove={(targetId) => props.onMoveCard(props.note.id, targetId)}
+          onToggleMinimize={() => props.onToggleMinimize(props.note.id)}
+          onDuplicate={() => props.onDuplicateCard(props.note.id)}
+          onArchive={() => props.onArchiveCard(props.note.id)}
+          onDelete={() => props.onDeleteCard(props.note.id)}
         />
       </header>
-      {!note.minimized && (
+      <Show when={!props.note.minimized}>
         <>
-          {isEditing ? (
+          <Show
+            when={isEditing()}
+            fallback={
+              <p
+                class="note-content"
+                onClick={handleStartEdit}
+                style={{ height: 'calc(100% - 36px)', "font-size": props.note.fontSize ? `${props.note.fontSize}px` : undefined }}
+              >
+                {props.note.text || 'Click to edit note...'}
+              </p>
+            }
+          >
             <textarea
-              className="note-text-edit"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
+              class="note-text-edit"
+              value={editValue()}
+              onInput={(e) => setEditValue(e.currentTarget.value)}
               onBlur={handleCommitEdit}
               onKeyDown={handleKeyDown}
-              autoFocus
               style={{
-                fontSize: note.fontSize ? `${note.fontSize}px` : undefined,
+                "font-size": props.note.fontSize ? `${props.note.fontSize}px` : undefined,
               }}
             />
-          ) : (
-            <p className="note-content" onClick={handleStartEdit} style={{ height: 'calc(100% - 36px)', fontSize: note.fontSize ? `${note.fontSize}px` : undefined }}>
-              {note.text || 'Click to edit note...'}
-            </p>
-          )}
-          <div 
-            className="note-resizer" 
+          </Show>
+          <div
+            class="note-resizer"
             onPointerDown={handleResizeStart}
             title="Resize note"
           />
         </>
-      )}
+      </Show>
     </section>
   )
-})
+}

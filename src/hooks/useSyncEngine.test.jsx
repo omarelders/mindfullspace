@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import { useSyncEngine } from './useSyncEngine'
+import { createRoot } from 'solid-js'
+import { createSyncEngine } from './useSyncEngine'
 import * as cloudDb from '../lib/cloudDb'
 
 let realtimeCallback = null
@@ -30,12 +30,26 @@ describe('useSyncEngine', () => {
   let pullSpy
   let backupSpy
   let metaSpy
+  let activeDisposables = []
+
+  // Solid replacement for renderHook: run the factory inside a root and
+  // expose the engine object (its getters read signals live).
+  function mountEngine(options) {
+    let engine
+    const dispose = createRoot((d) => {
+      engine = createSyncEngine(options)
+      return d
+    })
+    activeDisposables.push(dispose)
+    return { engine, dispose }
+  }
 
   beforeEach(() => {
     vi.useFakeTimers()
     vi.clearAllMocks()
     window.localStorage.clear()
     realtimeCallback = null
+    activeDisposables = []
 
     pushSpy = vi.spyOn(cloudDb, 'pushWorkspace')
     pullSpy = vi.spyOn(cloudDb, 'pullWorkspace')
@@ -48,6 +62,8 @@ describe('useSyncEngine', () => {
   })
 
   afterEach(() => {
+    for (const dispose of activeDisposables) dispose()
+    activeDisposables = []
     vi.useRealTimers()
     vi.restoreAllMocks()
   })
@@ -56,43 +72,31 @@ describe('useSyncEngine', () => {
   const mockSnapshot = { columns: [{ id: 'col-1', items: [] }] }
 
   it('debounces local state changes and pushes to cloud', async () => {
-    const { result } = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-1',
-        captureSnapshot: () => mockSnapshot,
-        user: mockUser,
-        debounceMs: 1000,
-      })
-    )
-
-    await act(async () => {}) // let mount reconciliation settle
-    expect(result.current.syncStatus).toBe('idle')
-
-    act(() => {
-      result.current.notifyChange()
+    const { engine } = mountEngine({
+      workspaceId: 'ws-1',
+      captureSnapshot: () => mockSnapshot,
+      user: mockUser,
+      debounceMs: 1000,
     })
 
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
+    await vi.advanceTimersByTimeAsync(0) // let mount reconciliation settle
+    expect(engine.syncStatus).toBe('idle')
+
+    engine.notifyChange()
+
+    await vi.advanceTimersByTimeAsync(500)
     expect(pushSpy).not.toHaveBeenCalled()
 
     // Another rapid change resets the timer
-    act(() => {
-      result.current.notifyChange()
-    })
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
+    engine.notifyChange()
+    await vi.advanceTimersByTimeAsync(500)
     expect(pushSpy).not.toHaveBeenCalled()
 
-    await act(async () => {
-      vi.advanceTimersByTime(1000)
-    })
+    await vi.advanceTimersByTimeAsync(1000)
 
     expect(pushSpy).toHaveBeenCalledTimes(1)
-    expect(result.current.syncStatus).toBe('idle')
-    expect(result.current.lastSyncedAt).toBeTruthy()
+    expect(engine.syncStatus).toBe('idle')
+    expect(engine.lastSyncedAt).toBeTruthy()
   })
 
   it('sends the known cloud version as expectedVersion (optimistic locking)', async () => {
@@ -103,25 +107,19 @@ describe('useSyncEngine', () => {
     })
     pushSpy.mockResolvedValue({ success: true, version: 8 })
 
-    const { result } = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-ol',
-        captureSnapshot: () => ({ columns: [] }),
-        user: mockUser,
-        debounceMs: 100,
-      })
-    )
+    const { engine } = mountEngine({
+      workspaceId: 'ws-ol',
+      captureSnapshot: () => ({ columns: [] }),
+      user: mockUser,
+      debounceMs: 100,
+    })
 
     // Reconcile learns cloud version 7 even without adopting data.
-    await act(async () => {})
-    await act(async () => {})
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(0)
 
-    act(() => {
-      result.current.notifyChange()
-    })
-    await act(async () => {
-      vi.advanceTimersByTime(200)
-    })
+    engine.notifyChange()
+    await vi.advanceTimersByTimeAsync(200)
 
     expect(pushSpy).toHaveBeenCalledWith(
       'u-sync-1',
@@ -132,19 +130,15 @@ describe('useSyncEngine', () => {
   })
 
   it('manual syncNow executes immediately', async () => {
-    const { result } = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-1',
-        captureSnapshot: () => mockSnapshot,
-        user: mockUser,
-      })
-    )
-    await act(async () => {})
-
-    await act(async () => {
-      const success = await result.current.syncNow()
-      expect(success).toBe(true)
+    const { engine } = mountEngine({
+      workspaceId: 'ws-1',
+      captureSnapshot: () => mockSnapshot,
+      user: mockUser,
     })
+    await vi.advanceTimersByTimeAsync(0)
+
+    const success = await engine.syncNow()
+    expect(success).toBe(true)
 
     expect(pushSpy).toHaveBeenCalledTimes(1)
   })
@@ -159,87 +153,67 @@ describe('useSyncEngine', () => {
       syncedAt: '2026-08-23T12:00:00Z',
     })
 
-    const { result } = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-1',
-        captureSnapshot: () => mockSnapshot,
-        user: mockUser,
-        onRemoteWorkspaceLoaded: onLoaded,
-      })
-    )
-
-    await act(async () => {
-      const data = await result.current.pullFromCloud()
-      expect(data).toEqual(pulledData)
+    const { engine } = mountEngine({
+      workspaceId: 'ws-1',
+      captureSnapshot: () => mockSnapshot,
+      user: mockUser,
+      onRemoteWorkspaceLoaded: onLoaded,
     })
 
+    const data = await engine.pullFromCloud()
+    expect(data).toEqual(pulledData)
+
     expect(onLoaded).toHaveBeenCalledWith(pulledData)
-    expect(result.current.syncStatus).toBe('idle')
+    expect(engine.syncStatus).toBe('idle')
   })
 
   it('handles push error and schedules capped retries with backoff', async () => {
     pushSpy.mockRejectedValueOnce(new Error('Network error'))
 
-    const { result } = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-1',
-        captureSnapshot: () => mockSnapshot,
-        user: mockUser,
-        debounceMs: 500,
-      })
-    )
-    await act(async () => {})
-
-    act(() => {
-      result.current.notifyChange()
+    const { engine } = mountEngine({
+      workspaceId: 'ws-1',
+      captureSnapshot: () => mockSnapshot,
+      user: mockUser,
+      debounceMs: 500,
     })
+    await vi.advanceTimersByTimeAsync(0)
 
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
+    engine.notifyChange()
+
+    await vi.advanceTimersByTimeAsync(500)
 
     expect(pushSpy).toHaveBeenCalledTimes(1)
-    expect(result.current.syncStatus).toBe('error')
+    expect(engine.syncStatus).toBe('error')
 
     // Retry fires after the first backoff step (1s)
     pushSpy.mockResolvedValueOnce({ success: true, version: 1 })
-    await act(async () => {
-      vi.advanceTimersByTime(1000)
-    })
+    await vi.advanceTimersByTimeAsync(1000)
 
     expect(pushSpy).toHaveBeenCalledTimes(2)
-    expect(result.current.syncStatus).toBe('idle')
+    expect(engine.syncStatus).toBe('idle')
   })
 
   it('stops auto-retrying after the cap and explains how to recover', async () => {
     pushSpy.mockRejectedValue(new Error('Still down'))
 
-    const { result } = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-retry-cap',
-        captureSnapshot: () => mockSnapshot,
-        user: mockUser,
-        debounceMs: 100,
-      })
-    )
-    await act(async () => {})
-
-    act(() => {
-      result.current.notifyChange()
+    const { engine } = mountEngine({
+      workspaceId: 'ws-retry-cap',
+      captureSnapshot: () => mockSnapshot,
+      user: mockUser,
+      debounceMs: 100,
     })
+    await vi.advanceTimersByTimeAsync(0)
+
+    engine.notifyChange()
 
     for (let i = 0; i <= 5; i++) {
-      await act(async () => {
-        vi.advanceTimersByTime(65000)
-      })
+      await vi.advanceTimersByTimeAsync(65000)
     }
 
     const callsAfterCap = pushSpy.mock.calls.length
-    await act(async () => {
-      vi.advanceTimersByTime(600000)
-    })
+    await vi.advanceTimersByTimeAsync(600000)
     expect(pushSpy.mock.calls.length).toBe(callsAfterCap)
-    expect(result.current.syncError).toMatch(/sync now/i)
+    expect(engine.syncError).toMatch(/sync now/i)
   })
 
   it('resolves a stale-write conflict by backing up local and adopting remote', async () => {
@@ -253,53 +227,41 @@ describe('useSyncEngine', () => {
       cloudData: remoteWinner,
     }))
 
-    const { result } = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-conflict',
-        captureSnapshot: () => mockSnapshot,
-        user: mockUser,
-        debounceMs: 100,
-        onRemoteWorkspaceLoaded: onLoaded,
-      })
-    )
-    await act(async () => {})
+    const { engine } = mountEngine({
+      workspaceId: 'ws-conflict',
+      captureSnapshot: () => mockSnapshot,
+      user: mockUser,
+      debounceMs: 100,
+      onRemoteWorkspaceLoaded: onLoaded,
+    })
+    await vi.advanceTimersByTimeAsync(0)
 
-    act(() => {
-      result.current.notifyChange()
-    })
-    await act(async () => {
-      vi.advanceTimersByTime(300)
-    })
+    engine.notifyChange()
+    await vi.advanceTimersByTimeAsync(300)
 
     // Local state preserved in a conflict backup before adoption
     expect(backupSpy).toHaveBeenCalledWith('ws-conflict', mockSnapshot)
     // Remote data applied through callback and recorded as new baseline
     expect(onLoaded).toHaveBeenCalledWith(remoteWinner)
-    expect(result.current.syncStatus).toBe('idle')
-    expect(result.current.syncError).toMatch(/backed up/i)
+    expect(engine.syncStatus).toBe('idle')
+    expect(engine.syncError).toMatch(/backed up/i)
   })
 
   it('flushes a pending change when the engine unmounts', async () => {
-    const { result, unmount } = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-unmount',
-        captureSnapshot: () => mockSnapshot,
-        user: mockUser,
-        debounceMs: 3000,
-      })
-    )
-    await act(async () => {})
+    const { engine, dispose } = mountEngine({
+      workspaceId: 'ws-unmount',
+      captureSnapshot: () => mockSnapshot,
+      user: mockUser,
+      debounceMs: 3000,
+    })
+    await vi.advanceTimersByTimeAsync(0)
 
-    act(() => {
-      result.current.notifyChange()
-    })
+    engine.notifyChange()
     // Only 500ms elapsed — the debounced push has NOT fired yet.
-    await act(async () => {
-      vi.advanceTimersByTime(500)
-    })
+    await vi.advanceTimersByTimeAsync(500)
     expect(pushSpy).not.toHaveBeenCalled()
 
-    unmount()
+    dispose()
     // Unmount flush pushes immediately instead of dropping the change.
     await Promise.resolve()
     expect(pushSpy).toHaveBeenCalledTimes(1)
@@ -311,30 +273,27 @@ describe('useSyncEngine', () => {
     )
   })
 
-  it('receives Realtime remote updates, backs up local, and adopts remote', () => {
+  it('receives Realtime remote updates, backs up local, and adopts remote', async () => {
     const onLoaded = vi.fn()
     const localData = { columns: [{ id: 'col-local', items: [] }] }
     const remoteData = { columns: [{ id: 'col-remote-updated', items: [] }] }
 
-    renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-realtime-1',
-        captureSnapshot: () => localData,
-        user: mockUser,
-        onRemoteWorkspaceLoaded: onLoaded,
-      })
-    )
+    mountEngine({
+      workspaceId: 'ws-realtime-1',
+      captureSnapshot: () => localData,
+      user: mockUser,
+      onRemoteWorkspaceLoaded: onLoaded,
+    })
+    await vi.advanceTimersByTimeAsync(0)
 
     expect(mockSubscribe).toHaveBeenCalled()
     expect(typeof realtimeCallback).toBe('function')
 
-    act(() => {
-      realtimeCallback({
-        new: {
-          data: remoteData,
-          version: 10,
-        },
-      })
+    realtimeCallback({
+      new: {
+        data: remoteData,
+        version: 10,
+      },
     })
 
     expect(onLoaded).toHaveBeenCalledWith(
@@ -393,60 +352,43 @@ describe('useSyncEngine', () => {
 
     // ── Device A: mounts, edits, writes v1 ──
     pushSpy.mockImplementation(serverPush)
-    const deviceA = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-race',
-        captureSnapshot: () => deviceAData,
-        user: mockUser,
-        debounceMs: 100,
-      })
-    )
-    await act(async () => {}) // A's reconcile -> empty cloud, immediately pushes (initializing cloud)
-
-    await act(async () => {
-      vi.advanceTimersByTime(200)
+    const deviceA = mountEngine({
+      workspaceId: 'ws-race',
+      captureSnapshot: () => deviceAData,
+      user: mockUser,
+      debounceMs: 100,
     })
+    await vi.advanceTimersByTimeAsync(0) // A's reconcile -> empty cloud, immediately pushes (initializing cloud)
+
+    await vi.advanceTimersByTimeAsync(200)
     expect(server.version).toBe(1)
 
     // ── Device B: mounts, learns version 1, keeps newer local edits ──
-    let resolveBPullRef = resolveBPull
     const onBRemoteLoaded = vi.fn()
-    const deviceB = renderHook(() =>
-      useSyncEngine({
-        workspaceId: 'ws-race',
-        captureSnapshot: () => deviceBData,
-        user: mockUser,
-        debounceMs: 100,
-        onRemoteWorkspaceLoaded: onBRemoteLoaded,
-      })
-    )
-
-    await act(async () => {
-      resolveBPullRef({
-        data: deviceAData,
-        version: 1,
-        syncedAt: new Date().toISOString(),
-      })
+    const deviceB = mountEngine({
+      workspaceId: 'ws-race',
+      captureSnapshot: () => deviceBData,
+      user: mockUser,
+      debounceMs: 100,
+      onRemoteWorkspaceLoaded: onBRemoteLoaded,
     })
-    await act(async () => {})
+
+    resolveBPull({
+      data: deviceAData,
+      version: 1,
+      syncedAt: new Date().toISOString(),
+    })
+    await vi.advanceTimersByTimeAsync(0)
 
     // ── Device A writes again (v2) while B is still editing locally ──
     deviceAData = { columns: [{ id: 'A-v2' }] }
-    act(() => {
-      deviceA.result.current.notifyChange()
-    })
-    await act(async () => {
-      vi.advanceTimersByTime(300)
-    })
+    deviceA.engine.notifyChange()
+    await vi.advanceTimersByTimeAsync(300)
     expect(server.version).toBe(2)
 
     // ── Device B attempts its write using stale information (v1) ──
-    act(() => {
-      deviceB.result.current.notifyChange()
-    })
-    await act(async () => {
-      vi.advanceTimersByTime(300)
-    })
+    deviceB.engine.notifyChange()
+    await vi.advanceTimersByTimeAsync(300)
 
     // Server rejected B's stale write and kept A's newest data…
     expect(server.version).toBe(2)
@@ -460,7 +402,7 @@ describe('useSyncEngine', () => {
         columns: [expect.objectContaining({ id: 'A-v2' })],
       })
     )
-    expect(deviceB.result.current.syncStatus).toBe('idle')
-    expect(deviceB.result.current.syncError).toMatch(/backed up/i)
+    expect(deviceB.engine.syncStatus).toBe('idle')
+    expect(deviceB.engine.syncError).toMatch(/backed up/i)
   })
 })

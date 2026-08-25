@@ -1,54 +1,41 @@
-import { useState, useEffect, useRef, memo, useCallback } from 'react'
-import { ImagePlus, Upload, Maximize, Minimize } from 'lucide-react'
+import { createSignal, createEffect, onCleanup, Show } from 'solid-js'
+import { ImagePlus, Upload, Maximize, Minimize } from 'lucide-solid'
 import { CardContextMenu } from './CardContextMenu'
 import { getImage, saveImage, deleteImage, MAX_IMAGE_SIZE } from '../utils/imageStore'
 import { useAuth } from '../hooks/useAuth'
 import { uploadImageToCloud, downloadImageFromCloud, deleteImageFromCloud } from '../lib/imageSync'
 
-export const PictureCard = memo(function PictureCard({
-  picture,
-  position,
-  onPointerDown,
-  onUpdateTitle,
-  onUpdateColor,
-  onMoveCard,
-  onToggleMinimize,
-  onDuplicateCard,
-  onArchiveCard,
-  onDeleteCard,
-  onUpdateImageId,
-  onUpdateDimensions,
-  onUpdateFitMode,
-  onUpdateFontSize,
-  scale = 1,
-  isPopping,
-  cardId,
-}) {
-  const { user } = useAuth()
-  const customStyle = picture.fontSize ? { fontSize: `${picture.fontSize}px` } : undefined
-  const [objectUrl, setObjectUrl] = useState(null)
-  const [isDragOver, setIsDragOver] = useState(false)
-  const [isResizing, setIsResizing] = useState(false)
-  const [resizedDimensions, setResizedDimensions] = useState(null)
-  const [error, setError] = useState(null)
-  const fileInputRef = useRef(null)
-  const resizerRef = useRef(null)
+export function PictureCard(props) {
+  // Keep the context object live — never destructure
+  const auth = useAuth()
+  const customStyle = () => props.picture.fontSize ? { "font-size": `${props.picture.fontSize}px` } : undefined
+  const [objectUrl, setObjectUrl] = createSignal(null)
+  const [isDragOver, setIsDragOver] = createSignal(false)
+  const [isResizing, setIsResizing] = createSignal(false)
+  const [resizedDimensions, setResizedDimensions] = createSignal(null)
+  const [error, setError] = createSignal(null)
+  let fileInputRef
+  let resizerRef
 
-  // Load image from IndexedDB on mount or when imageId changes (with cloud fallback)
-  useEffect(() => {
+  // Load image from IndexedDB when imageId changes (with cloud fallback).
+  // Blob URL lifecycle: onCleanup inside the effect revokes on both
+  // re-evaluation and disposal so URLs never leak (plan risk #8).
+  createEffect(() => {
+    const imageId = props.picture.imageId
     let revoked = false
-    if (!picture.imageId) {
+    if (!imageId) {
       setObjectUrl(null)
       return
     }
-    getImage(picture.imageId)
+    getImage(imageId)
       .then(async (blob) => {
         if (revoked) return
+        const user = auth.user
         if (blob) {
           setObjectUrl(URL.createObjectURL(blob))
         } else if (user) {
           // Cloud fallback when image isn't in local IndexedDB
-          const cloudBlob = await downloadImageFromCloud(user.id, picture.imageId)
+          const cloudBlob = await downloadImageFromCloud(user.id, imageId)
           if (!revoked && cloudBlob) {
             setObjectUrl(URL.createObjectURL(cloudBlob))
           } else if (!revoked) {
@@ -61,16 +48,16 @@ export const PictureCard = memo(function PictureCard({
       .catch(() => {
         if (!revoked) setObjectUrl(null)
       })
-    return () => {
+    onCleanup(() => {
       revoked = true
       setObjectUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev)
         return null
       })
-    }
-  }, [picture.imageId, user])
+    })
+  })
 
-  const handleFile = useCallback(async (file) => {
+  async function handleFile(file) {
     setError(null)
     if (!file || !file.type.startsWith('image/')) {
       setError('Please select an image file.')
@@ -81,17 +68,18 @@ export const PictureCard = memo(function PictureCard({
       return
     }
     try {
-      const oldImageId = picture.imageId
-      const newImageId = `img-${picture.id}-${Date.now()}`
+      const oldImageId = props.picture.imageId
+      const newImageId = `img-${props.picture.id}-${Date.now()}`
       await saveImage(newImageId, file)
+      const user = auth.user
       if (user) {
         uploadImageToCloud(user.id, newImageId, file).catch(() => {})
       }
-      if (onUpdateImageId) onUpdateImageId(picture.id, newImageId)
-      
+      if (props.onUpdateImageId) props.onUpdateImageId(props.picture.id, newImageId)
+
       // Cleanup old image from local and cloud storage if it exists
       if (oldImageId) {
-        deleteImage(oldImageId).catch(err => console.error('Failed to cleanup old image:', err))
+        deleteImage(oldImageId).catch((err) => console.error('Failed to cleanup old image:', err))
         if (user) {
           deleteImageFromCloud(user.id, oldImageId).catch(() => {})
         }
@@ -99,168 +87,175 @@ export const PictureCard = memo(function PictureCard({
     } catch (err) {
       setError(err.message || 'Failed to save image.')
     }
-  }, [picture.id, picture.imageId, onUpdateImageId, user])
+  }
 
-  const handleFileInput = useCallback((e) => {
+  function handleFileInput(e) {
     const file = e.target.files?.[0]
     if (file) handleFile(file)
-  }, [handleFile])
+  }
 
-  const handleDrop = useCallback((e) => {
+  function handleDrop(e) {
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(false)
     const file = e.dataTransfer?.files?.[0]
     if (file) handleFile(file)
-  }, [handleFile])
+  }
 
-  const handleDragOver = useCallback((e) => {
+  function handleDragOver(e) {
     e.preventDefault()
     e.stopPropagation()
     setIsDragOver(true)
-  }, [])
+  }
 
-  const handleDragLeave = useCallback((e) => {
+  function handleDragLeave(e) {
     e.preventDefault()
     setIsDragOver(false)
-  }, [])
+  }
 
-  const openFilePicker = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [])
+  function openFilePicker() {
+    fileInputRef?.click()
+  }
 
-  const resizeState = useRef(null)
+  let resizeState = null
 
-  const handlePointerDown = useCallback((e) => {
+  function handleResizePointerDown(e) {
     if (e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
-    
+
     e.target.setPointerCapture(e.pointerId)
     setIsResizing(true)
 
-    const startWidth = picture.width || 280
-    const startHeight = picture.height || (resizerRef.current?.closest('.picture-card')?.offsetHeight || 200)
+    const startWidth = props.picture.width || 280
+    const startHeight = props.picture.height || (resizerRef?.closest('.picture-card')?.offsetHeight || 200)
 
-    resizeState.current = {
+    resizeState = {
       startX: e.clientX,
       startY: e.clientY,
       startWidth,
-      startHeight
+      startHeight,
     }
 
     setResizedDimensions({ width: startWidth, height: startHeight })
-  }, [picture.width, picture.height])
+  }
 
-  const handlePointerMove = useCallback((e) => {
-    if (!isResizing || !resizeState.current) return
+  function handleResizePointerMove(e) {
+    if (!isResizing() || !resizeState) return
 
-    const { startX, startY, startWidth, startHeight } = resizeState.current
-    const dx = (e.clientX - startX) / scale
-    const dy = (e.clientY - startY) / scale
+    const scale = typeof props.scale === 'function' ? props.scale() : (props.scale ?? 1)
+    const dx = (e.clientX - resizeState.startX) / scale
+    const dy = (e.clientY - resizeState.startY) / scale
 
-    const newWidth = Math.max(180, startWidth + dx)
-    const newHeight = Math.max(120, startHeight + dy)
+    const newWidth = Math.max(180, resizeState.startWidth + dx)
+    const newHeight = Math.max(120, resizeState.startHeight + dy)
 
     setResizedDimensions({ width: newWidth, height: newHeight })
-  }, [isResizing, scale])
+  }
 
-  const handlePointerUp = useCallback((e) => {
-    if (!isResizing) return
+  function handleResizePointerUp(e) {
+    if (!isResizing()) return
 
     e.target.releasePointerCapture(e.pointerId)
     setIsResizing(false)
 
-    if (resizedDimensions && onUpdateDimensions) {
-      onUpdateDimensions(resizedDimensions.width, resizedDimensions.height)
+    if (resizedDimensions() && props.onUpdateDimensions) {
+      props.onUpdateDimensions(resizedDimensions().width, resizedDimensions().height)
     }
 
-    resizeState.current = null
+    resizeState = null
     setResizedDimensions(null)
-  }, [isResizing, resizedDimensions, onUpdateDimensions])
+  }
 
-  const handlePointerCancel = useCallback((e) => {
-    if (!isResizing) return
+  function handleResizePointerCancel(e) {
+    if (!isResizing()) return
     e.target.releasePointerCapture(e.pointerId)
     setIsResizing(false)
-    resizeState.current = null
+    resizeState = null
     setResizedDimensions(null)
-  }, [isResizing])
+  }
 
-  const fitMode = picture.fitMode || 'contain'
-  const toggleFitMode = useCallback(() => {
-    if (onUpdateFitMode) {
-      onUpdateFitMode(picture.id, fitMode === 'contain' ? 'cover' : 'contain')
+  const fitMode = () => props.picture.fitMode || 'contain'
+  const toggleFitMode = () => {
+    if (props.onUpdateFitMode) {
+      props.onUpdateFitMode(props.picture.id, fitMode() === 'contain' ? 'cover' : 'contain')
     }
-  }, [fitMode, onUpdateFitMode, picture.id])
+  }
 
   return (
     <section
-      className={`floating-card picture-card ${picture.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
-      data-card-id={cardId}
+      class={`floating-card picture-card ${props.picture.minimized ? 'is-minimized' : ''} ${props.isPopping ? 'is-popping' : ''}`}
+      data-card-id={props.cardId}
       style={{
-        left: position?.x,
-        top: position?.y,
-        width: resizedDimensions?.width || picture.width || undefined,
-        height: resizedDimensions?.height || picture.height || undefined,
-        margin: position ? 0 : undefined,
-        backgroundColor: picture.color || undefined,
-        zIndex: isResizing ? 1000 : undefined,
+        left: props.position?.x !== undefined ? `${props.position.x}px` : undefined,
+        top: props.position?.y !== undefined ? `${props.position.y}px` : undefined,
+        width: resizedDimensions()?.width !== undefined ? `${resizedDimensions().width}px` : props.picture.width !== undefined ? `${props.picture.width}px` : undefined,
+        height: resizedDimensions()?.height !== undefined ? `${resizedDimensions().height}px` : props.picture.height !== undefined ? `${props.picture.height}px` : undefined,
+        margin: props.position ? '0' : undefined,
+        "background-color": props.picture.color || undefined,
+        "z-index": isResizing() ? 1000 : undefined,
       }}
     >
-      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
-        <span className="card-title">{picture.title}</span>
+      <header class="card-header" onPointerDown={(e) => props.onPointerDown?.(props.cardId, e)} style={{ cursor: props.onPointerDown ? 'grab' : 'default' }}>
+        <span class="card-title">{props.picture.title}</span>
         <CardContextMenu
-          title={picture.title}
-          minimized={Boolean(picture.minimized)}
-          fontSize={picture.fontSize || 13}
-          onTitleChange={(nextTitle) => onUpdateTitle(picture.id, nextTitle)}
-          onColorChange={(color) => onUpdateColor(picture.id, color)}
-          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(picture.id, nextSize)}
-          onMove={(targetId) => onMoveCard(picture.id, targetId)}
-          onToggleMinimize={() => onToggleMinimize(picture.id)}
-          onDuplicate={() => onDuplicateCard(picture.id)}
-          onArchive={() => onArchiveCard(picture.id)}
-          onDelete={() => onDeleteCard(picture.id)}
+          title={props.picture.title}
+          minimized={Boolean(props.picture.minimized)}
+          fontSize={props.picture.fontSize || 13}
+          onTitleChange={(nextTitle) => props.onUpdateTitle(props.picture.id, nextTitle)}
+          onColorChange={(color) => props.onUpdateColor(props.picture.id, color)}
+          onFontSizeChange={(nextSize) => props.onUpdateFontSize && props.onUpdateFontSize(props.picture.id, nextSize)}
+          onMove={(targetId) => props.onMoveCard(props.picture.id, targetId)}
+          onToggleMinimize={() => props.onToggleMinimize(props.picture.id)}
+          onDuplicate={() => props.onDuplicateCard(props.picture.id)}
+          onArchive={() => props.onArchiveCard(props.picture.id)}
+          onDelete={() => props.onDeleteCard(props.picture.id)}
         />
       </header>
 
-      {!picture.minimized && (
-        <div className="picture-body">
-          {objectUrl ? (
-            <div className="picture-preview">
-              <img
-                src={objectUrl}
-                alt={picture.title || 'Uploaded picture'}
-                className="picture-img"
-                style={{ objectFit: fitMode }}
-              />
-              <div className="picture-actions">
-                <button type="button" className="picture-action-btn" style={customStyle} onClick={toggleFitMode} aria-label="Toggle fit mode">
-                  {fitMode === 'contain' ? <Maximize size={14} /> : <Minimize size={14} />}
-                  {fitMode === 'contain' ? 'Cover' : 'Contain'}
-                </button>
-                <button type="button" className="picture-action-btn" style={customStyle} onClick={openFilePicker} aria-label="Replace image">
-                  <Upload size={14} />
-                  Replace
-                </button>
+      <Show when={!props.picture.minimized}>
+        <div class="picture-body">
+          <Show
+            when={objectUrl()}
+            fallback={
+              <div
+                class={`picture-dropzone ${isDragOver() ? 'is-drag-over' : ''}`}
+                onClick={openFilePicker}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+              >
+                <ImagePlus class="picture-dropzone-icon" />
+                <span class="picture-dropzone-text" style={customStyle()}>Click or drop an image</span>
+                <span class="picture-dropzone-hint">Max 5MB • JPG, PNG, GIF, WebP</span>
               </div>
-            </div>
-          ) : (
-            <div
-              className={`picture-dropzone ${isDragOver ? 'is-drag-over' : ''}`}
-              onClick={openFilePicker}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-            >
-              <ImagePlus className="picture-dropzone-icon" />
-              <span className="picture-dropzone-text" style={customStyle}>Click or drop an image</span>
-              <span className="picture-dropzone-hint">Max 5MB • JPG, PNG, GIF, WebP</span>
-            </div>
-          )}
+            }
+          >
+            {(url) => (
+              <div class="picture-preview">
+                <img
+                  src={url()}
+                  alt={props.picture.title || 'Uploaded picture'}
+                  class="picture-img"
+                  style={{ "object-fit": fitMode() }}
+                />
+                <div class="picture-actions">
+                  <button type="button" class="picture-action-btn" style={customStyle()} onClick={toggleFitMode} aria-label="Toggle fit mode">
+                    {fitMode() === 'contain' ? <Maximize size={14} /> : <Minimize size={14} />}
+                    {fitMode() === 'contain' ? 'Cover' : 'Contain'}
+                  </button>
+                  <button type="button" class="picture-action-btn" style={customStyle()} onClick={openFilePicker} aria-label="Replace image">
+                    <Upload size={14} />
+                    Replace
+                  </button>
+                </div>
+              </div>
+            )}
+          </Show>
 
-          {error && <div className="picture-error">{error}</div>}
+          <Show when={error()}>
+            <div class="picture-error">{error()}</div>
+          </Show>
 
           <input
             ref={fileInputRef}
@@ -270,17 +265,17 @@ export const PictureCard = memo(function PictureCard({
             onChange={handleFileInput}
           />
         </div>
-      )}
-      {!picture.minimized && (
-        <div 
+      </Show>
+      <Show when={!props.picture.minimized}>
+        <div
           ref={resizerRef}
-          className="picture-resizer" 
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
+          class="picture-resizer"
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerUp}
+          onPointerCancel={handleResizePointerCancel}
         />
-      )}
+      </Show>
     </section>
   )
-})
+}

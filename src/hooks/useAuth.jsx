@@ -1,16 +1,16 @@
-import { useState, useEffect, useCallback, createContext, useContext, useMemo, createElement } from 'react'
+import { createContext, useContext, createSignal, onMount, onCleanup } from 'solid-js'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
-const AuthContext = createContext(null)
+const AuthContext = createContext()
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [profile, setProfile] = useState(null)
-  const [session, setSession] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [authError, setAuthError] = useState(null)
+export function AuthProvider(props) {
+  const [user, setUser] = createSignal(null)
+  const [profile, setProfile] = createSignal(null)
+  const [session, setSession] = createSignal(null)
+  const [loading, setLoading] = createSignal(true)
+  const [authError, setAuthError] = createSignal(null)
 
-  const fetchProfile = useCallback(async (userId, fallbackUser = null) => {
+  async function fetchProfile(userId, fallbackUser = null) {
     if (!supabase || !userId) return null
 
     try {
@@ -56,12 +56,109 @@ export function AuthProvider({ children }) {
     } catch {
       return null
     }
-  }, [])
+  }
 
-  useEffect(() => {
+  async function signUp(email, password, displayName) {
+    if (!supabase) {
+      return { error: { message: 'Supabase is not configured.' } }
+    }
+    setAuthError(null)
+    const name = displayName?.trim() || email.split('@')[0]
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: name, name },
+      },
+    })
+    if (error) {
+      setAuthError(error.message)
+      return { error }
+    }
+    if (data?.session && data?.user) {
+      setUser(data.user)
+      setSession(data.session)
+      await fetchProfile(data.user.id, data.user)
+    }
+    return { data }
+  }
+
+  async function signIn(email, password) {
+    if (!supabase) {
+      return { error: { message: 'Supabase is not configured.' } }
+    }
+    setAuthError(null)
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+    if (error) {
+      setAuthError(error.message)
+      return { error }
+    }
+    if (data?.user) {
+      setUser(data.user)
+      setSession(data.session)
+      await fetchProfile(data.user.id, data.user)
+    }
+    return { data }
+  }
+
+  async function signInWithOAuth(provider) {
+    if (!supabase) {
+      return { error: { message: 'Supabase is not configured.' } }
+    }
+    setAuthError(null)
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      },
+    })
+    if (error) {
+      setAuthError(error.message)
+      return { error }
+    }
+    return { data }
+  }
+
+  async function signOut() {
+    if (!supabase) return
+    setAuthError(null)
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      setAuthError(error.message)
+    }
+    setUser(null)
+    setSession(null)
+    setProfile(null)
+  }
+
+  async function updateDisplayName(newName) {
+    const currentUser = user()
+    if (!supabase || !currentUser) return
+    const trimmed = newName?.trim()
+    if (!trimmed) return
+
+    setProfile((prev) => (prev ? { ...prev, display_name: trimmed } : null))
+    const { error } = await supabase
+      .from('profiles')
+      .update({ display_name: trimmed })
+      .eq('id', currentUser.id)
+
+    if (error) {
+      setAuthError(error.message)
+    }
+  }
+
+  function clearError() {
+    setAuthError(null)
+  }
+
+  onMount(() => {
     if (!isSupabaseConfigured() || !supabase) {
       setLoading(false)
-      return undefined
+      return
     }
 
     let isMounted = true
@@ -99,119 +196,23 @@ export function AuthProvider({ children }) {
       }
     )
 
-    return () => {
+    onCleanup(() => {
       isMounted = false
       subscription?.unsubscribe()
-    }
-  }, [fetchProfile])
-
-  const signUp = useCallback(async (email, password, displayName) => {
-    if (!supabase) {
-      return { error: { message: 'Supabase is not configured.' } }
-    }
-    setAuthError(null)
-    const name = displayName?.trim() || email.split('@')[0]
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: name, name },
-      },
     })
-    if (error) {
-      setAuthError(error.message)
-      return { error }
-    }
-    if (data?.session && data?.user) {
-      setUser(data.user)
-      setSession(data.session)
-      await fetchProfile(data.user.id, data.user)
-    }
-    return { data }
-  }, [fetchProfile])
+  })
 
-  const signIn = useCallback(async (email, password) => {
-    if (!supabase) {
-      return { error: { message: 'Supabase is not configured.' } }
-    }
-    setAuthError(null)
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    if (error) {
-      setAuthError(error.message)
-      return { error }
-    }
-    if (data?.user) {
-      setUser(data.user)
-      setSession(data.session)
-      await fetchProfile(data.user.id, data.user)
-    }
-    return { data }
-  }, [fetchProfile])
+  const isAuthed = () => Boolean(user() && session())
 
-  const signInWithOAuth = useCallback(async (provider) => {
-    if (!supabase) {
-      return { error: { message: 'Supabase is not configured.' } }
-    }
-    setAuthError(null)
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
-      },
-    })
-    if (error) {
-      setAuthError(error.message)
-      return { error }
-    }
-    return { data }
-  }, [])
-
-  const signOut = useCallback(async () => {
-    if (!supabase) return
-    setAuthError(null)
-    const { error } = await supabase.auth.signOut()
-    if (error) {
-      setAuthError(error.message)
-    }
-    setUser(null)
-    setSession(null)
-    setProfile(null)
-  }, [])
-
-  const updateDisplayName = useCallback(async (newName) => {
-    if (!supabase || !user) return
-    const trimmed = newName?.trim()
-    if (!trimmed) return
-
-    setProfile((prev) => (prev ? { ...prev, display_name: trimmed } : null))
-    const { error } = await supabase
-      .from('profiles')
-      .update({ display_name: trimmed })
-      .eq('id', user.id)
-
-    if (error) {
-      setAuthError(error.message)
-    }
-  }, [user])
-
-  const clearError = useCallback(() => {
-    setAuthError(null)
-  }, [])
-
-  const isAuthed = Boolean(user && session)
-
-  const contextValue = useMemo(() => ({
-    user: isAuthed ? user : null,
-    profile: isAuthed ? profile : null,
-    session,
-    loading,
-    authError,
-    isGuest: !isAuthed,
-    isAuthenticated: isAuthed,
-    isConfigured: isSupabaseConfigured(),
+  const contextValue = {
+    get user() { return isAuthed() ? user() : null },
+    get profile() { return isAuthed() ? profile() : null },
+    get session() { return session() },
+    get loading() { return loading() },
+    get authError() { return authError() },
+    get isGuest() { return !isAuthed() },
+    get isAuthenticated() { return isAuthed() },
+    get isConfigured() { return isSupabaseConfigured() },
     signUp,
     signIn,
     signInWithOAuth,
@@ -219,29 +220,19 @@ export function AuthProvider({ children }) {
     updateDisplayName,
     clearError,
     fetchProfile,
-  }), [
-    isAuthed,
-    user,
-    profile,
-    session,
-    loading,
-    authError,
-    signUp,
-    signIn,
-    signInWithOAuth,
-    signOut,
-    updateDisplayName,
-    clearError,
-    fetchProfile,
-  ])
+  }
 
-  return createElement(AuthContext.Provider, { value: contextValue }, children)
+  return (
+    <AuthContext.Provider value={contextValue}>
+      {props.children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
-  if (!context) {
+  const ctx = useContext(AuthContext)
+  if (!ctx) {
     throw new Error('useAuth must be used within an AuthProvider')
   }
-  return context
+  return ctx
 }

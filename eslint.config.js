@@ -1,5 +1,3 @@
-import reactHooks from 'eslint-plugin-react-hooks'
-
 export default [
   {
     ignores: ['dist/**', 'node_modules/**', 'test-results/**', '*.cjs'],
@@ -28,9 +26,6 @@ export default [
   },
   {
     files: ['src/**/*.{js,jsx,mjs}'],
-    plugins: {
-      'react-hooks': reactHooks,
-    },
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -124,7 +119,6 @@ export default [
       },
     },
     rules: {
-      'react-hooks/rules-of-hooks': 'error',
       'no-undef': 'error',
     },
   },

@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@solidjs/testing-library'
 import { PictureCard } from './PictureCard'
 import { exportWorkspace, parseWorkspaceBackup } from '../utils/backup'
-import { readJsonStorage, writeJsonStorage } from '../utils/storage'
-import { WORKSPACE_STORAGE_KEY_PREFIX } from '../utils/constants'
-import { saveImage, getImage, deleteImage } from '../utils/imageStore'
+import { readJsonStorage } from '../utils/storage'
 
 // Mock the image store to avoid IndexedDB issues in tests
 vi.mock('../utils/imageStore', () => ({
@@ -27,7 +25,7 @@ vi.mock('../lib/imageSync', () => ({
 vi.mock('../utils/storage', () => ({
   readJsonStorage: vi.fn(),
   writeJsonStorage: vi.fn(),
-  validateWorkspaceState: vi.fn(val => val)
+  validateWorkspaceState: vi.fn((val) => val)
 }))
 
 // Mock URL.createObjectURL since JSDOM doesn't support it natively
@@ -36,7 +34,7 @@ beforeEach(() => {
   URL.revokeObjectURL = vi.fn()
 })
 
-const defaultProps = {
+const defaultProps = () => ({
   picture: {
     id: 'pic-1',
     title: 'Test Picture',
@@ -56,6 +54,11 @@ const defaultProps = {
   onArchiveCard: vi.fn(),
   onDeleteCard: vi.fn(),
   scale: 1,
+})
+
+// Wait for the async image load effect to settle
+async function waitForImage() {
+  await screen.findByAltText('Test Picture')
 }
 
 describe('PictureCard', () => {
@@ -64,13 +67,14 @@ describe('PictureCard', () => {
   })
 
   it('renders correctly with given picture properties', async () => {
-    render(<PictureCard {...defaultProps} />)
+    render(() => <PictureCard {...defaultProps()} />)
     expect(await screen.findByAltText('Test Picture')).toBeInTheDocument()
   })
 
   it('resizes card using pointer events at scale 1', async () => {
-    render(<PictureCard {...defaultProps} scale={1} />)
-    await screen.findByAltText('Test Picture')
+    const props = defaultProps()
+    render(() => <PictureCard {...props} scale={1} />)
+    await waitForImage()
 
     // In JSDOM, we have to mock setPointerCapture and releasePointerCapture
     const resizer = document.querySelector('.picture-resizer')
@@ -89,12 +93,13 @@ describe('PictureCard', () => {
     expect(resizer.releasePointerCapture).toHaveBeenCalledWith(1)
 
     // Math: original + (move / scale) -> 200 + 50 = 250 width, 150 + 30 = 180 height
-    expect(defaultProps.onUpdateDimensions).toHaveBeenCalledWith(250, 180)
+    expect(props.onUpdateDimensions).toHaveBeenCalledWith(250, 180)
   })
 
   it('scales pointer movement correctly (scale < 1)', async () => {
-    render(<PictureCard {...defaultProps} scale={0.5} />)
-    await screen.findByAltText('Test Picture')
+    const props = defaultProps()
+    render(() => <PictureCard {...props} scale={0.5} />)
+    await waitForImage()
 
     const resizer = document.querySelector('.picture-resizer')
     resizer.setPointerCapture = vi.fn()
@@ -106,12 +111,13 @@ describe('PictureCard', () => {
 
     // dx = 50 / 0.5 = 100, dy = 30 / 0.5 = 60
     // new width: 200 + 100 = 300, new height: 150 + 60 = 210
-    expect(defaultProps.onUpdateDimensions).toHaveBeenCalledWith(300, 210)
+    expect(props.onUpdateDimensions).toHaveBeenCalledWith(300, 210)
   })
 
   it('scales pointer movement correctly (scale > 1)', async () => {
-    render(<PictureCard {...defaultProps} scale={2} />)
-    await screen.findByAltText('Test Picture')
+    const props = defaultProps()
+    render(() => <PictureCard {...props} scale={2} />)
+    await waitForImage()
 
     const resizer = document.querySelector('.picture-resizer')
     resizer.setPointerCapture = vi.fn()
@@ -123,12 +129,13 @@ describe('PictureCard', () => {
 
     // dx = 100 / 2 = 50, dy = 60 / 2 = 30
     // new width: 200 + 50 = 250, new height: 150 + 30 = 180
-    expect(defaultProps.onUpdateDimensions).toHaveBeenCalledWith(250, 180)
+    expect(props.onUpdateDimensions).toHaveBeenCalledWith(250, 180)
   })
 
   it('enforces minimum dimensions (180x120)', async () => {
-    render(<PictureCard {...defaultProps} scale={1} />)
-    await screen.findByAltText('Test Picture')
+    const props = defaultProps()
+    render(() => <PictureCard {...props} scale={1} />)
+    await waitForImage()
 
     const resizer = document.querySelector('.picture-resizer')
     resizer.setPointerCapture = vi.fn()
@@ -139,12 +146,13 @@ describe('PictureCard', () => {
     fireEvent.pointerMove(resizer, { clientX: -500, clientY: -500, pointerId: 1 })
     fireEvent.pointerUp(resizer, { pointerId: 1 })
 
-    expect(defaultProps.onUpdateDimensions).toHaveBeenCalledWith(180, 120)
+    expect(props.onUpdateDimensions).toHaveBeenCalledWith(180, 120)
   })
 
   it('cancels resize properly using pointerCancel', async () => {
-    render(<PictureCard {...defaultProps} scale={1} />)
-    await screen.findByAltText('Test Picture')
+    const props = defaultProps()
+    render(() => <PictureCard {...props} scale={1} />)
+    await waitForImage()
 
     const resizer = document.querySelector('.picture-resizer')
     resizer.setPointerCapture = vi.fn()
@@ -155,15 +163,16 @@ describe('PictureCard', () => {
     fireEvent.pointerCancel(resizer, { pointerId: 1 })
 
     expect(resizer.releasePointerCapture).toHaveBeenCalledWith(1)
-    expect(defaultProps.onUpdateDimensions).not.toHaveBeenCalled()
+    expect(props.onUpdateDimensions).not.toHaveBeenCalled()
   })
 
   it('toggles fit mode correctly', async () => {
-    render(<PictureCard {...defaultProps} />)
+    const props = defaultProps()
+    render(() => <PictureCard {...props} />)
     // The image state loads asynchronously, so we wait for the preview and the button to appear.
     const toggleBtn = await screen.findByLabelText('Toggle fit mode')
     fireEvent.click(toggleBtn)
-    expect(defaultProps.onUpdateFitMode).toHaveBeenCalledWith('pic-1', 'cover')
+    expect(props.onUpdateFitMode).toHaveBeenCalledWith('pic-1', 'cover')
   })
 })
 
@@ -180,6 +189,7 @@ describe('Backup UTF-8 Encoding & Image References', () => {
       archivedCards: []
     })
 
+    const { getImage } = await import('../utils/imageStore')
     getImage.mockResolvedValue(new Blob(['img data'], { type: 'image/png' }))
 
     const clickMock = vi.fn()
@@ -224,7 +234,7 @@ describe('Backup UTF-8 Encoding & Image References', () => {
     }
 
     // The parse step no longer writes to localStorage — it resolves with a
-    // validated state object that useWorkspace.importWorkspaceState applies.
+    // validated state object that the workspace import applies.
     const parsed = await parseWorkspaceBackup(mockFile)
 
     expect(readAsTextSpy).toHaveBeenCalledWith(mockFile, 'UTF-8')

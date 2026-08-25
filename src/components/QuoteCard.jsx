@@ -1,38 +1,20 @@
-import { useState, useEffect, useRef, memo } from 'react'
+import { createSignal, onCleanup, Show } from 'solid-js'
 import { CardContextMenu } from './CardContextMenu'
-import { Quote } from 'lucide-react'
+import { Quote } from 'lucide-solid'
 
-export const QuoteCard = memo(function QuoteCard({
-  quote,
-  position,
-  onPointerDown,
-  onUpdateTitle,
-  onUpdateColor,
-  onMoveCard,
-  onToggleMinimize,
-  onDuplicateCard,
-  onArchiveCard,
-  onDeleteCard,
-  onUpdateText,
-  onUpdateAuthor,
-  onUpdateFontSize,
-  onUpdateDimensions,
-  scale,
-  isPopping,
-  cardId,
-}) {
-  const customStyle = quote.fontSize ? { fontSize: `${quote.fontSize}px` } : undefined
-  const authorStyle = quote.fontSize ? { fontSize: `${Math.max(10, Math.round(quote.fontSize * 0.7))}px` } : undefined
-  const [isEditingText, setIsEditingText] = useState(false)
-  const [isEditingAuthor, setIsEditingAuthor] = useState(false)
+export function QuoteCard(props) {
+  const customStyle = () => props.quote.fontSize ? { "font-size": `${props.quote.fontSize}px` } : undefined
+  const authorStyle = () => props.quote.fontSize ? { "font-size": `${Math.max(10, Math.round(props.quote.fontSize * 0.7))}px` } : undefined
+  const [isEditingText, setIsEditingText] = createSignal(false)
+  const [isEditingAuthor, setIsEditingAuthor] = createSignal(false)
 
-  const [editText, setEditText] = useState(quote.text || '')
-  const [editAuthor, setEditAuthor] = useState(quote.author || '')
+  const [editText, setEditText] = createSignal(props.quote.text || '')
+  const [editAuthor, setEditAuthor] = createSignal(props.quote.author || '')
 
   // If the card unmounts mid-resize (archive/delete/undo), remove the
   // document-level listeners so they don't leak.
-  const resizeCleanupRef = useRef(null)
-  useEffect(() => () => resizeCleanupRef.current?.(), [])
+  let resizeCleanup = null
+  onCleanup(() => resizeCleanup?.())
 
   const handleResizeStart = (e) => {
     e.preventDefault()
@@ -41,11 +23,13 @@ export const QuoteCard = memo(function QuoteCard({
     const cardEl = e.currentTarget.closest('.quote-card')
     const startX = e.clientX
     const startY = e.clientY
-    const startWidth = quote.width || 320
-    const startHeight = quote.height || 200
+    const startWidth = props.quote.width || 320
+    const startHeight = props.quote.height || 200
     let currentWidth = startWidth
     let currentHeight = startHeight
     let rafId = null
+
+    const scale = typeof props.scale === 'function' ? props.scale() : props.scale
 
     const handlePointerMove = (moveEvent) => {
       const deltaX = (moveEvent.clientX - startX) / scale
@@ -64,16 +48,16 @@ export const QuoteCard = memo(function QuoteCard({
     }
 
     const handlePointerUp = () => {
-      resizeCleanupRef.current = null
+      resizeCleanup = null
       if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
-      if (onUpdateDimensions && (currentWidth !== startWidth || currentHeight !== startHeight)) {
-        onUpdateDimensions(currentWidth, currentHeight)
+      if (props.onUpdateDimensions && (currentWidth !== startWidth || currentHeight !== startHeight)) {
+        props.onUpdateDimensions(currentWidth, currentHeight)
       }
     }
 
-    resizeCleanupRef.current = () => {
+    resizeCleanup = () => {
       if (rafId) cancelAnimationFrame(rafId)
       document.removeEventListener('pointermove', handlePointerMove)
       document.removeEventListener('pointerup', handlePointerUp)
@@ -84,34 +68,34 @@ export const QuoteCard = memo(function QuoteCard({
 
   const handleStartEditText = (e) => {
     e.stopPropagation()
-    setEditText(quote.text || '')
+    setEditText(props.quote.text || '')
     setIsEditingText(true)
   }
 
   const handleStartEditAuthor = (e) => {
     e.stopPropagation()
-    setEditAuthor(quote.author || '')
+    setEditAuthor(props.quote.author || '')
     setIsEditingAuthor(true)
   }
 
   const handleCommitText = () => {
     setIsEditingText(false)
-    if (onUpdateText && editText !== quote.text) {
-      onUpdateText(quote.id, editText)
+    if (props.onUpdateText && editText() !== props.quote.text) {
+      props.onUpdateText(props.quote.id, editText())
     }
   }
 
   const handleCommitAuthor = () => {
     setIsEditingAuthor(false)
-    if (onUpdateAuthor && editAuthor !== quote.author) {
-      onUpdateAuthor(quote.id, editAuthor)
+    if (props.onUpdateAuthor && editAuthor() !== props.quote.author) {
+      props.onUpdateAuthor(props.quote.id, editAuthor())
     }
   }
 
   const handleTextKeyDown = (e) => {
     if (e.key === 'Escape') {
       setIsEditingText(false)
-      setEditText(quote.text || '')
+      setEditText(props.quote.text || '')
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       handleCommitText()
     }
@@ -120,7 +104,7 @@ export const QuoteCard = memo(function QuoteCard({
   const handleAuthorKeyDown = (e) => {
     if (e.key === 'Escape') {
       setIsEditingAuthor(false)
-      setEditAuthor(quote.author || '')
+      setEditAuthor(props.quote.author || '')
     } else if (e.key === 'Enter') {
       handleCommitAuthor()
     }
@@ -128,84 +112,88 @@ export const QuoteCard = memo(function QuoteCard({
 
   return (
     <section
-      data-card-id={cardId}
-      className={`floating-card quote-card ${quote.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
+      data-card-id={props.cardId}
+      class={`floating-card quote-card ${props.quote.minimized ? 'is-minimized' : ''} ${props.isPopping ? 'is-popping' : ''}`}
       style={{
-        left: position?.x,
-        top: position?.y,
-        width: quote.width || 320,
-        height: quote.height || 200,
-        margin: position ? 0 : undefined,
-        backgroundColor: quote.color || undefined,
+        left: props.position?.x !== undefined ? `${props.position.x}px` : undefined,
+        top: props.position?.y !== undefined ? `${props.position.y}px` : undefined,
+        width: `${props.quote.width || 320}px`,
+        height: `${props.quote.height || 200}px`,
+        margin: props.position ? '0' : undefined,
+        "background-color": props.quote.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
-        <span className="card-title">{quote.title}</span>
+      <header class="card-header" onPointerDown={(e) => props.onPointerDown?.(props.cardId, e)} style={{ cursor: props.onPointerDown ? 'grab' : 'default' }}>
+        <span class="card-title">{props.quote.title}</span>
         <CardContextMenu
-          title={quote.title}
-          minimized={Boolean(quote.minimized)}
-          fontSize={quote.fontSize || 22}
-          onTitleChange={(nextTitle) => onUpdateTitle(quote.id, nextTitle)}
-          onColorChange={(color) => onUpdateColor(quote.id, color)}
-          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(quote.id, nextSize)}
-          onMove={(targetId) => onMoveCard(quote.id, targetId)}
-          onToggleMinimize={() => onToggleMinimize(quote.id)}
-          onDuplicate={() => onDuplicateCard(quote.id)}
-          onArchive={() => onArchiveCard(quote.id)}
-          onDelete={() => onDeleteCard(quote.id)}
+          title={props.quote.title}
+          minimized={Boolean(props.quote.minimized)}
+          fontSize={props.quote.fontSize || 22}
+          onTitleChange={(nextTitle) => props.onUpdateTitle(props.quote.id, nextTitle)}
+          onColorChange={(color) => props.onUpdateColor(props.quote.id, color)}
+          onFontSizeChange={(nextSize) => props.onUpdateFontSize && props.onUpdateFontSize(props.quote.id, nextSize)}
+          onMove={(targetId) => props.onMoveCard(props.quote.id, targetId)}
+          onToggleMinimize={() => props.onToggleMinimize(props.quote.id)}
+          onDuplicate={() => props.onDuplicateCard(props.quote.id)}
+          onArchive={() => props.onArchiveCard(props.quote.id)}
+          onDelete={() => props.onDeleteCard(props.quote.id)}
         />
       </header>
 
-      {!quote.minimized && (
-        <div className="quote-content-wrapper">
-          <Quote className="quote-watermark" aria-hidden="true" size={48} strokeWidth={1} />
+      <Show when={!props.quote.minimized}>
+        <div class="quote-content-wrapper">
+          <Quote class="quote-watermark" aria-hidden="true" size={48} strokeWidth={1} />
 
-          <div className="quote-body-container">
-            {isEditingText ? (
+          <div class="quote-body-container">
+            <Show
+              when={isEditingText()}
+              fallback={
+                <p class="quote-body" style={customStyle()} onClick={handleStartEditText}>
+                  {props.quote.text ? `"${props.quote.text}"` : '"Click to edit quote..."'}
+                </p>
+              }
+            >
               <textarea
-                className="quote-text-edit"
-                style={customStyle}
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
+                class="quote-text-edit"
+                style={customStyle()}
+                value={editText()}
+                onInput={(e) => setEditText(e.currentTarget.value)}
                 onBlur={handleCommitText}
                 onKeyDown={handleTextKeyDown}
-                autoFocus
                 placeholder="Enter quote here..."
               />
-            ) : (
-              <p className="quote-body" style={customStyle} onClick={handleStartEditText}>
-                {quote.text ? `"${quote.text}"` : '"Click to edit quote..."'}
-              </p>
-            )}
+            </Show>
           </div>
 
-          <div className="quote-author-container">
-            {isEditingAuthor ? (
+          <div class="quote-author-container">
+            <Show
+              when={isEditingAuthor()}
+              fallback={
+                <span class="quote-author" style={authorStyle()} onClick={handleStartEditAuthor}>
+                  {props.quote.author ? `- ${props.quote.author}` : '- Click to add author'}
+                </span>
+              }
+            >
               <input
                 type="text"
-                className="quote-author-edit"
-                style={authorStyle}
-                value={editAuthor}
-                onChange={(e) => setEditAuthor(e.target.value)}
+                class="quote-author-edit"
+                style={authorStyle()}
+                value={editAuthor()}
+                onInput={(e) => setEditAuthor(e.currentTarget.value)}
                 onBlur={handleCommitAuthor}
                 onKeyDown={handleAuthorKeyDown}
-                autoFocus
                 placeholder="Author name"
               />
-            ) : (
-              <span className="quote-author" style={authorStyle} onClick={handleStartEditAuthor}>
-                {quote.author ? `- ${quote.author}` : '- Click to add author'}
-              </span>
-            )}
+            </Show>
           </div>
 
           <div
-            className="card-resizer"
+            class="card-resizer"
             onPointerDown={handleResizeStart}
             title="Resize quote"
           />
         </div>
-      )}
+      </Show>
     </section>
   )
-})
+}

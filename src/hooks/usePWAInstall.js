@@ -1,45 +1,45 @@
-import { useState, useEffect, useCallback } from 'react';
+import { createSignal, onMount, onCleanup } from 'solid-js'
 
-export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [isAvailable, setIsAvailable] = useState(false);
+export function createPWAInstall() {
+  const [isAvailable, setIsAvailable] = createSignal(false)
+  let deferredPrompt = null
 
-  useEffect(() => {
-    const handler = (e) => {
+  onMount(() => {
+    const handleBeforeInstall = (e) => {
       // Prevent Chrome 67 and earlier from automatically showing the prompt
-      e.preventDefault();
+      e.preventDefault()
       // Stash the event so it can be triggered later.
-      setDeferredPrompt(e);
-      setIsAvailable(true);
-    };
+      deferredPrompt = e
+      setIsAvailable(true)
+    }
 
-    const installHandler = () => {
-      setDeferredPrompt(null);
-      setIsAvailable(false);
-    };
+    const handleInstalled = () => {
+      deferredPrompt = null
+      setIsAvailable(false)
+    }
 
-    window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', installHandler);
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall)
+    window.addEventListener('appinstalled', handleInstalled)
 
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handler);
-      window.removeEventListener('appinstalled', installHandler);
-    };
-  }, []);
+    onCleanup(() => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
+      window.removeEventListener('appinstalled', handleInstalled)
+    })
+  })
 
-  const handleInstall = useCallback(async () => {
-    if (!deferredPrompt) return;
+  async function handleInstall() {
+    if (!deferredPrompt) return
 
     // Show the prompt
-    deferredPrompt.prompt();
+    deferredPrompt.prompt()
 
     // Wait for the user to respond to the prompt
-    const { outcome } = await deferredPrompt.userChoice;
+    await deferredPrompt.userChoice
 
     // We've used the prompt, and can't use it again, throw it away
-    setDeferredPrompt(null);
-    setIsAvailable(false);
-  }, [deferredPrompt]);
+    deferredPrompt = null
+    setIsAvailable(false)
+  }
 
-  return { isAvailable, handleInstall };
+  return { get isAvailable() { return isAvailable() }, handleInstall }
 }

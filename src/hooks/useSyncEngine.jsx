@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { createSignal, onMount, onCleanup } from 'solid-js'
 import {
   pushWorkspace,
   pullWorkspace,
@@ -46,7 +46,7 @@ function serializeState(state) {
   }
 }
 
-export function useSyncEngine({
+export function createSyncEngine({
   workspaceId,
   captureSnapshot,
   user,
@@ -54,57 +54,35 @@ export function useSyncEngine({
   onRemoteWorkspaceLoaded,
   debounceMs = 3000,
 }) {
-  const [syncStatus, setSyncStatus] = useState(() =>
+  const [syncStatus, setSyncStatus] = createSignal(
     typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'idle'
   )
-  const [lastSyncedAt, setLastSyncedAt] = useState(null)
-  const [syncError, setSyncError] = useState(null)
+  const [lastSyncedAt, setLastSyncedAt] = createSignal(null)
+  const [syncError, setSyncError] = createSignal(null)
 
+  // Closure variables replace React refs — the factory body runs exactly once.
   // Last snapshot (serialized) this client knows is identical to the cloud row.
-  const lastPushedSnapshotRef = useRef(null)
+  let lastPushedSnapshot = null
   // Snapshot currently being written by an in-flight push (echo guard for realtime).
-  const inFlightSnapshotRef = useRef(null)
+  let inFlightSnapshot = null
   // Last confirmed cloud version — sent back as p_expected_version on pushes.
-  const knownVersionRef = useRef(null)
+  let knownVersion = null
   // True when local state changed and has not been confirmed by the cloud yet.
-  const pendingChangeRef = useRef(false)
+  let pendingChange = false
 
-  const debounceTimerRef = useRef(null)
-  const retryTimerRef = useRef(null)
-  const retryCountRef = useRef(0)
-  const mountedRef = useRef(true)
+  let debounceTimer = null
+  let retryTimer = null
+  let retryCount = 0
+  let mounted = true
+  let reconcileGate = Promise.resolve()
 
-  const captureSnapshotRef = useRef(captureSnapshot)
-  const onRemoteWorkspaceLoadedRef = useRef(onRemoteWorkspaceLoaded)
-  const workspaceNameRef = useRef(workspaceName)
-  const reconcileGateRef = useRef(null)
+  function safeSetStatus(status) {
+    if (mounted) setSyncStatus(status)
+  }
 
-  useEffect(() => {
-    captureSnapshotRef.current = captureSnapshot
-  }, [captureSnapshot])
-
-  useEffect(() => {
-    onRemoteWorkspaceLoadedRef.current = onRemoteWorkspaceLoaded
-  }, [onRemoteWorkspaceLoaded])
-
-  useEffect(() => {
-    workspaceNameRef.current = workspaceName
-  }, [workspaceName])
-
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
-
-  const safeSetStatus = useCallback((status) => {
-    if (mountedRef.current) setSyncStatus(status)
-  }, [])
-
-  const safeSetError = useCallback((message) => {
-    if (mountedRef.current) setSyncError(message)
-  }, [])
+  function safeSetError(message) {
+    if (mounted) setSyncError(message)
+  }
 
   /**
    * Adopt a cloud snapshot locally. Backs up the current local state first —
@@ -112,83 +90,77 @@ export function useSyncEngine({
    * echoes never flood localStorage with conflict backups or re-render the
    * whole board.
    */
-  const adoptRemoteData = useCallback(
-    (remoteData, remoteVersion) => {
-      const remoteStr = serializeState(remoteData)
-      const localCurrent = captureSnapshotRef.current?.()
-      const localStr = serializeState(localCurrent)
-      const contentChanged = remoteStr !== localStr
+  function adoptRemoteData(remoteData, remoteVersion) {
+    const remoteStr = serializeState(remoteData)
+    const localCurrent = captureSnapshot?.()
+    const localStr = serializeState(localCurrent)
+    const contentChanged = remoteStr !== localStr
 
-      if (contentChanged) {
-        if (localCurrent) saveConflictBackup(workspaceId, localCurrent)
-        writeJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`, remoteData)
-        onRemoteWorkspaceLoadedRef.current?.(remoteData)
-      }
+    if (contentChanged) {
+      if (localCurrent) saveConflictBackup(workspaceId, localCurrent)
+      writeJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`, remoteData)
+      onRemoteWorkspaceLoaded?.(remoteData)
+    }
 
-      lastPushedSnapshotRef.current = remoteStr
-      if (Number.isFinite(remoteVersion)) knownVersionRef.current = remoteVersion
-      pendingChangeRef.current = false
-      setLastSyncedAt(Date.now())
-    },
-    [workspaceId]
-  )
+    lastPushedSnapshot = remoteStr
+    if (Number.isFinite(remoteVersion)) knownVersion = remoteVersion
+    pendingChange = false
+    setLastSyncedAt(Date.now())
+  }
 
-  const scheduleRetry = useCallback(
-    (pushFn) => {
-      if (retryCountRef.current >= MAX_AUTO_RETRIES) return false
-      const nextDelay = Math.min(60000, 1000 * Math.pow(2, retryCountRef.current))
-      retryCountRef.current += 1
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
-      retryTimerRef.current = setTimeout(() => pushFn(), nextDelay)
-      return true
-    },
-    []
-  )
+  function scheduleRetry(pushFn) {
+    if (retryCount >= MAX_AUTO_RETRIES) return false
+    const nextDelay = Math.min(60000, 1000 * Math.pow(2, retryCount))
+    retryCount += 1
+    if (retryTimer) clearTimeout(retryTimer)
+    retryTimer = setTimeout(() => pushFn(), nextDelay)
+    return true
+  }
 
-  const performPush = useCallback(async () => {
+  async function performPush() {
     if (!user || !isSupabaseConfigured() || !workspaceId) return false
 
     // Wait for the initial reconciliation so the first push carries a real
     // expectedVersion instead of blindly overwriting a newer cloud row.
     try {
-      await reconcileGateRef.current
+      await reconcileGate
     } catch {
       /* gate never rejects */
     }
-    if (!mountedRef.current) return false
+    if (!mounted) return false
 
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       safeSetStatus('offline')
       return false
     }
 
-    const snapshot = captureSnapshotRef.current?.()
+    const snapshot = captureSnapshot?.()
     if (!snapshot) return false
 
     const serialized = serializeState(snapshot)
-    if (serialized === lastPushedSnapshotRef.current) {
-      pendingChangeRef.current = false
+    if (serialized === lastPushedSnapshot) {
+      pendingChange = false
       safeSetStatus('idle')
       return true
     }
 
     safeSetStatus('syncing')
     safeSetError(null)
-    inFlightSnapshotRef.current = serialized
+    inFlightSnapshot = serialized
 
     try {
       const result = await pushWorkspace(user.id, workspaceId, snapshot, {
-        expectedVersion: knownVersionRef.current,
-        workspaceName: workspaceNameRef.current,
+        expectedVersion: knownVersion,
+        workspaceName,
       })
 
-      inFlightSnapshotRef.current = null
+      inFlightSnapshot = null
 
       if (result?.success) {
-        lastPushedSnapshotRef.current = serialized
-        if (Number.isFinite(result.version)) knownVersionRef.current = result.version
-        pendingChangeRef.current = false
-        retryCountRef.current = 0
+        lastPushedSnapshot = serialized
+        if (Number.isFinite(result.version)) knownVersion = result.version
+        pendingChange = false
+        retryCount = 0
         setLastSyncedAt(Date.now())
         safeSetStatus('idle')
         return true
@@ -203,7 +175,7 @@ export function useSyncEngine({
           safeSetStatus('idle')
           safeSetError('Sync conflict resolved — your previous board was backed up locally.')
         } else {
-          knownVersionRef.current = result.cloudVersion ?? null
+          knownVersion = result.cloudVersion ?? null
           safeSetStatus('error')
           safeSetError('Sync conflict — cloud has newer changes. Pulling latest…')
           scheduleRetry(performPush)
@@ -213,7 +185,7 @@ export function useSyncEngine({
 
       return false
     } catch (err) {
-      inFlightSnapshotRef.current = null
+      inFlightSnapshot = null
       console.warn('[SyncEngine] Cloud push failed:', err.message)
       safeSetStatus('error')
       safeSetError(err.message || 'Sync failed')
@@ -225,23 +197,18 @@ export function useSyncEngine({
       }
       return false
     }
-  }, [user, workspaceId, adoptRemoteData, scheduleRetry, safeSetStatus, safeSetError])
-
-  const performPushRef = useRef(null)
-  useEffect(() => {
-    performPushRef.current = performPush
-  }, [performPush])
+  }
 
   // Manual or external sync trigger
-  const syncNow = useCallback(async () => {
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-    if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
-    retryCountRef.current = 0
-    return await (performPushRef.current ? performPushRef.current() : performPush())
-  }, [performPush])
+  async function syncNow() {
+    if (debounceTimer) clearTimeout(debounceTimer)
+    if (retryTimer) clearTimeout(retryTimer)
+    retryCount = 0
+    return await performPush()
+  }
 
   // Explicit pull (also used manually from tests / future UI)
-  const pullFromCloud = useCallback(async () => {
+  async function pullFromCloud() {
     if (!user || !isSupabaseConfigured() || !workspaceId) return null
 
     try {
@@ -254,7 +221,7 @@ export function useSyncEngine({
         return record.data
       }
       if (record && Number.isFinite(record.version)) {
-        knownVersionRef.current = record.version
+        knownVersion = record.version
       }
       safeSetStatus('idle')
       return null
@@ -263,196 +230,181 @@ export function useSyncEngine({
       safeSetError(err.message)
       return null
     }
-  }, [user, workspaceId, adoptRemoteData, safeSetStatus, safeSetError])
+  }
 
   // Notify the engine that local state changed (schedules a debounced push).
-  const notifyChange = useCallback(() => {
+  function notifyChange() {
     if (!user || !isSupabaseConfigured()) return
-    pendingChangeRef.current = true
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-    debounceTimerRef.current = setTimeout(() => {
-      if (performPushRef.current) performPushRef.current()
-      else performPush()
+    pendingChange = true
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      performPush()
     }, debounceMs)
-  }, [user, debounceMs, performPush])
+  }
 
-  // ─── Mount reconciliation (multi-device load) ────────────────────
-  // On becoming active for a workspace: learn the current cloud version,
-  // adopt the cloud copy when it is strictly newer than anything this
-  // device pushed, and align dedupe state when both sides already match.
-  useEffect(() => {
+  onMount(() => {
+    // ─── Mount reconciliation (multi-device load) ────────────────────
+    // On becoming active for a workspace: learn the current cloud version,
+    // adopt the cloud copy when it is strictly newer than anything this
+    // device pushed, and align dedupe state when both sides already match.
     if (!user || !isSupabaseConfigured() || !workspaceId) {
-      reconcileGateRef.current = Promise.resolve()
-      return undefined
-    }
-
-    let cancelled = false
-    let resolveGate
-    let gateSettled = false
-    reconcileGateRef.current = new Promise((resolve) => {
-      resolveGate = () => {
-        if (!gateSettled) {
-          gateSettled = true
-          resolve()
+      reconcileGate = Promise.resolve()
+    } else {
+      let cancelled = false
+      let resolveGate
+      let gateSettled = false
+      reconcileGate = new Promise((resolve) => {
+        resolveGate = () => {
+          if (!gateSettled) {
+            gateSettled = true
+            resolve()
+          }
         }
-      }
-    })
+      })
 
-    pullWorkspace(user.id, workspaceId)
-      .then((record) => {
-        if (cancelled) return
-        if (!record) {
-          knownVersionRef.current = null
-          const localSnap = captureSnapshotRef.current?.()
-          if (localSnap) {
-            // Cloud is completely empty for this workspace. Initialize it with local data!
-            pendingChangeRef.current = true
-            lastPushedSnapshotRef.current = null
-            resolveGate()
-            if (performPushRef.current) {
-              performPushRef.current()
+      pullWorkspace(user.id, workspaceId)
+        .then((record) => {
+          if (cancelled) return
+          if (!record) {
+            knownVersion = null
+            const localSnap = captureSnapshot?.()
+            if (localSnap) {
+              // Cloud is completely empty for this workspace. Initialize it with local data!
+              pendingChange = true
+              lastPushedSnapshot = null
+              resolveGate()
+              performPush()
+            } else {
+              resolveGate()
             }
-          } else {
-            resolveGate()
-          }
-          return
-        }
-
-        knownVersionRef.current = Number.isFinite(record.version) ? record.version : null
-
-        try {
-          const localSnap = captureSnapshotRef.current?.()
-          const localStr = serializeState(localSnap)
-          const cloudStr = record.data ? serializeState(record.data) : null
-
-          if (cloudStr === localStr) {
-            // Already identical — suppress the redundant mount-time push.
-            lastPushedSnapshotRef.current = localStr
-            pendingChangeRef.current = false
-            setLastSyncedAt(record.syncedAt ? Date.parse(record.syncedAt) : Date.now())
-            safeSetStatus('idle')
             return
           }
 
-          const localMeta = getLastPushMeta(workspaceId)
-          const localTime = localMeta?.at ?? 0
-          const cloudTime = record.syncedAt ? Date.parse(record.syncedAt) : 0
-
-          if (record.data && cloudTime > localTime) {
-            // Cloud is strictly newer than anything this device pushed.
-            // adoptRemoteData backs up any unsynced local edits first.
-            adoptRemoteData(record.data, record.version)
-            safeSetStatus('idle')
-            safeSetError(null)
-          }
-          // else: local is newer or equal precedence — leave it; the
-          // debounced push runs version-protected against knownVersion.
-        } catch {
-          // Reconciliation is best-effort; local-first behavior continues.
-        }
-      })
-      .catch(() => {
-        // Offline/unreachable — stay fully local; pushes handle retries.
-      })
-      .finally(() => {
-        resolveGate()
-      })
-
-    return () => {
-      cancelled = true
-      resolveGate()
-    }
-  }, [user, workspaceId, adoptRemoteData, safeSetStatus, safeSetError])
-
-  // ─── Realtime remote updates from other devices/tabs ─────────────
-  useEffect(() => {
-    if (!user || !isSupabaseConfigured() || !supabase?.channel || !workspaceId) return undefined
-
-    const channel = supabase
-      .channel(`workspace-sync-${workspaceId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'workspace_data',
-          filter: `workspace_id=eq.${workspaceId}`,
-        },
-        (payload) => {
-          if (!payload?.new?.data) return
-          const remoteStr = serializeState(payload.new.data)
-
-          // Ignore echoes of our own writes (in-flight or already synced).
-          if (
-            remoteStr === lastPushedSnapshotRef.current ||
-            remoteStr === inFlightSnapshotRef.current
-          ) {
-            return
-          }
-
-          const localCurrent = captureSnapshotRef.current?.()
-
-          if (pendingChangeRef.current && localCurrent) {
-            // Local unsynced edits exist — never silently drop them.
-            // Back them up and let the server arbitrate via the next
-            // version-checked push (conflict path preserves the local copy).
-            saveConflictBackup(workspaceId, localCurrent)
-            if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-            performPush()
-            return
-          }
+          knownVersion = Number.isFinite(record.version) ? record.version : null
 
           try {
-            adoptRemoteData(validateWorkspaceState(payload.new.data), payload.new.version)
+            const localSnap = captureSnapshot?.()
+            const localStr = serializeState(localSnap)
+            const cloudStr = record.data ? serializeState(record.data) : null
+
+            if (cloudStr === localStr) {
+              // Already identical — suppress the redundant mount-time push.
+              lastPushedSnapshot = localStr
+              pendingChange = false
+              setLastSyncedAt(record.syncedAt ? Date.parse(record.syncedAt) : Date.now())
+              safeSetStatus('idle')
+              return
+            }
+
+            const localMeta = getLastPushMeta(workspaceId)
+            const localTime = localMeta?.at ?? 0
+            const cloudTime = record.syncedAt ? Date.parse(record.syncedAt) : 0
+
+            if (record.data && cloudTime > localTime) {
+              // Cloud is strictly newer than anything this device pushed.
+              // adoptRemoteData backs up any unsynced local edits first.
+              adoptRemoteData(record.data, record.version)
+              safeSetStatus('idle')
+              safeSetError(null)
+            }
+            // else: local is newer or equal precedence — leave it; the
+            // debounced push runs version-protected against knownVersion.
           } catch {
-            // Malformed remote payload — ignore.
+            // Reconciliation is best-effort; local-first behavior continues.
           }
-        }
-      )
-      .subscribe()
+        })
+        .catch(() => {
+          // Offline/unreachable — stay fully local; pushes handle retries.
+        })
+        .finally(() => {
+          resolveGate()
+        })
 
-    return () => {
-      supabase.removeChannel?.(channel)
+      onCleanup(() => {
+        cancelled = true
+        resolveGate()
+      })
     }
-  }, [user, workspaceId, adoptRemoteData, performPush])
 
-  // ─── Online/offline transitions ──────────────────────────────────
-  useEffect(() => {
+    // ─── Realtime remote updates from other devices/tabs ─────────────
+    if (user && isSupabaseConfigured() && supabase?.channel && workspaceId) {
+      const channel = supabase
+        .channel(`workspace-sync-${workspaceId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'workspace_data',
+            filter: `workspace_id=eq.${workspaceId}`,
+          },
+          (payload) => {
+            if (!payload?.new?.data) return
+            const remoteStr = serializeState(payload.new.data)
+
+            // Ignore echoes of our own writes (in-flight or already synced).
+            if (
+              remoteStr === lastPushedSnapshot ||
+              remoteStr === inFlightSnapshot
+            ) {
+              return
+            }
+
+            const localCurrent = captureSnapshot?.()
+
+            if (pendingChange && localCurrent) {
+              // Local unsynced edits exist — never silently drop them.
+              // Back them up and let the server arbitrate via the next
+              // version-checked push (conflict path preserves the local copy).
+              saveConflictBackup(workspaceId, localCurrent)
+              if (debounceTimer) clearTimeout(debounceTimer)
+              performPush()
+              return
+            }
+
+            try {
+              adoptRemoteData(validateWorkspaceState(payload.new.data), payload.new.version)
+            } catch {
+              // Malformed remote payload — ignore.
+            }
+          }
+        )
+        .subscribe()
+
+      onCleanup(() => {
+        supabase.removeChannel?.(channel)
+      })
+    }
+
+    // ─── Online/offline transitions ──────────────────────────────────
     const handleOnline = () => {
       safeSetStatus('idle')
       safeSetError(null)
-      retryCountRef.current = 0
+      retryCount = 0
       syncNow()
     }
 
     const handleOffline = () => {
       safeSetStatus('offline')
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+      if (debounceTimer) clearTimeout(debounceTimer)
+      if (retryTimer) clearTimeout(retryTimer)
     }
 
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
 
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [syncNow, safeSetStatus, safeSetError])
-
-  // ─── Flush pending changes when leaving / hiding the page ────────
-  useEffect(() => {
+    // ─── Flush pending changes when leaving / hiding the page ────────
     const flushPending = () => {
-      if (!user || !isSupabaseConfigured() || !pendingChangeRef.current) return
+      if (!user || !isSupabaseConfigured() || !pendingChange) return
       if (typeof navigator !== 'undefined' && !navigator.onLine) return
-      const snapshot = captureSnapshotRef.current?.()
+      const snapshot = captureSnapshot?.()
       if (!snapshot) return
       const serialized = serializeState(snapshot)
-      if (serialized === lastPushedSnapshotRef.current) {
-        pendingChangeRef.current = false
+      if (serialized === lastPushedSnapshot) {
+        pendingChange = false
         return
       }
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+      if (debounceTimer) clearTimeout(debounceTimer)
       // Best-effort fire-and-forget: localStorage already holds the data;
       // if the request dies with the page, reconnect reconcile resolves it.
       performPush()
@@ -465,43 +417,44 @@ export function useSyncEngine({
     window.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('pagehide', flushPending)
 
-    return () => {
+    onCleanup(() => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
       window.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('pagehide', flushPending)
-    }
-  }, [user, performPush])
+    })
+  })
 
   // ─── Cleanup: flush on unmount (e.g. workspace switch) ───────────
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+  onCleanup(() => {
+    mounted = false
+    if (debounceTimer) clearTimeout(debounceTimer)
+    if (retryTimer) clearTimeout(retryTimer)
 
-      // Best-effort immediate flush of unsynced edits when the engine
-      // unmounts (workspace switch / logout). Refs still hold the old
-      // workspace's state at cleanup time, which is exactly what we want.
-      if (
-        user &&
-        isSupabaseConfigured() &&
-        pendingChangeRef.current &&
-        typeof navigator !== 'undefined' &&
-        navigator.onLine
-      ) {
-        const snapshot = captureSnapshotRef.current?.()
-        if (snapshot && serializeState(snapshot) !== lastPushedSnapshotRef.current) {
-          pushWorkspace(user.id, workspaceId, snapshot, {
-            expectedVersion: knownVersionRef.current,
-            workspaceName: workspaceNameRef.current,
-          }).catch(() => {})
-        }
+    // Best-effort immediate flush of unsynced edits when the engine
+    // is disposed (workspace switch / logout). Closures still hold the old
+    // workspace's state at cleanup time, which is exactly what we want.
+    if (
+      user &&
+      isSupabaseConfigured() &&
+      pendingChange &&
+      typeof navigator !== 'undefined' &&
+      navigator.onLine
+    ) {
+      const snapshot = captureSnapshot?.()
+      if (snapshot && serializeState(snapshot) !== lastPushedSnapshot) {
+        pushWorkspace(user.id, workspaceId, snapshot, {
+          expectedVersion: knownVersion,
+          workspaceName,
+        }).catch(() => {})
       }
     }
-  }, [user, workspaceId])
+  })
 
   return {
-    syncStatus,
-    lastSyncedAt,
-    syncError,
+    get syncStatus() { return syncStatus() },
+    get lastSyncedAt() { return lastSyncedAt() },
+    get syncError() { return syncError() },
     syncNow,
     pullFromCloud,
     notifyChange,

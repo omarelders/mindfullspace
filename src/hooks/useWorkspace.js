@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { createSignal, createEffect, createMemo, onMount, onCleanup } from 'solid-js'
+import { createStore, reconcile } from 'solid-js/store'
 import {
   writeJsonStorage,
   getInitialWorkspaceState,
@@ -22,8 +23,8 @@ import { parseImportedCards } from '../utils/backup'
 import { sanitizeUrl } from '../utils/urlSafety'
 import { createId } from '../utils/id'
 import { supportsNativeZoom } from '../utils/browserSupport'
-import { useUndoRedo } from './useUndoRedo'
-import { useCardCollection } from './useCardCollection'
+import { createUndoRedo } from './useUndoRedo'
+import { createCardCollection } from './useCardCollection'
 import { useAuth } from './useAuth'
 import { uploadImageToCloud, deleteImageFromCloud } from '../lib/imageSync'
 
@@ -47,122 +48,140 @@ function normalizeHabitIconId(iconId) {
 }
 
 // Pure duplicate strategy shared by every collection whose cards copy as-is.
-// Module-level so its identity is stable without memoization.
 function duplicateWithSameData(source, dupData) {
   return { ...source, id: dupData.id }
 }
 
-export function useWorkspace(workspaceId, workspaceRef) {
-  const { user } = useAuth()
-  const initialWorkspaceState = useMemo(() => getInitialWorkspaceState(workspaceId), [workspaceId])
-  const [drafts, setDrafts] = useState(() => initialWorkspaceState.drafts)
-  const [viewport, setViewport] = useState(() => initialWorkspaceState.viewport)
-  const [wheelMode, setWheelMode] = useState('zoom')
-  const lastMiddleClickRef = useRef(0)
-  const lastShiftPressRef = useRef(0)
-  const [isPanning, setIsPanning] = useState(false)
-  const [isRailOpen, setIsRailOpen] = useState(false)
-  const [isFocusMode, setIsFocusMode] = useState(false)
-  const [themeMode, setThemeMode] = useState(() => initialWorkspaceState.themeMode)
-  const [themePalette, setThemePalette] = useState(() => initialWorkspaceState.themePalette || 'sage')
-  const [dragState, setDragState] = useState({ columnId: null, itemId: null })
-  const [archivedCards, setArchivedCards] = useState(() => initialWorkspaceState.archivedCards)
-  const [cardPositions, setCardPositions] = useState(() => initialWorkspaceState.cardPositions)
-  const [draggingCard, setDraggingCard] = useState(null)
-  const [poppingCardIds, setPoppingCardIds] = useState(() => new Set())
-  const [toastMessage, setToastMessage] = useState(null)
-  const hasInitializedCardTrackingRef = useRef(false)
-  const previousCardIdsRef = useRef(new Set())
-  const popCleanupTimeoutsRef = useRef(new Map())
-  const panRef = useRef({ active: false, lastX: 0, lastY: 0 })
-  const toastTimerRef = useRef(null)
-  // Ref-based drag state for zero-React-overhead pointer moves
-  const draggingCardRef = useRef(null)
-  // Ref-based viewport for zero-React-overhead panning
-  const viewportRef = useRef(initialWorkspaceState.viewport)
-  // rAF handle for drag
-  const dragRafRef = useRef(null)
-  // rAF handle for pan
-  const panRafRef = useRef(null)
+export function createWorkspace(workspaceId, workspaceRef) {
+  // Context accessor — keep the object so its getters stay live (never
+  // destructure: that would freeze the value at setup time).
+  const auth = useAuth()
+
+  const initialWorkspaceState = getInitialWorkspaceState(workspaceId)
+
+  // ── B) Ephemeral UI state ── createSignals
+  const [wheelMode, setWheelMode] = createSignal('zoom')
+  const [isPanning, setIsPanning] = createSignal(false)
+  const [isRailOpen, setIsRailOpen] = createSignal(false)
+  const [isFocusMode, setIsFocusMode] = createSignal(false)
+  const [dragState, setDragState] = createSignal({ columnId: null, itemId: null })
+  const [draggingCard, setDraggingCard] = createSignal(null)
+  const [poppingCardIds, setPoppingCardIds] = createSignal(new Set())
+  const [toastMessage, setToastMessage] = createSignal(null)
 
   // Long-press context menu state
-  const [longPressMenu, setLongPressMenu] = useState({ visible: false, x: 0, y: 0, canvasX: 0, canvasY: 0 })
-  const [isLongPressHolding, setIsLongPressHolding] = useState(false)
-  const [longPressPos, setLongPressPos] = useState({ x: 0, y: 0 })
-  const longPressTimerRef = useRef(null)
-  const longPressStartRef = useRef({ x: 0, y: 0 })
+  const [longPressMenu, setLongPressMenu] = createSignal({ visible: false, x: 0, y: 0, canvasX: 0, canvasY: 0 })
+  const [isLongPressHolding, setIsLongPressHolding] = createSignal(false)
+  const [longPressPos, setLongPressPos] = createSignal({ x: 0, y: 0 })
 
-  const { pushSnapshot, undo, redo } = useUndoRedo()
+  // ── C) Mutable closure variables (replace useRef — factory runs once) ──
+  let lastMiddleClick = 0
+  let lastShiftPress = 0
+  let hasInitializedCardTracking = false
+  let previousCardIds = new Set()
+  const popCleanupTimeouts = new Map()
+  const pan = { active: false, lastX: 0, lastY: 0 }
+  let toastTimer = null
+  // Live drag state for zero-overhead pointer moves
+  let draggingCardLive = null
+  // Live viewport for zero-overhead panning (kept synced from the store)
+  let viewportLive = initialWorkspaceState.viewport
+    ? { ...initialWorkspaceState.viewport }
+    : { x: 0, y: 0, scale: 1 }
+  // rAF handles
+  let dragRaf = null
+  let panRaf = null
+  let longPressTimer = null
+  let longPressStart = { x: 0, y: 0 }
+  // Cross-tab coordination bookkeeping
+  let lastWrittenValue = null
+  let lastRemoteValue = null
 
-  const showToast = useCallback((msg) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+  const { pushSnapshot, undo, redo } = createUndoRedo()
+
+  // ── A) Persistent cross-cutting store ──
+  // Card arrays live inside the per-type collections created below; this
+  // store holds the remaining persisted slices with deep reactivity.
+  const [ui, setUi] = createStore({
+    drafts: initialWorkspaceState.drafts,
+    viewport: initialWorkspaceState.viewport,
+    themeMode: initialWorkspaceState.themeMode,
+    themePalette: initialWorkspaceState.themePalette || 'sage',
+    archivedCards: initialWorkspaceState.archivedCards,
+    cardPositions: initialWorkspaceState.cardPositions,
+  })
+
+  function showToast(msg) {
+    if (toastTimer) clearTimeout(toastTimer)
     setToastMessage(msg)
-    toastTimerRef.current = setTimeout(() => setToastMessage(null), 2000)
-  }, [])
+    toastTimer = setTimeout(() => setToastMessage(null), 2000)
+  }
 
-  // Refs that always hold current state for snapshot capture.
-  // Declared before the card collections below so saveSnapshot can be passed
-  // into them as a referentially stable callback.
-  const stateRefsForSnapshot = useRef({})
+  // Snapshot capture reads live state directly — no ref mirrors needed.
+  // Function declarations hoist, so the collections below can receive
+  // saveSnapshot before captureSnapshot's body ever runs.
+  function captureSnapshot() {
+    return JSON.parse(JSON.stringify({
+      columns: colCol.items,
+      drafts: ui.drafts,
+      viewport: ui.viewport,
+      themeMode: ui.themeMode,
+      themePalette: ui.themePalette,
+      notes: noteCol.items,
+      timers: timerCol.items,
+      counters: counterCol.items,
+      stopwatches: stopwatchCol.items,
+      calendars: calendarCol.items,
+      habits: habitCol.items,
+      pictures: picCol.items,
+      quickLinks: qlCol.items,
+      quotes: quoteCol.items,
+      archivedCards: ui.archivedCards,
+      customLabels: labelCol.items,
+      singleNotes: singleNoteCol.items,
+      cardPositions: ui.cardPositions,
+    }))
+  }
 
-  const captureSnapshot = useCallback(() => {
-    const s = stateRefsForSnapshot.current
-    return {
-      columns: s.columns,
-      drafts: s.drafts,
-      viewport: s.viewport,
-      themeMode: s.themeMode,
-      themePalette: s.themePalette,
-      notes: s.notes,
-      timers: s.timers,
-      counters: s.counters,
-      stopwatches: s.stopwatches,
-      calendars: s.calendars,
-      habits: s.habits,
-      pictures: s.pictures,
-      quickLinks: s.quickLinks,
-      quotes: s.quotes,
-      archivedCards: s.archivedCards,
-      customLabels: s.customLabels,
-      singleNotes: s.singleNotes,
-      cardPositions: s.cardPositions,
-    }
-  }, [])
-
-  // Tag lets consecutive edit pushes coalesce into one undo entry (see useUndoRedo)
-  const saveSnapshot = useCallback((tag = null) => {
+  // Tag lets consecutive edit pushes coalesce into one undo entry (see createUndoRedo)
+  function saveSnapshot(tag = null) {
     pushSnapshot(captureSnapshot(), tag)
-  }, [pushSnapshot, captureSnapshot])
+  }
 
-  // Ref mirror of cardPositions so position-dependent callbacks stay stable
-  const cardPositionsRef = useRef(cardPositions)
-  useEffect(() => { cardPositionsRef.current = cardPositions }, [cardPositions])
-
-  const removeCardPosition = useCallback((cardId) => {
-    setCardPositions((currentPositions) => {
-      if (!(cardId in currentPositions)) return currentPositions
-      const nextPositions = { ...currentPositions }
+  function removeCardPosition(cardId) {
+    setUi('cardPositions', (current) => {
+      if (!(cardId in current)) return current
+      const nextPositions = { ...current }
       delete nextPositions[cardId]
       return nextPositions
     })
-  }, [])
+  }
 
-  const clearCardDraft = useCallback((cardId) => {
-    setDrafts((currentDrafts) => {
-      if (!(cardId in currentDrafts)) return currentDrafts
-      const nextDrafts = { ...currentDrafts }
+  function clearCardDraft(cardId) {
+    setUi('drafts', (current) => {
+      if (!(cardId in current)) return current
+      const nextDrafts = { ...current }
       delete nextDrafts[cardId]
       return nextDrafts
     })
-  }, [])
+  }
 
-  const archiveCardSnapshot = useCallback((cardType, cardData) => {
-    const archivedPosition = cardData?.id && cardPositionsRef.current[cardData.id] ? { ...cardPositionsRef.current[cardData.id] } : null
-    setArchivedCards(current => [...current, { id: createId(cardType), type: cardType, archivedAt: Date.now(), data: cardData, position: archivedPosition }])
-  }, [])
+  function setCardPositions(update) {
+    if (typeof update === 'function') setUi('cardPositions', update)
+    else setUi('cardPositions', reconcile(update))
+  }
 
-  // Card Collections
-  const labelCol = useCardCollection({
+  function archiveCardSnapshot(cardType, cardData) {
+    const pos = cardData?.id ? ui.cardPositions[cardData.id] : null
+    const archivedPosition = pos ? { x: pos.x, y: pos.y } : null
+    setUi('archivedCards', (current) => [
+      ...current,
+      { id: createId(cardType), type: cardType, archivedAt: Date.now(), data: cardData, position: archivedPosition },
+    ])
+  }
+
+  // ── Card Collections (each owns its slice via createCardCollection) ──
+  const labelCol = createCardCollection({
     initialItems: initialWorkspaceState.customLabels,
     idPrefix: 'label',
     saveSnapshot,
@@ -173,7 +192,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     onDuplicate: duplicateWithSameData
   })
 
-  const singleNoteCol = useCardCollection({
+  const singleNoteCol = createCardCollection({
     initialItems: initialWorkspaceState.singleNotes,
     idPrefix: 'singlenote',
     saveSnapshot,
@@ -184,7 +203,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     onDuplicate: duplicateWithSameData
   })
 
-  const colCol = useCardCollection({
+  const colCol = createCardCollection({
     initialItems: initialWorkspaceState.columns,
     idPrefix: 'col',
     saveSnapshot,
@@ -192,20 +211,20 @@ export function useWorkspace(workspaceId, workspaceRef) {
     removeCardPosition,
     setCardPositions,
     setDraggingCard,
-    onDuplicate: useCallback((source, dupData, dupId) => {
-      setDrafts(d => ({ ...d, [dupId]: d[source.id] || '' }))
+    onDuplicate: (source, dupData, dupId) => {
+      setUi('drafts', (d) => ({ ...d, [dupId]: d[source.id] || '' }))
       return {
         ...dupData,
         items: source.items.map((i, idx) => ({ ...i, id: `${dupId}-item-${idx}-${Date.now()}` }))
       }
-    }, [setDrafts]),
-    onDelete: useCallback((id) => {
+    },
+    onDelete: (id) => {
       clearCardDraft(id)
-      setDragState(d => d.columnId === id ? { columnId: null, itemId: null } : d)
-    }, [clearCardDraft])
+      setDragState((d) => d.columnId === id ? { columnId: null, itemId: null } : d)
+    },
   })
 
-  const noteCol = useCardCollection({
+  const noteCol = createCardCollection({
     initialItems: initialWorkspaceState.notes,
     idPrefix: 'note',
     saveSnapshot,
@@ -215,7 +234,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  const quoteCol = useCardCollection({
+  const quoteCol = createCardCollection({
     initialItems: initialWorkspaceState.quotes || [],
     idPrefix: 'quote',
     saveSnapshot,
@@ -225,7 +244,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  const timerCol = useCardCollection({
+  const timerCol = createCardCollection({
     initialItems: initialWorkspaceState.timers,
     idPrefix: 'timer',
     saveSnapshot,
@@ -235,7 +254,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  const counterCol = useCardCollection({
+  const counterCol = createCardCollection({
     initialItems: initialWorkspaceState.counters,
     idPrefix: 'counter',
     saveSnapshot,
@@ -245,7 +264,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  const stopwatchCol = useCardCollection({
+  const stopwatchCol = createCardCollection({
     initialItems: initialWorkspaceState.stopwatches,
     idPrefix: 'stopwatch',
     saveSnapshot,
@@ -255,7 +274,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  const calendarCol = useCardCollection({
+  const calendarCol = createCardCollection({
     initialItems: initialWorkspaceState.calendars,
     idPrefix: 'calendar',
     saveSnapshot,
@@ -265,7 +284,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  const habitCol = useCardCollection({
+  const habitCol = createCardCollection({
     initialItems: initialWorkspaceState.habits,
     idPrefix: 'habit',
     saveSnapshot,
@@ -275,7 +294,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  const picCol = useCardCollection({
+  const picCol = createCardCollection({
     initialItems: initialWorkspaceState.pictures || [],
     idPrefix: 'picture',
     saveSnapshot,
@@ -285,7 +304,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  const qlCol = useCardCollection({
+  const qlCol = createCardCollection({
     initialItems: initialWorkspaceState.quickLinks || [],
     idPrefix: 'quick-links',
     saveSnapshot,
@@ -295,7 +314,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     setDraggingCard,
   })
 
-  // Aliases for state variables so existing codebase works without modification
+  // Aliases so the rest of the factory reads like the original codebase
   const customLabels = labelCol.items
   const setCustomLabels = labelCol.setItems
   const singleNotes = singleNoteCol.items
@@ -331,86 +350,27 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const quotes = quoteCol.items
   const setQuotes = quoteCol.setItems
 
-  // Keep the snapshot ref populated after every committed render
-  useEffect(() => {
-    stateRefsForSnapshot.current = {
-      columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions
-    }
-  }, [columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
-      stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions])
-
-  const restoreSnapshot = useCallback((snapshot) => {
-    setColumns(snapshot.columns)
-    setDrafts(snapshot.drafts)
-    setViewport(snapshot.viewport)
-    setThemeMode(snapshot.themeMode)
-    if (snapshot.themePalette) setThemePalette(snapshot.themePalette)
-    setNotes(snapshot.notes)
-    setTimers(snapshot.timers)
-    setCounters(snapshot.counters)
-    setStopwatches(snapshot.stopwatches)
-    setCalendars(snapshot.calendars)
-    setHabits(snapshot.habits)
-    setPictures(snapshot.pictures)
-    setQuickLinks(snapshot.quickLinks || [])
-    setQuotes(snapshot.quotes || [])
-    setArchivedCards(snapshot.archivedCards)
-    setCustomLabels(snapshot.customLabels)
-    if (snapshot.singleNotes) setSingleNotes(snapshot.singleNotes)
-    setCardPositions(snapshot.cardPositions)
-  }, [setColumns, setDrafts, setViewport, setThemeMode, setThemePalette, setNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setArchivedCards, setCustomLabels, setSingleNotes, setCardPositions])
-
-  const handleUndo = useCallback(() => {
-    const snapshot = undo(captureSnapshot())
-    if (snapshot) {
-      restoreSnapshot(snapshot)
-      showToast('Undone')
-    } else {
-      showToast('Nothing to undo')
-    }
-  }, [undo, captureSnapshot, restoreSnapshot, showToast])
-
-  const handleRedo = useCallback(() => {
-    const snapshot = redo(captureSnapshot())
-    if (snapshot) {
-      restoreSnapshot(snapshot)
-      showToast('Redone')
-    } else {
-      showToast('Nothing to redo')
-    }
-  }, [redo, captureSnapshot, restoreSnapshot, showToast])
-
-  // Apply a parsed workspace backup (see parseWorkspaceBackup) directly to
-  // React state. Replaces the old write-to-storage-then-reload flow: no page
-  // reload, no sessionStorage sentinel, and the previous state is pushed onto
-  // the undo stack so an import can be undone.
-  const importWorkspaceState = useCallback((sanitizedWorkspace) => {
-    saveSnapshot()
-    restoreSnapshot(sanitizedWorkspace)
-    showToast('Workspace imported')
-  }, [saveSnapshot, restoreSnapshot, showToast])
-
-  const activePalette = THEME_PALETTES[themePalette] || THEME_PALETTES.sage || THEME_COLORS
-  const theme = activePalette[themeMode] || activePalette.night || THEME_COLORS[themeMode]
-  const detachedLabels = useMemo(() => customLabels.map((label) => {
+  // ── Derived values (createMemo replaces useMemo) ──
+  const activePalette = createMemo(() => THEME_PALETTES[ui.themePalette] || THEME_PALETTES.sage || THEME_COLORS)
+  const theme = createMemo(() => activePalette()[ui.themeMode] || activePalette().night || THEME_COLORS[ui.themeMode])
+  const detachedLabels = createMemo(() => customLabels.map((label) => {
     let color = ''
     if (label.customColor) {
       color = label.customColor
     } else if (label.role === 'routine') {
-      color = theme.labelRoutine
+      color = theme().labelRoutine
     } else if (label.role === 'programming') {
-      color = theme.labelProgramming
+      color = theme().labelProgramming
     } else {
-      color = theme.labelEnglish
+      color = theme().labelEnglish
     }
     return { ...label, color }
-  }), [customLabels, theme])
+  }))
 
-  const renderedCardIds = useMemo(
+  const renderedCardIds = createMemo(
     () => [
       ...columns.map((column) => column.id),
-      ...detachedLabels.map((label) => label.id),
+      ...detachedLabels().map((label) => label.id),
       ...singleNotes.map((note) => note.id),
       ...notes.map((note) => note.id),
       ...timers.map((timer) => timer.id),
@@ -422,55 +382,78 @@ export function useWorkspace(workspaceId, workspaceRef) {
       ...quickLinks.map((ql) => ql.id),
       ...quotes.map((q) => q.id),
     ],
-    [columns, detachedLabels, singleNotes, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes],
   )
 
   const workspaceStorageKey = `${WORKSPACE_STORAGE_KEY_PREFIX}${workspaceId}`
 
+  function restoreSnapshot(snapshot) {
+    setColumns(reconcile(snapshot.columns ?? []))
+    setUi('drafts', reconcile(snapshot.drafts ?? {}))
+    setUi('viewport', reconcile(snapshot.viewport ?? { x: 0, y: 0, scale: 1 }))
+    setUi('themeMode', snapshot.themeMode)
+    if (snapshot.themePalette) setUi('themePalette', snapshot.themePalette)
+    setNotes(reconcile(snapshot.notes ?? []))
+    setTimers(reconcile(snapshot.timers ?? []))
+    setCounters(reconcile(snapshot.counters ?? []))
+    setStopwatches(reconcile(snapshot.stopwatches ?? []))
+    setCalendars(reconcile(snapshot.calendars ?? []))
+    setHabits(reconcile(snapshot.habits ?? []))
+    setPictures(reconcile(snapshot.pictures ?? []))
+    setQuickLinks(reconcile(snapshot.quickLinks || []))
+    setQuotes(reconcile(snapshot.quotes || []))
+    setUi('archivedCards', reconcile(snapshot.archivedCards ?? []))
+    setCustomLabels(reconcile(snapshot.customLabels ?? []))
+    if (snapshot.singleNotes) setSingleNotes(reconcile(snapshot.singleNotes))
+    setCardPositions(snapshot.cardPositions ?? {})
+  }
+
+  function handleUndo() {
+    const snapshot = undo(captureSnapshot())
+    if (snapshot) {
+      restoreSnapshot(snapshot)
+      showToast('Undone')
+    } else {
+      showToast('Nothing to undo')
+    }
+  }
+
+  function handleRedo() {
+    const snapshot = redo(captureSnapshot())
+    if (snapshot) {
+      restoreSnapshot(snapshot)
+      showToast('Redone')
+    } else {
+      showToast('Nothing to redo')
+    }
+  }
+
+  // Apply a parsed workspace backup (see parseWorkspaceBackup) directly to
+  // reactive state. No page reload; the previous state is pushed onto the
+  // undo stack so an import can be undone.
+  function importWorkspaceState(sanitizedWorkspace) {
+    saveSnapshot()
+    restoreSnapshot(sanitizedWorkspace)
+    showToast('Workspace imported')
+  }
+
   // Cross-tab coordination. State is whole-workspace JSON in localStorage, so
   // without coordination the last tab to write would silently clobber
-  // everything the other tab did. We track the last payload we wrote and the
-  // last payload received from another tab to keep tabs in sync without
-  // ping-ponging identical data back and forth.
-  const lastWrittenValueRef = useRef(null)
-  const lastRemoteValueRef = useRef(null)
-
-  const saveWorkspaceState = useCallback(() => {
+  // everything the other tab did.
+  function saveWorkspaceState() {
     const snapshot = captureSnapshot()
     const serialized = JSON.stringify(snapshot)
-    if (serialized === lastRemoteValueRef.current) {
+    if (serialized === lastRemoteValue) {
       // Our state is identical to what another tab just sent us — writing it
       // back would only echo the same storage event between tabs forever.
-      lastRemoteValueRef.current = null
+      lastRemoteValue = null
       return
     }
     writeJsonStorage(workspaceStorageKey, snapshot)
-    lastWrittenValueRef.current = serialized
-  }, [captureSnapshot, workspaceStorageKey])
+    lastWrittenValue = serialized
+  }
 
-  useEffect(() => {
-    if (isPanning || draggingCard) return undefined
-    let idleId = null
-    const timerId = window.setTimeout(() => {
-      if ('requestIdleCallback' in window) {
-        idleId = window.requestIdleCallback(() => {
-          saveWorkspaceState()
-        }, { timeout: 2000 })
-      } else {
-        saveWorkspaceState()
-      }
-    }, 1000)
-
-    return () => {
-      window.clearTimeout(timerId)
-      if (idleId !== null && 'cancelIdleCallback' in window) {
-        window.cancelIdleCallback(idleId)
-      }
-    }
-  }, [workspaceStorageKey, isPanning, draggingCard, columns, drafts, viewport, themeMode, themePalette, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards, customLabels, singleNotes, cardPositions, captureSnapshot, saveWorkspaceState])
-
-  // Ensure state is saved immediately on beforeunload or visibilitychange.
-  useEffect(() => {
+  onMount(() => {
+    // Ensure state is saved immediately on beforeunload or visibilitychange.
     const handleSave = () => {
       saveWorkspaceState()
     }
@@ -479,214 +462,38 @@ export function useWorkspace(workspaceId, workspaceRef) {
     }
     window.addEventListener('beforeunload', handleSave)
     window.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      window.removeEventListener('beforeunload', handleSave)
-      window.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [saveWorkspaceState])
 
-  // Multi-tab safety net: when another tab saves this same workspace, apply
-  // its state here so both tabs stay current instead of overwriting each
-  // other's work.
-  useEffect(() => {
+    // Multi-tab safety net: when another tab saves this same workspace, apply
+    // its state here so both tabs stay current instead of overwriting each
+    // other's work.
     const handleStorage = (e) => {
       if (e.key !== workspaceStorageKey || e.newValue === null) return
-      if (e.newValue === lastWrittenValueRef.current) return // our own write reflected back
+      if (e.newValue === lastWrittenValue) return // our own write reflected back
       try {
         const incoming = JSON.parse(e.newValue)
         restoreSnapshot(validateWorkspaceState(incoming))
-        lastRemoteValueRef.current = e.newValue
+        lastRemoteValue = e.newValue
         showToast('Synced changes from another tab')
       } catch {
         // Ignore malformed payloads from other tabs.
       }
     }
     window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
-  }, [workspaceStorageKey, restoreSnapshot, showToast])
 
-  useEffect(() => {
-    const currentCardIds = new Set(renderedCardIds)
-
-    if (!hasInitializedCardTrackingRef.current) {
-      hasInitializedCardTrackingRef.current = true
-      previousCardIdsRef.current = currentCardIds
-      return
-    }
-
-    const previousCardIds = previousCardIdsRef.current
-    previousCardIdsRef.current = currentCardIds
-
-    const addedCardIds = renderedCardIds.filter((cardId) => !previousCardIds.has(cardId))
-    const removedCardIds = [...previousCardIds].filter((cardId) => !currentCardIds.has(cardId))
-
-    if (removedCardIds.length > 0) {
-      setPoppingCardIds((currentPoppingIds) => {
-        const nextPoppingIds = new Set(currentPoppingIds)
-        removedCardIds.forEach((cardId) => nextPoppingIds.delete(cardId))
-        return nextPoppingIds
-      })
-
-      removedCardIds.forEach((cardId) => {
-        const timeoutId = popCleanupTimeoutsRef.current.get(cardId)
-        if (timeoutId) {
-          window.clearTimeout(timeoutId)
-          popCleanupTimeoutsRef.current.delete(cardId)
-        }
-      })
-    }
-
-    if (addedCardIds.length === 0) return
-
-    setPoppingCardIds((currentPoppingIds) => {
-      const nextPoppingIds = new Set(currentPoppingIds)
-      addedCardIds.forEach((cardId) => nextPoppingIds.add(cardId))
-      return nextPoppingIds
-    })
-
-    addedCardIds.forEach((cardId) => {
-      const existingTimeoutId = popCleanupTimeoutsRef.current.get(cardId)
-      if (existingTimeoutId) window.clearTimeout(existingTimeoutId)
-
-      const timeoutId = window.setTimeout(() => {
-        setPoppingCardIds((currentPoppingIds) => {
-          const nextPoppingIds = new Set(currentPoppingIds)
-          nextPoppingIds.delete(cardId)
-          return nextPoppingIds
-        })
-        popCleanupTimeoutsRef.current.delete(cardId)
-      }, CARD_POP_DURATION_MS)
-
-      popCleanupTimeoutsRef.current.set(cardId, timeoutId)
-    })
-  }, [renderedCardIds])
-
-  useEffect(() => {
-    const popCleanup = popCleanupTimeoutsRef.current
-    return () => {
-      popCleanup.forEach((timeoutId) => window.clearTimeout(timeoutId))
-      popCleanup.clear()
-    }
-  }, [])
-
-  // Keep viewportRef in sync with viewport React state
-  useEffect(() => {
-    viewportRef.current = viewport
-  }, [viewport])
-
-  useEffect(() => {
-    if (!draggingCard) return
-    const previousUserSelect = document.body.style.userSelect
-    document.body.style.userSelect = 'none'
-    window.getSelection()?.removeAllRanges()
-
-    // Store drag start info in ref so the pointermove handler is stable
-    draggingCardRef.current = draggingCard
-
-    // Find the dragging card's DOM element
-    const cardEl = workspaceRef.current?.querySelector(`[data-card-id="${draggingCard.id}"]`)
-
-    const handlePointerMove = (e) => {
-      const dc = draggingCardRef.current
-      if (!dc) return
-      if (dc.pointerId !== undefined && e.pointerId !== dc.pointerId) return
-      const scale = viewportRef.current.scale || 1
-      const dx = (e.clientX - dc.startX) / scale
-      const dy = (e.clientY - dc.startY) / scale
-      const nextX = dc.initialX + dx
-      const nextY = dc.initialY + dy
-      // Apply directly to DOM via rAF — no React state update during motion
-      if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current)
-      dragRafRef.current = requestAnimationFrame(() => {
-        if (cardEl) {
-          cardEl.style.left = nextX + 'px'
-          cardEl.style.top = nextY + 'px'
-        }
-        // Keep a lightweight pending position so we can commit on pointerup
-        draggingCardRef.current._pendingX = nextX
-        draggingCardRef.current._pendingY = nextY
-      })
-    }
-    const handlePointerUp = (e) => {
-      if (draggingCardRef.current?.pointerId !== undefined && e.pointerId !== draggingCardRef.current?.pointerId) return
-      const dc = draggingCardRef.current
-      if (dc && dc._pendingX !== undefined) {
-        // Commit final position to React state only once, on release
-        setCardPositions(prev => ({
-          ...prev,
-          [dc.id]: { x: dc._pendingX, y: dc._pendingY }
-        }))
-      }
-      draggingCardRef.current = null
-      setDraggingCard(null)
-    }
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerUp)
-    return () => {
-      document.body.style.userSelect = previousUserSelect
-      if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current)
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerUp)
-    }
-  }, [draggingCard, workspaceRef])
-
-  // Stable handleCardPointerDown via ref — never creates new function reference,
-  // so it won't defeat React.memo on card components
-  const handleCardPointerDown = useCallback((cardId, e) => {
-    if (window.innerWidth <= 1200) return
-    if (e.button !== 0 && e.pointerType === 'mouse') return
-    if (!e.target.closest('.card-header') && !e.target.closest('.label-drag-handle') && !e.target.closest('.stopwatch-drag-handle')) return
-    if (e.target.closest('.card-menu-wrap')) return
-    const cardPosition = cardPositionsRef.current[cardId]
-    if (!cardPosition) return
-    e.preventDefault()
-    e.stopPropagation()
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId)
-    } catch {
-      // Ignore pointer capture errors if element not attached
-    }
-    window.getSelection()?.removeAllRanges()
-    setDraggingCard({
-      id: cardId,
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      initialX: cardPosition.x,
-      initialY: cardPosition.y
-    })
-  }, [])
-
-  useEffect(() => {
+    // Pan stop listeners
     const stopPanning = () => {
-      if (!panRef.current.active) return
-      panRef.current.active = false
+      if (!pan.active) return
+      pan.active = false
       setIsPanning(false)
     }
     window.addEventListener('pointerup', stopPanning)
     window.addEventListener('pointercancel', stopPanning)
     window.addEventListener('blur', stopPanning)
-    return () => {
-      window.removeEventListener('pointerup', stopPanning)
-      window.removeEventListener('pointercancel', stopPanning)
-      window.removeEventListener('blur', stopPanning)
-    }
-  }, [])
 
-  useEffect(() => {
-    if (!isFocusMode) return undefined
-    const handleEscape = (event) => { if (event.key === 'Escape') setIsFocusMode(false) }
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [isFocusMode])
-
-  // Ctrl+Z / Ctrl+Shift+Z keyboard listener.
-  // Never hijack undo while the user is typing — native text undo must keep
-  // working inside inputs, textareas, and contenteditable elements.
-  useEffect(() => {
-    const handleKeyDown = (e) => {
+    // Ctrl+Z / Ctrl+Shift+Z keyboard listener.
+    // Never hijack undo while the user is typing — native text undo must keep
+    // working inside inputs, textareas, and contenteditable elements.
+    const handleUndoKeys = (e) => {
       const isCtrl = e.ctrlKey || e.metaKey
       if (!isCtrl || e.key.toLowerCase() !== 'z') return
       const active = document.activeElement
@@ -704,13 +511,10 @@ export function useWorkspace(workspaceId, workspaceRef) {
         handleUndo()
       }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleUndo, handleRedo])
+    window.addEventListener('keydown', handleUndoKeys)
 
-  // Double-Shift toggle wheel mode
-  useEffect(() => {
-    const handleKeyDown = (e) => {
+    // Double-Shift toggle wheel mode
+    const handleShiftToggle = (e) => {
       // Ignore if typing in an input
       const tag = document.activeElement?.tagName?.toLowerCase()
       const isEditable = tag === 'input' || tag === 'textarea' || document.activeElement?.isContentEditable
@@ -718,23 +522,223 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
       if (e.key === 'Shift') {
         const now = Date.now()
-        if (now - lastShiftPressRef.current < 400) {
-          setWheelMode(mode => {
+        if (now - lastShiftPress < 400) {
+          setWheelMode((mode) => {
             const nextMode = mode === 'zoom' ? 'pan' : 'zoom'
             showToast(`Scroll mode switched to ${nextMode === 'zoom' ? 'Zoom' : 'Pan'}`)
             return nextMode
           })
-          lastShiftPressRef.current = 0
+          lastShiftPress = 0
         } else {
-          lastShiftPressRef.current = now
+          lastShiftPress = now
         }
       }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showToast])
+    window.addEventListener('keydown', handleShiftToggle)
 
-  const handlePasteImage = useCallback(async (blob) => {
+    onCleanup(() => {
+      window.removeEventListener('beforeunload', handleSave)
+      window.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('storage', handleStorage)
+      window.removeEventListener('pointerup', stopPanning)
+      window.removeEventListener('pointercancel', stopPanning)
+      window.removeEventListener('blur', stopPanning)
+      window.removeEventListener('keydown', handleUndoKeys)
+      window.removeEventListener('keydown', handleShiftToggle)
+    })
+  })
+
+  // Debounced auto-save whenever any persisted slice changes.
+  // captureSnapshot deep-reads every store slice, which subscribes this
+  // effect to all nested mutations (Solid store proxies track property
+  // access during JSON serialization).
+  createEffect(() => {
+    const _snapshot = captureSnapshot()
+    void _snapshot
+
+    if (isPanning() || draggingCard()) return
+    let idleId = null
+    const timerId = window.setTimeout(() => {
+      if ('requestIdleCallback' in window) {
+        idleId = window.requestIdleCallback(() => {
+          saveWorkspaceState()
+        }, { timeout: 2000 })
+      } else {
+        saveWorkspaceState()
+      }
+    }, 1000)
+
+    onCleanup(() => {
+      window.clearTimeout(timerId)
+      if (idleId !== null && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleId)
+      }
+    })
+  })
+
+  // Pop animation card ID diffing
+  createEffect(() => {
+    const currentRenderedIds = renderedCardIds()
+    const currentCardIds = new Set(currentRenderedIds)
+
+    if (!hasInitializedCardTracking) {
+      hasInitializedCardTracking = true
+      previousCardIds = currentCardIds
+      return
+    }
+
+    const previousIds = previousCardIds
+    previousCardIds = currentCardIds
+
+    const addedCardIds = currentRenderedIds.filter((cardId) => !previousIds.has(cardId))
+    const removedCardIds = [...previousIds].filter((cardId) => !currentCardIds.has(cardId))
+
+    if (removedCardIds.length > 0) {
+      setPoppingCardIds((currentPoppingIds) => {
+        const nextPoppingIds = new Set(currentPoppingIds)
+        removedCardIds.forEach((cardId) => nextPoppingIds.delete(cardId))
+        return nextPoppingIds
+      })
+
+      removedCardIds.forEach((cardId) => {
+        const timeoutId = popCleanupTimeouts.get(cardId)
+        if (timeoutId) {
+          window.clearTimeout(timeoutId)
+          popCleanupTimeouts.delete(cardId)
+        }
+      })
+    }
+
+    if (addedCardIds.length === 0) return
+
+    setPoppingCardIds((currentPoppingIds) => {
+      const nextPoppingIds = new Set(currentPoppingIds)
+      addedCardIds.forEach((cardId) => nextPoppingIds.add(cardId))
+      return nextPoppingIds
+    })
+
+    addedCardIds.forEach((cardId) => {
+      const existingTimeoutId = popCleanupTimeouts.get(cardId)
+      if (existingTimeoutId) window.clearTimeout(existingTimeoutId)
+
+      const timeoutId = window.setTimeout(() => {
+        setPoppingCardIds((currentPoppingIds) => {
+          const nextPoppingIds = new Set(currentPoppingIds)
+          nextPoppingIds.delete(cardId)
+          return nextPoppingIds
+        })
+        popCleanupTimeouts.delete(cardId)
+      }, CARD_POP_DURATION_MS)
+
+      popCleanupTimeouts.set(cardId, timeoutId)
+    })
+  })
+
+  onCleanup(() => {
+    popCleanupTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId))
+    popCleanupTimeouts.clear()
+  })
+
+  // Keep viewportLive synced from the store for zero-overhead panning reads
+  createEffect(() => {
+    viewportLive = { x: ui.viewport.x, y: ui.viewport.y, scale: ui.viewport.scale }
+  })
+
+  // Direct-DOM card dragging driven by draggingCard() changes
+  createEffect(() => {
+    const dc = draggingCard()
+    if (!dc) return
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+    window.getSelection()?.removeAllRanges()
+
+    // Live closure copy so the pointermove handler reads latest info
+    draggingCardLive = dc
+
+    // Find the dragging card's DOM element
+    const wsEl = typeof workspaceRef === 'function' ? workspaceRef() : workspaceRef?.current
+    const cardEl = wsEl?.querySelector(`[data-card-id="${dc.id}"]`)
+
+    const handlePointerMove = (e) => {
+      const live = draggingCardLive
+      if (!live) return
+      if (live.pointerId !== undefined && e.pointerId !== live.pointerId) return
+      const scale = viewportLive.scale || 1
+      const dx = (e.clientX - live.startX) / scale
+      const dy = (e.clientY - live.startY) / scale
+      const nextX = live.initialX + dx
+      const nextY = live.initialY + dy
+      // Apply directly to DOM via rAF — no reactive updates during motion
+      if (dragRaf) cancelAnimationFrame(dragRaf)
+      dragRaf = requestAnimationFrame(() => {
+        if (cardEl) {
+          cardEl.style.left = nextX + 'px'
+          cardEl.style.top = nextY + 'px'
+        }
+        // Keep a lightweight pending position so we can commit on pointerup
+        draggingCardLive._pendingX = nextX
+        draggingCardLive._pendingY = nextY
+      })
+    }
+    const handlePointerUp = (e) => {
+      const live = draggingCardLive
+      if (live?.pointerId !== undefined && e.pointerId !== live?.pointerId) return
+      if (live && live._pendingX !== undefined) {
+        // Commit final position to the store only once, on release
+        setCardPositions((prev) => ({
+          ...prev,
+          [live.id]: { x: live._pendingX, y: live._pendingY }
+        }))
+      }
+      draggingCardLive = null
+      setDraggingCard(null)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+    onCleanup(() => {
+      document.body.style.userSelect = previousUserSelect
+      if (dragRaf) cancelAnimationFrame(dragRaf)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    })
+  })
+
+  function handleCardPointerDown(cardId, e) {
+    if (window.innerWidth <= 1200) return
+    if (e.button !== 0 && e.pointerType === 'mouse') return
+    if (!e.target.closest('.card-header') && !e.target.closest('.label-drag-handle') && !e.target.closest('.stopwatch-drag-handle')) return
+    if (e.target.closest('.card-menu-wrap')) return
+    const cardPosition = ui.cardPositions[cardId]
+    if (!cardPosition) return
+    e.preventDefault()
+    e.stopPropagation()
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // Ignore pointer capture errors if element not attached
+    }
+    window.getSelection()?.removeAllRanges()
+    setDraggingCard({
+      id: cardId,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: cardPosition.x,
+      initialY: cardPosition.y
+    })
+  }
+
+  // Focus mode Escape listener
+  createEffect(() => {
+    if (!isFocusMode()) return
+    const handleEscape = (event) => { if (event.key === 'Escape') setIsFocusMode(false) }
+    window.addEventListener('keydown', handleEscape)
+    onCleanup(() => window.removeEventListener('keydown', handleEscape))
+  })
+
+  async function handlePasteImage(blob) {
     if (blob.size > MAX_IMAGE_SIZE) {
       showToast(`Image too large (${(blob.size / 1024 / 1024).toFixed(1)}MB). Max 5MB.`)
       return
@@ -743,6 +747,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
     const imageId = createId('img-paste')
     try {
       await saveImage(imageId, blob)
+      const user = auth.user
       if (user) {
         uploadImageToCloud(user.id, imageId, blob).catch(() => {})
       }
@@ -750,33 +755,33 @@ export function useWorkspace(workspaceId, workspaceRef) {
       showToast('Failed to paste image.')
       return
     }
-    setPictures(p => [...p, { id, imageId, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({
+    setPictures((p) => [...p, { id, imageId, title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({
       ...p,
       [id]: {
-        x: 500 - (viewport.x / viewport.scale),
-        y: 300 - (viewport.y / viewport.scale),
+        x: 500 - (viewportLive.x / viewportLive.scale),
+        y: 300 - (viewportLive.y / viewportLive.scale),
       },
     }))
     showToast('Image pasted!')
-  }, [viewport, showToast, setPictures, user])
+  }
 
-  const handlePasteText = useCallback((text) => {
+  function handlePasteText(text) {
     if (!text || text.trim().length === 0) return
     const id = createId('quote')
-    setQuotes(p => [...p, { id, text, author: '', title: '', color: null, minimized: false }])
-    setCardPositions(p => ({
+    setQuotes((p) => [...p, { id, text, author: '', title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({
       ...p,
       [id]: {
-        x: 400 - (viewport.x / viewport.scale),
-        y: 300 - (viewport.y / viewport.scale),
+        x: 400 - (viewportLive.x / viewportLive.scale),
+        y: 300 - (viewportLive.y / viewportLive.scale),
       },
     }))
     showToast('Text pasted as Quote!')
-  }, [viewport, showToast, setQuotes])
+  }
 
   // Ctrl+V clipboard paste → Picture Card or Quote Card
-  useEffect(() => {
+  onMount(() => {
     const handlePaste = (e) => {
       const tag = document.activeElement?.tagName?.toLowerCase()
       const isEditable =
@@ -807,13 +812,15 @@ export function useWorkspace(workspaceId, workspaceRef) {
       }
     }
     window.addEventListener('paste', handlePaste)
-    return () => window.removeEventListener('paste', handlePaste)
-  }, [handlePasteImage, handlePasteText])
+    onCleanup(() => window.removeEventListener('paste', handlePaste))
+  })
 
-  const setDraft = useCallback((columnId, value) => setDrafts(prev => ({ ...prev, [columnId]: value })), [])
+  function setDraft(columnId, value) {
+    setUi('drafts', columnId, value)
+  }
 
-  const addItem = useCallback((columnId) => {
-    const text = stateRefsForSnapshot.current.drafts[columnId]?.trim()
+  function addItem(columnId) {
+    const text = ui.drafts[columnId]?.trim()
     if (!text) return
     saveSnapshot('todo-items')
     setColumns((currentColumns) => currentColumns.map((column) => {
@@ -823,17 +830,17 @@ export function useWorkspace(workspaceId, workspaceRef) {
         items: [...column.items, { id: `${columnId}-${Date.now()}-${Math.floor(Math.random() * 10000)}`, text, completed: false }],
       }
     }))
-    setDrafts((currentDrafts) => ({ ...currentDrafts, [columnId]: '' }))
-  }, [setColumns, saveSnapshot])
+    setUi('drafts', columnId, '')
+  }
 
-  const deleteItem = useCallback((columnId, itemId) => {
+  function deleteItem(columnId, itemId) {
     saveSnapshot('todo-items')
-    setColumns(current => current.map(col => col.id === columnId ? { ...col, items: col.items.filter(i => i.id !== itemId) } : col))
-  }, [setColumns, saveSnapshot])
+    setColumns((current) => current.map((col) => col.id === columnId ? { ...col, items: col.items.filter((i) => i.id !== itemId) } : col))
+  }
 
-  const getRestorePosition = (cardType, archivedPosition) => {
+  function getRestorePosition(cardType, archivedPosition) {
     if (archivedPosition && Number.isFinite(archivedPosition.x) && Number.isFinite(archivedPosition.y)) return { x: archivedPosition.x + 24, y: archivedPosition.y + 24 }
-    const vx = viewport.x / viewport.scale; const vy = viewport.y / viewport.scale
+    const vx = viewportLive.x / viewportLive.scale; const vy = viewportLive.y / viewportLive.scale
     if (cardType === 'label') return { x: 400 - vx, y: 300 - vy }
     if (cardType === 'todo') return { x: 400 - vx, y: 200 - vy }
     if (cardType === 'note') return { x: 350 - vx, y: 300 - vy }
@@ -848,8 +855,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
     return { x: 400 - vx, y: 260 - vy }
   }
 
-  const restoreArchivedCard = (archiveId) => {
-    const archivedEntry = archivedCards.find((entry) => entry.id === archiveId)
+  function restoreArchivedCard(archiveId) {
+    const archivedEntry = ui.archivedCards.find((entry) => entry.id === archiveId)
     if (!archivedEntry) return
 
     const archivedData = archivedEntry.data || {}
@@ -858,193 +865,198 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
     if (archivedEntry.type === 'label') {
       restoredCardId = createId('label')
-      setCustomLabels(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || 'LABEL', role: archivedData.role || 'routine' }])
+      setCustomLabels((current) => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || 'LABEL', role: archivedData.role || 'routine' }])
     } else if (archivedEntry.type === 'singlenote') {
       restoredCardId = createId('singlenote')
-      setSingleNotes(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || 'Single Note' }])
+      setSingleNotes((current) => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || 'Single Note' }])
     } else if (archivedEntry.type === 'todo') {
       restoredCardId = createId('col')
       const restoredItems = (archivedData.items || []).map((item, index) => ({ ...item, id: `${restoredCardId}-item-${index}-${Date.now()}` }))
-      setColumns(current => [...current, { ...archivedData, id: restoredCardId, tone: archivedData.tone || 'charcoal', positionClass: '', title: archivedData.title || '', color: archivedData.color || null, minimized: false, items: restoredItems }])
-      setDrafts(current => ({ ...current, [restoredCardId]: '' }))
+      setColumns((current) => [...current, { ...archivedData, id: restoredCardId, tone: archivedData.tone || 'charcoal', positionClass: '', title: archivedData.title || '', color: archivedData.color || null, minimized: false, items: restoredItems }])
+      setUi('drafts', (current) => ({ ...current, [restoredCardId]: '' }))
     } else if (archivedEntry.type === 'note') {
       restoredCardId = createId('note')
-      setNotes(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || '', title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setNotes((current) => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || '', title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'timer') {
       restoredCardId = createId('timer')
       const initialSeconds = Number.isFinite(archivedData.initialSeconds) ? archivedData.initialSeconds : 2700
       const remainingSeconds = Number.isFinite(archivedData.remainingSeconds) ? archivedData.remainingSeconds : initialSeconds
-      setTimers(current => [...current, { ...archivedData, id: restoredCardId, initialSeconds, remainingSeconds, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setTimers((current) => [...current, { ...archivedData, id: restoredCardId, initialSeconds, remainingSeconds, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'counter') {
       restoredCardId = createId('counter')
-      setCounters(current => [...current, { ...archivedData, id: restoredCardId, initialValue: Number.isFinite(archivedData.initialValue) ? archivedData.initialValue : 0, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setCounters((current) => [...current, { ...archivedData, id: restoredCardId, initialValue: Number.isFinite(archivedData.initialValue) ? archivedData.initialValue : 0, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'stopwatch') {
       restoredCardId = createId('stopwatch')
       const initialSeconds = Number.isFinite(archivedData.initialSeconds) ? archivedData.initialSeconds : 0
       const elapsedSeconds = Number.isFinite(archivedData.elapsedSeconds) ? archivedData.elapsedSeconds : initialSeconds
-      setStopwatches(current => [...current, { ...archivedData, id: restoredCardId, initialSeconds, elapsedSeconds, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setStopwatches((current) => [...current, { ...archivedData, id: restoredCardId, initialSeconds, elapsedSeconds, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'calendar') {
       restoredCardId = createId('calendar')
       const now = new Date()
-      setCalendars(current => [...current, { ...archivedData, id: restoredCardId, year: Number.isFinite(archivedData.year) ? archivedData.year : now.getFullYear(), month: Number.isFinite(archivedData.month) ? archivedData.month : now.getMonth(), selectedDate: null, entries: { ...(archivedData.entries || {}) }, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setCalendars((current) => [...current, { ...archivedData, id: restoredCardId, year: Number.isFinite(archivedData.year) ? archivedData.year : now.getFullYear(), month: Number.isFinite(archivedData.month) ? archivedData.month : now.getMonth(), selectedDate: null, entries: { ...(archivedData.entries || {}) }, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'habit') {
       restoredCardId = createId('habit')
       const now = new Date()
-      setHabits(current => [...current, { ...archivedData, id: restoredCardId, icon: normalizeHabitIconId(archivedData.icon), year: Number.isFinite(archivedData.year) ? archivedData.year : now.getFullYear(), month: Number.isFinite(archivedData.month) ? archivedData.month : now.getMonth(), view: 'summary', completions: { ...(archivedData.completions || {}) }, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setHabits((current) => [...current, { ...archivedData, id: restoredCardId, icon: normalizeHabitIconId(archivedData.icon), year: Number.isFinite(archivedData.year) ? archivedData.year : now.getFullYear(), month: Number.isFinite(archivedData.month) ? archivedData.month : now.getMonth(), view: 'summary', completions: { ...(archivedData.completions || {}) }, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'picture') {
       restoredCardId = createId('picture')
-      setPictures(current => [...current, { ...archivedData, id: restoredCardId, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setPictures((current) => [...current, { ...archivedData, id: restoredCardId, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'quick-links') {
       restoredCardId = createId('quick-links')
       const restoredLinks = (archivedData.links || []).map((link) => ({ ...link, url: sanitizeUrl(link?.url) || '' }))
-      setQuickLinks(current => [...current, { ...archivedData, id: restoredCardId, links: restoredLinks, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setQuickLinks((current) => [...current, { ...archivedData, id: restoredCardId, links: restoredLinks, title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     } else if (archivedEntry.type === 'quote') {
       restoredCardId = createId('quote')
-      setQuotes(current => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || '', author: archivedData.author || '', title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
+      setQuotes((current) => [...current, { ...archivedData, id: restoredCardId, text: archivedData.text || '', author: archivedData.author || '', title: archivedData.title || '', color: archivedData.color || null, minimized: false }])
     }
 
     if (!restoredCardId) return
-    setCardPositions(current => ({ ...current, [restoredCardId]: restoredPosition }))
-    setArchivedCards(current => current.filter(entry => entry.id !== archiveId))
+    setCardPositions((current) => ({ ...current, [restoredCardId]: restoredPosition }))
+    setUi('archivedCards', (current) => current.filter((entry) => entry.id !== archiveId))
   }
 
-  const moveCardToTarget = useCallback((cardId, targetId) => {
+  function moveCardToTarget(cardId, targetId) {
     const target = CARD_MOVE_TARGETS.find((candidate) => candidate.id === targetId)
     if (!target) return
-    setCardPositions(current => ({ ...current, [cardId]: { x: target.x, y: target.y } }))
-  }, [])
+    setCardPositions((current) => ({ ...current, [cardId]: { x: target.x, y: target.y } }))
+  }
 
   // Labels
-  const updateLabelText = useCallback((id, text) => {
+  function updateLabelText(id, text) {
     saveSnapshot('label-text')
     labelCol.update(id, { text: text.toUpperCase() })
-  }, [labelCol, saveSnapshot])
-  const updateLabelColor = useCallback((id, color) => labelCol.update(id, { customColor: color }), [labelCol])
-  const updateLabelFontSize = useCallback((id, fontSize) => labelCol.update(id, { fontSize }), [labelCol])
+  }
+  function updateLabelColor(id, color) {
+    saveSnapshot('label-color')
+    labelCol.update(id, { customColor: color })
+  }
+  function updateLabelFontSize(id, fontSize) { labelCol.update(id, { fontSize }) }
   const toggleLabelMinimize = labelCol.toggleMinimize
   const duplicateLabelCard = labelCol.duplicate
   const archiveLabelCard = labelCol.archive
   const deleteLabelCard = labelCol.remove
 
   // Single Notes
-  const updateSingleNoteText = useCallback((id, text) => {
+  function updateSingleNoteText(id, text) {
     saveSnapshot('singlenote-text')
     singleNoteCol.update(id, { text })
-  }, [singleNoteCol, saveSnapshot])
-  const updateSingleNoteColor = useCallback((id, color) => singleNoteCol.update(id, { color }), [singleNoteCol])
-  const updateSingleNoteFontSize = useCallback((id, fontSize) => singleNoteCol.update(id, { fontSize }), [singleNoteCol])
-  const updateSingleNoteShape = useCallback((id, shape) => singleNoteCol.update(id, { shape }), [singleNoteCol])
+  }
+  function updateSingleNoteColor(id, color) { singleNoteCol.update(id, { color }) }
+  function updateSingleNoteFontSize(id, fontSize) { singleNoteCol.update(id, { fontSize }) }
+  function updateSingleNoteShape(id, shape) { singleNoteCol.update(id, { shape }) }
   const toggleSingleNoteMinimize = singleNoteCol.toggleMinimize
   const duplicateSingleNoteCard = singleNoteCol.duplicate
   const archiveSingleNoteCard = singleNoteCol.archive
   const deleteSingleNoteCard = singleNoteCol.remove
 
   // Todos (Columns)
-  const updateTodoCardTitle = useCallback((id, title) => {
+  function updateTodoCardTitle(id, title) {
     saveSnapshot('todo-title')
     colCol.updateTitle(id, title)
-  }, [colCol, saveSnapshot])
+  }
   const updateTodoCardColor = colCol.updateColor
   const toggleTodoCardMinimize = colCol.toggleMinimize
-  const updateItemDetails = useCallback((colId, itemId, details) => {
+  function updateItemDetails(colId, itemId, details) {
     saveSnapshot('todo-items')
     colCol.update(colId, (c) => ({
-      items: c.items.map(i => i.id === itemId ? { ...i, ...details } : i)
+      items: c.items.map((i) => i.id === itemId ? { ...i, ...details } : i)
     }))
-  }, [colCol, saveSnapshot])
-  const updateItemText = useCallback((colId, itemId, text) => {
+  }
+  function updateItemText(colId, itemId, text) {
     saveSnapshot('todo-items')
     colCol.update(colId, (c) => ({
-      items: c.items.map(i => i.id === itemId ? { ...i, text } : i)
+      items: c.items.map((i) => i.id === itemId ? { ...i, text } : i)
     }))
-  }, [colCol, saveSnapshot])
-  const updateTodoCardFontSize = useCallback((id, fontSize) => colCol.update(id, { fontSize }), [colCol])
+  }
+  function updateTodoCardFontSize(id, fontSize) { colCol.update(id, { fontSize }) }
   const duplicateTodoCard = colCol.duplicate
   const archiveTodoCard = colCol.archive
   const deleteTodoCard = colCol.remove
 
   // Notes
-  const updateNoteTitle = useCallback((id, title) => {
+  function updateNoteTitle(id, title) {
     saveSnapshot('note-title')
     noteCol.updateTitle(id, title)
-  }, [noteCol, saveSnapshot])
+  }
   const updateNoteColor = noteCol.updateColor
   const toggleNoteMinimize = noteCol.toggleMinimize
   const duplicateNoteCard = noteCol.duplicate
   const archiveNoteCard = noteCol.archive
   const deleteNoteCard = noteCol.remove
-  const updateNoteText = useCallback((id, text) => {
+  function updateNoteText(id, text) {
     saveSnapshot('note-text')
     noteCol.update(id, { text })
-  }, [noteCol, saveSnapshot])
-  const updateNoteDimensions = useCallback((id, width, height) => noteCol.update(id, { width, height }), [noteCol])
-  const updateNoteFontSize = useCallback((id, fontSize) => noteCol.update(id, { fontSize }), [noteCol])
+  }
+  function updateNoteDimensions(id, width, height) { noteCol.update(id, { width, height }) }
+  function updateNoteFontSize(id, fontSize) { noteCol.update(id, { fontSize }) }
 
   // Timers
-  const updateTimerTitle = useCallback((id, title) => {
+  function updateTimerTitle(id, title) {
     saveSnapshot('timer-title')
     timerCol.updateTitle(id, title)
-  }, [timerCol, saveSnapshot])
+  }
   const updateTimerColor = timerCol.updateColor
   const toggleTimerMinimize = timerCol.toggleMinimize
   const duplicateTimerCard = timerCol.duplicate
   const archiveTimerCard = timerCol.archive
   const deleteTimerCard = timerCol.remove
-  const updateTimerState = useCallback((id, patch) => {
+  function updateTimerState(id, patch) {
     saveSnapshot('timer-state')
     timerCol.update(id, patch)
-  }, [timerCol, saveSnapshot])
-  const updateTimerFontSize = useCallback((id, fontSize) => timerCol.update(id, { fontSize }), [timerCol])
+  }
+  function updateTimerFontSize(id, fontSize) { timerCol.update(id, { fontSize }) }
 
   // Counters
-  const updateCounterTitle = useCallback((id, title) => {
+  function updateCounterTitle(id, title) {
     saveSnapshot('counter-title')
     counterCol.updateTitle(id, title)
-  }, [counterCol, saveSnapshot])
+  }
   const updateCounterColor = counterCol.updateColor
   const toggleCounterMinimize = counterCol.toggleMinimize
   const duplicateCounterCard = counterCol.duplicate
   const archiveCounterCard = counterCol.archive
   const deleteCounterCard = counterCol.remove
-  const updateCounterValue = useCallback((id, v) => {
+  function updateCounterValue(id, v) {
     saveSnapshot('counter-value')
     counterCol.update(id, { initialValue: v })
-  }, [counterCol, saveSnapshot])
-  const updateCounterFontSize = useCallback((id, fontSize) => counterCol.update(id, { fontSize }), [counterCol])
+  }
+  function updateCounterFontSize(id, fontSize) { counterCol.update(id, { fontSize }) }
 
   // Stopwatches
-  const updateStopwatchTitle = useCallback((id, title) => {
+  function updateStopwatchTitle(id, title) {
     saveSnapshot('stopwatch-title')
     stopwatchCol.updateTitle(id, title)
-  }, [stopwatchCol, saveSnapshot])
+  }
   const updateStopwatchColor = stopwatchCol.updateColor
   const toggleStopwatchMinimize = stopwatchCol.toggleMinimize
   const duplicateStopwatchCard = stopwatchCol.duplicate
   const archiveStopwatchCard = stopwatchCol.archive
   const deleteStopwatchCard = stopwatchCol.remove
-  const updateStopwatchState = useCallback((id, patch) => {
+  function updateStopwatchState(id, patch) {
     saveSnapshot('stopwatch-state')
     stopwatchCol.update(id, patch)
-  }, [stopwatchCol, saveSnapshot])
-  const updateStopwatchFontSize = useCallback((id, fontSize) => stopwatchCol.update(id, { fontSize }), [stopwatchCol])
+  }
+  function updateStopwatchFontSize(id, fontSize) { stopwatchCol.update(id, { fontSize }) }
 
   // Calendars
-  const updateCalendarTitle = useCallback((id, title) => {
+  function updateCalendarTitle(id, title) {
     saveSnapshot('calendar-title')
     calendarCol.updateTitle(id, title)
-  }, [calendarCol, saveSnapshot])
+  }
   const updateCalendarColor = calendarCol.updateColor
   const toggleCalendarMinimize = calendarCol.toggleMinimize
   const duplicateCalendarCard = calendarCol.duplicate
   const archiveCalendarCard = calendarCol.archive
   const deleteCalendarCard = calendarCol.remove
-  const changeCalendarMonth = useCallback((id, delta) => calendarCol.update(id, (c) => {
-    const shifted = new Date(c.year, c.month + delta, 1)
-    return { year: shifted.getFullYear(), month: shifted.getMonth() }
-  }), [calendarCol])
-  const openCalendarDay = useCallback((id, dateKey) => calendarCol.update(id, { selectedDate: dateKey }), [calendarCol])
-  const closeCalendarDay = useCallback((id) => calendarCol.update(id, { selectedDate: null }), [calendarCol])
-  const updateCalendarEntry = useCallback((id, dateKey, value) => {
+  function changeCalendarMonth(id, delta) {
+    calendarCol.update(id, (c) => {
+      const shifted = new Date(c.year, c.month + delta, 1)
+      return { year: shifted.getFullYear(), month: shifted.getMonth() }
+    })
+  }
+  function openCalendarDay(id, dateKey) { calendarCol.update(id, { selectedDate: dateKey }) }
+  function closeCalendarDay(id) { calendarCol.update(id, { selectedDate: null }) }
+  function updateCalendarEntry(id, dateKey, value) {
     saveSnapshot('calendar-entry')
     calendarCol.update(id, (c) => {
       const nextEnt = { ...c.entries }
@@ -1052,26 +1064,28 @@ export function useWorkspace(workspaceId, workspaceRef) {
       else nextEnt[dateKey] = value
       return { entries: nextEnt }
     })
-  }, [calendarCol, saveSnapshot])
-  const updateCalendarFontSize = useCallback((id, fontSize) => calendarCol.update(id, { fontSize }), [calendarCol])
+  }
+  function updateCalendarFontSize(id, fontSize) { calendarCol.update(id, { fontSize }) }
 
   // Habits
-  const updateHabitTitle = useCallback((id, title) => {
+  function updateHabitTitle(id, title) {
     saveSnapshot('habit-title')
     habitCol.updateTitle(id, title)
-  }, [habitCol, saveSnapshot])
+  }
   const updateHabitColor = habitCol.updateColor
   const toggleHabitMinimize = habitCol.toggleMinimize
   const duplicateHabitCard = habitCol.duplicate
   const archiveHabitCard = habitCol.archive
   const deleteHabitCard = habitCol.remove
-  const updateHabitIcon = useCallback((id, v) => habitCol.update(id, { icon: normalizeHabitIconId(v) }), [habitCol])
-  const setHabitView = useCallback((id, v) => habitCol.update(id, { view: v }), [habitCol])
-  const changeHabitMonth = useCallback((id, delta) => habitCol.update(id, (c) => {
-    const shifted = new Date(c.year, c.month + delta, 1)
-    return { year: shifted.getFullYear(), month: shifted.getMonth() }
-  }), [habitCol])
-  const toggleHabitDate = useCallback((id, dateKey) => {
+  function updateHabitIcon(id, v) { habitCol.update(id, { icon: normalizeHabitIconId(v) }) }
+  function setHabitView(id, v) { habitCol.update(id, { view: v }) }
+  function changeHabitMonth(id, delta) {
+    habitCol.update(id, (c) => {
+      const shifted = new Date(c.year, c.month + delta, 1)
+      return { year: shifted.getFullYear(), month: shifted.getMonth() }
+    })
+  }
+  function toggleHabitDate(id, dateKey) {
     saveSnapshot('habit-date')
     habitCol.update(id, (h) => {
       const parsedDate = parseDateKey(dateKey)
@@ -1085,8 +1099,8 @@ export function useWorkspace(workspaceId, workspaceRef) {
       else nextComp[dateKey] = true
       return { completions: nextComp }
     })
-  }, [habitCol, saveSnapshot])
-  const updateHabitFontSize = useCallback((id, fontSize) => habitCol.update(id, { fontSize }), [habitCol])
+  }
+  function updateHabitFontSize(id, fontSize) { habitCol.update(id, { fontSize }) }
 
   // Pictures
   const updatePictureTitle = picCol.updateTitle
@@ -1094,20 +1108,19 @@ export function useWorkspace(workspaceId, workspaceRef) {
   const togglePictureMinimize = picCol.toggleMinimize
   const duplicatePictureCard = picCol.duplicate
   const archivePictureCard = picCol.archive
-  const updatePictureImageId = useCallback((id, imageId) => picCol.update(id, { imageId }), [picCol])
-  const updatePictureDimensions = useCallback((id, width, height) => picCol.update(id, { width, height }), [picCol])
-  const updatePictureFitMode = useCallback((id, fitMode) => picCol.update(id, { fitMode }), [picCol])
-  const updatePictureFontSize = useCallback((id, fontSize) => picCol.update(id, { fontSize }), [picCol])
-  const deletePictureCard = useCallback((id) => {
+  function updatePictureImageId(id, imageId) { picCol.update(id, { imageId }) }
+  function updatePictureDimensions(id, width, height) { picCol.update(id, { width, height }) }
+  function updatePictureFitMode(id, fitMode) { picCol.update(id, { fitMode }) }
+  function updatePictureFontSize(id, fontSize) { picCol.update(id, { fontSize }) }
+  function deletePictureCard(id) {
     // Compute from current state directly — never run side effects inside a
-    // setItems updater (React may defer or re-run updaters, which made the
-    // IndexedDB blob deletion unreliable).
-    const card = picCol.items.find(t => t.id === id)
+    // setItems updater.
+    const card = picCol.items.find((t) => t.id === id)
     const isReferencedByActive = card?.imageId
-      ? picCol.items.some(c => c.id !== id && c.imageId === card.imageId)
+      ? picCol.items.some((c) => c.id !== id && c.imageId === card.imageId)
       : false
     const isReferencedByArchived = card?.imageId
-      ? archivedCards.some(a => a.type === 'picture' && a.data?.imageId === card.imageId)
+      ? ui.archivedCards.some((a) => a.type === 'picture' && a.data?.imageId === card.imageId)
       : false
 
     picCol.remove(id)
@@ -1115,19 +1128,19 @@ export function useWorkspace(workspaceId, workspaceRef) {
     if (card?.imageId && !isReferencedByActive && !isReferencedByArchived) {
       deleteImageBlob(card.imageId).catch(() => {})
       // Remove the cloud copy too so deleted images don't accumulate as
-      // orphaned Storage objects. Fire-and-forget: local deletion already
-      // succeeded and the card is gone from the synced snapshot.
+      // orphaned Storage objects.
+      const user = auth.user
       if (user) {
         deleteImageFromCloud(user.id, card.imageId).catch(() => {})
       }
     }
-  }, [picCol, archivedCards, user])
+  }
 
   // Quick Links
-  const updateQuickLinksTitle = useCallback((id, title) => {
+  function updateQuickLinksTitle(id, title) {
     saveSnapshot('quicklinks-title')
     qlCol.updateTitle(id, title)
-  }, [qlCol, saveSnapshot])
+  }
   const updateQuickLinksColor = qlCol.updateColor
   const toggleQuickLinksMinimize = qlCol.toggleMinimize
   const duplicateQuickLinksCard = qlCol.duplicate
@@ -1136,29 +1149,29 @@ export function useWorkspace(workspaceId, workspaceRef) {
   // Store-boundary URL validation: the form validates too, but data can also
   // arrive from imports/undo/restore — never trust it blindly (XSS via
   // javascript: hrefs).
-  const addQuickLinkItem = useCallback((id, url, label) => {
+  function addQuickLinkItem(id, url, label) {
     const safeUrl = sanitizeUrl(url)
     if (!safeUrl) return
     saveSnapshot('quick-links')
     qlCol.update(id, (t) => ({
       links: [...(t.links || []), { id: createId('ql-item'), url: safeUrl, label }]
     }))
-  }, [qlCol, saveSnapshot])
-  const updateQuickLinkItem = useCallback((id, itemId, url, label) => {
+  }
+  function updateQuickLinkItem(id, itemId, url, label) {
     const safeUrl = sanitizeUrl(url)
     if (!safeUrl) return
     saveSnapshot('quick-links')
     qlCol.update(id, (t) => ({
-      links: (t.links || []).map(l => l.id === itemId ? { ...l, url: safeUrl, label } : l)
+      links: (t.links || []).map((l) => l.id === itemId ? { ...l, url: safeUrl, label } : l)
     }))
-  }, [qlCol, saveSnapshot])
-  const removeQuickLinkItem = useCallback((id, itemId) => {
+  }
+  function removeQuickLinkItem(id, itemId) {
     saveSnapshot('quick-links')
     qlCol.update(id, (t) => ({
-      links: (t.links || []).filter(l => l.id !== itemId)
+      links: (t.links || []).filter((l) => l.id !== itemId)
     }))
-  }, [qlCol, saveSnapshot])
-  const reorderQuickLinkItems = useCallback((id, sourceIndex, destIndex) => {
+  }
+  function reorderQuickLinkItems(id, sourceIndex, destIndex) {
     saveSnapshot('quick-links')
     qlCol.update(id, (t) => {
       const links = [...(t.links || [])]
@@ -1166,31 +1179,31 @@ export function useWorkspace(workspaceId, workspaceRef) {
       links.splice(destIndex, 0, removed)
       return { links }
     })
-  }, [qlCol, saveSnapshot])
-  const updateQuickLinksFontSize = useCallback((id, fontSize) => qlCol.update(id, { fontSize }), [qlCol])
+  }
+  function updateQuickLinksFontSize(id, fontSize) { qlCol.update(id, { fontSize }) }
 
   // Quotes
-  const updateQuoteTitle = useCallback((id, title) => {
+  function updateQuoteTitle(id, title) {
     saveSnapshot('quote-title')
     quoteCol.updateTitle(id, title)
-  }, [quoteCol, saveSnapshot])
+  }
   const updateQuoteColor = quoteCol.updateColor
   const toggleQuoteMinimize = quoteCol.toggleMinimize
   const duplicateQuoteCard = quoteCol.duplicate
   const archiveQuoteCard = quoteCol.archive
   const deleteQuoteCard = quoteCol.remove
-  const updateQuoteText = useCallback((id, text) => {
+  function updateQuoteText(id, text) {
     saveSnapshot('quote-text')
     quoteCol.update(id, { text })
-  }, [quoteCol, saveSnapshot])
-  const updateQuoteAuthor = useCallback((id, author) => {
+  }
+  function updateQuoteAuthor(id, author) {
     saveSnapshot('quote-author')
     quoteCol.update(id, { author })
-  }, [quoteCol, saveSnapshot])
-  const updateQuoteDimensions = useCallback((id, width, height) => quoteCol.update(id, { width, height }), [quoteCol])
-  const updateQuoteFontSize = useCallback((id, fontSize) => quoteCol.update(id, { fontSize }), [quoteCol])
+  }
+  function updateQuoteDimensions(id, width, height) { quoteCol.update(id, { width, height }) }
+  function updateQuoteFontSize(id, fontSize) { quoteCol.update(id, { fontSize }) }
 
-  const readDragPayload = (event) => {
+  function readDragPayload(event) {
     const rawPayload = event.dataTransfer?.getData('text/plain')
     if (rawPayload) {
       try { const cur = JSON.parse(rawPayload); if (cur?.columnId && cur?.itemId) return cur } catch { /* ignore */ }
@@ -1198,15 +1211,15 @@ export function useWorkspace(workspaceId, workspaceRef) {
     return null
   }
 
-  const handleDragStartItem = useCallback((columnId, itemId, event) => {
+  function handleDragStartItem(columnId, itemId, event) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', JSON.stringify({ columnId, itemId }))
     setDragState({ columnId, itemId })
-  }, [])
-  const handleDragEndItem = useCallback(() => setDragState({ columnId: null, itemId: null }), [])
-  const handleDragOverItem = useCallback((event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }, [])
+  }
+  function handleDragEndItem() { setDragState({ columnId: null, itemId: null }) }
+  function handleDragOverItem(event) { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }
 
-  const handleDropOnItem = useCallback((columnId, targetItemId, event) => {
+  function handleDropOnItem(columnId, targetItemId, event) {
     event.preventDefault(); event.stopPropagation()
     const payload = readDragPayload(event)
     if (!payload || (payload.columnId === columnId && payload.itemId === targetItemId)) return
@@ -1222,7 +1235,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       if (!movedItem) return currentColumns
 
       return currentColumns.map((col) => {
-        if (col.id === payload.columnId) return { ...col, items: col.items.filter(i => i.id !== payload.itemId) }
+        if (col.id === payload.columnId) return { ...col, items: col.items.filter((i) => i.id !== payload.itemId) }
         if (col.id === columnId) {
           const targetIndex = col.items.findIndex((item) => item.id === targetItemId)
           const newItems = [...col.items]; newItems.splice(targetIndex < 0 ? newItems.length : targetIndex, 0, movedItem)
@@ -1232,9 +1245,9 @@ export function useWorkspace(workspaceId, workspaceRef) {
       })
     })
     setDragState({ columnId: null, itemId: null })
-  }, [setColumns, saveSnapshot])
+  }
 
-  const handleDropOnList = useCallback((columnId, event) => {
+  function handleDropOnList(columnId, event) {
     event.preventDefault()
     const payload = readDragPayload(event)
     if (!payload) return
@@ -1247,38 +1260,39 @@ export function useWorkspace(workspaceId, workspaceRef) {
         const movedItem = sourceCol.items.find((item) => item.id === payload.itemId)
         if (!movedItem) return currentColumns
         return currentColumns.map((col) => {
-          if (col.id === payload.columnId) return { ...col, items: col.items.filter(i => i.id !== payload.itemId) }
+          if (col.id === payload.columnId) return { ...col, items: col.items.filter((i) => i.id !== payload.itemId) }
           if (col.id === columnId) return { ...col, items: [...col.items, movedItem] }
           return col
         })
       }
       return currentColumns.map((col) => {
         if (col.id !== columnId) return col
-        const currentIndex = col.items.findIndex(i => i.id === payload.itemId)
+        const currentIndex = col.items.findIndex((i) => i.id === payload.itemId)
         if (currentIndex < 0 || currentIndex === col.items.length - 1) return col
         const nextItems = [...col.items]; const [moved] = nextItems.splice(currentIndex, 1); nextItems.push(moved)
         return { ...col, items: nextItems }
       })
     })
     setDragState({ columnId: null, itemId: null })
-  }, [setColumns, saveSnapshot])
+  }
 
-  const handleWheel = useCallback((event) => {
+  function handleWheel(event) {
     event.preventDefault()
-    const bounds = workspaceRef.current?.getBoundingClientRect()
+    const wsEl = typeof workspaceRef === 'function' ? workspaceRef() : workspaceRef?.current
+    const bounds = wsEl?.getBoundingClientRect()
     if (!bounds) return
 
     const isMouseWheel = event.deltaMode !== 0
     const isPinch = event.ctrlKey || event.metaKey
 
-    if (isPinch || wheelMode === 'zoom') {
+    if (isPinch || wheelMode() === 'zoom') {
       const pointerX = event.clientX - bounds.left; const pointerY = event.clientY - bounds.top
-      
+
       // Use original sensitivity for mouse wheel, use 3x for trackpad pinch
       const sensitivity = isPinch && !isMouseWheel ? (ZOOM_SENSITIVITY * 3.0) : ZOOM_SENSITIVITY
       const zoomFactor = Math.exp(-event.deltaY * sensitivity)
-  
-      setViewport((v) => {
+
+      setUi('viewport', (v) => {
         const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * zoomFactor))
         if (nextScale === v.scale) return v
         const contentX = (pointerX - v.x) / v.scale; const contentY = (pointerY - v.y) / v.scale
@@ -1287,15 +1301,15 @@ export function useWorkspace(workspaceId, workspaceRef) {
     } else {
       // Pan mode
       const panSpeed = isMouseWheel ? 40 : 1; // Adjust speed for mouse wheel panning
-      setViewport((v) => ({
+      setUi('viewport', (v) => ({
         ...v,
         x: v.x - (event.deltaX * panSpeed),
         y: v.y - (event.deltaY * panSpeed)
       }))
     }
-  }, [workspaceRef, wheelMode])
+  }
 
-  const startPanning = useCallback((event) => {
+  function startPanning(event) {
     if (window.innerWidth <= 1200) return
     if (event.button !== 2) return
     if (event.target.closest('.action-rail') || event.target.closest('.top-bar') || event.target.closest('.card-menu-wrap')) return
@@ -1303,43 +1317,45 @@ export function useWorkspace(workspaceId, workspaceRef) {
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {}
-    panRef.current = { active: true, lastX: event.clientX, lastY: event.clientY }
+    pan.active = true
+    pan.lastX = event.clientX
+    pan.lastY = event.clientY
     setIsPanning(true)
-  }, [])
+  }
 
-  const handleMiddleClick = useCallback((event) => {
+  function handleMiddleClick(event) {
     if (event.button !== 1) return // Middle button
     event.preventDefault()
     const now = Date.now()
-    if (now - lastMiddleClickRef.current < 400) {
-      setWheelMode(mode => {
+    if (now - lastMiddleClick < 400) {
+      setWheelMode((mode) => {
         const nextMode = mode === 'zoom' ? 'pan' : 'zoom'
         showToast(`Scroll mode switched to ${nextMode === 'zoom' ? 'Zoom' : 'Pan'}`)
         return nextMode
       })
-      lastMiddleClickRef.current = 0
+      lastMiddleClick = 0
     } else {
-      lastMiddleClickRef.current = now
+      lastMiddleClick = now
     }
-  }, [showToast])
+  }
 
-  const movePanning = useCallback((event) => {
-    if (!panRef.current.active) return
+  function movePanning(event) {
+    if (!pan.active) return
     event.preventDefault()
-    const deltaX = event.clientX - panRef.current.lastX
-    const deltaY = event.clientY - panRef.current.lastY
-    panRef.current.lastX = event.clientX
-    panRef.current.lastY = event.clientY
-    // Update ref immediately for downstream calculations
-    const v = viewportRef.current
-    const nextViewport = { ...v, x: v.x + deltaX, y: v.y + deltaY }
-    viewportRef.current = nextViewport
-    // Apply to DOM via rAF — no React state update during motion
-    if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
-    panRafRef.current = requestAnimationFrame(() => {
-      const boardStage = workspaceRef.current?.querySelector('.board-stage')
+    const deltaX = event.clientX - pan.lastX
+    const deltaY = event.clientY - pan.lastY
+    pan.lastX = event.clientX
+    pan.lastY = event.clientY
+    // Update live copy immediately for downstream calculations
+    const v = viewportLive
+    viewportLive = { ...v, x: v.x + deltaX, y: v.y + deltaY }
+    // Apply to DOM via rAF — no reactive updates during motion
+    if (panRaf) cancelAnimationFrame(panRaf)
+    panRaf = requestAnimationFrame(() => {
+      const wsEl = typeof workspaceRef === 'function' ? workspaceRef() : workspaceRef?.current
+      const boardStage = wsEl?.querySelector('.board-stage')
       if (boardStage) {
-        const vr = viewportRef.current
+        const vr = viewportLive
         if (supportsNativeZoom) {
           boardStage.style.left = (vr.x / vr.scale) + 'px'
           boardStage.style.top = (vr.y / vr.scale) + 'px'
@@ -1348,131 +1364,133 @@ export function useWorkspace(workspaceId, workspaceRef) {
         }
       }
     })
-  }, [workspaceRef])
+  }
 
-  const endPanning = useCallback((event) => {
-    if (!panRef.current.active) return
-    panRef.current.active = false
+  function endPanning(event) {
+    if (!pan.active) return
+    pan.active = false
     setIsPanning(false)
-    if (panRafRef.current) cancelAnimationFrame(panRafRef.current)
+    if (panRaf) cancelAnimationFrame(panRaf)
     try {
       event.currentTarget.releasePointerCapture(event.pointerId)
     } catch {}
-    // Commit final viewport to React state once on release
-    setViewport(viewportRef.current)
-  }, [])
+    // Commit final viewport to the store once on release
+    setUi('viewport', reconcile({ ...viewportLive }))
+  }
 
-  const focusLabelCard = useCallback((labelId) => {
-    const workspace = workspaceRef.current; if (!workspace) return
-    const workspaceBounds = workspace.getBoundingClientRect()
-    const cardElement = workspace.querySelector(`[data-card-id="${labelId}"]`)
+  function focusLabelCard(labelId) {
+    const wsEl = typeof workspaceRef === 'function' ? workspaceRef() : workspaceRef?.current
+    if (!wsEl) return
+    const workspaceBounds = wsEl.getBoundingClientRect()
+    const cardElement = wsEl.querySelector(`[data-card-id="${labelId}"]`)
     if (cardElement) {
       const cardBounds = cardElement.getBoundingClientRect()
       const centerX = workspaceBounds.left + workspaceBounds.width / 2; const centerY = workspaceBounds.top + workspaceBounds.height / 2
       const cardCenterX = cardBounds.left + cardBounds.width / 2; const cardCenterY = cardBounds.top + cardBounds.height / 2
-      setViewport(v => ({ ...v, x: v.x + (centerX - cardCenterX), y: v.y + (centerY - cardCenterY) }))
+      setUi('viewport', (v) => ({ ...v, x: v.x + (centerX - cardCenterX), y: v.y + (centerY - cardCenterY) }))
       return
     }
-    const fallbackPosition = cardPositions[labelId]
+    const fallbackPosition = ui.cardPositions[labelId]
     if (!fallbackPosition) return
-    setViewport(v => ({
+    setUi('viewport', (v) => ({
       ...v,
       x: workspaceBounds.width / 2 - fallbackPosition.x * v.scale,
       y: workspaceBounds.height / 2 - fallbackPosition.y * v.scale
     }))
-  }, [workspaceRef, cardPositions])
+  }
 
-  const handleAddLabel = useCallback((pos) => {
+  function handleAddLabel(pos) {
     const id = createId('label'); const roles = ['routine', 'programming', 'english']
-    setCustomLabels(p => [...p, { id, text: '', role: roles[Math.floor(Math.random() * roles.length)] }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setCustomLabels((p) => [...p, { id, text: '', role: roles[Math.floor(Math.random() * roles.length)] }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 400 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setCustomLabels, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddSingleNote = useCallback((pos) => {
+  function handleAddSingleNote(pos) {
     const id = createId('singlenote')
-    const vx = viewport.x / viewport.scale; const vy = viewport.y / viewport.scale
+    const vx = viewportLive.x / viewportLive.scale; const vy = viewportLive.y / viewportLive.scale
     setCardPositions((prev) => ({ ...prev, [id]: pos || { x: 450 - vx, y: 350 - vy } }))
-    setSingleNotes(prev => [...prev, { id, text: 'Single Note', shape: 'rectangle' }])
+    setSingleNotes((prev) => [...prev, { id, text: 'Single Note', shape: 'rectangle' }])
     saveSnapshot()
-  }, [setSingleNotes, saveSnapshot, setCardPositions, viewport])
+  }
 
-  const handleAddNote = useCallback((pos) => {
+  function handleAddNote(pos) {
     const id = createId('note')
-    setNotes(p => [...p, { id, text: '', title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 350 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setNotes((p) => [...p, { id, text: '', title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 350 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setNotes, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddTodoList = useCallback((pos) => {
+  function handleAddTodoList(pos) {
     const id = createId('col'); const tones = ['charcoal', 'gold', 'violet', 'red', 'blue']
-    setColumns(p => [...p, { id, tone: tones[Math.floor(Math.random() * tones.length)], positionClass: '', items: [], title: '', color: null, minimized: false }])
-    setDrafts(p => ({ ...p, [id]: '' }))
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 400 - (viewport.x / viewport.scale), y: 200 - (viewport.y / viewport.scale) } }))
+    setColumns((p) => [...p, { id, tone: tones[Math.floor(Math.random() * tones.length)], positionClass: '', items: [], title: '', color: null, minimized: false }])
+    setUi('drafts', (p) => ({ ...p, [id]: '' }))
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 400 - (viewportLive.x / viewportLive.scale), y: 200 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setColumns, saveSnapshot, setCardPositions, setDrafts])
+  }
 
-  const handleAddTimer = useCallback((pos) => {
-    const id = createId('timer'); setTimers(p => [...p, { id, initialSeconds: 2700, remainingSeconds: 2700, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 600 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+  function handleAddTimer(pos) {
+    const id = createId('timer'); setTimers((p) => [...p, { id, initialSeconds: 2700, remainingSeconds: 2700, title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 600 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setTimers, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddCounter = useCallback((pos) => {
-    const id = createId('counter'); setCounters(p => [...p, { id, initialValue: 0, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 960 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
+  function handleAddCounter(pos) {
+    const id = createId('counter'); setCounters((p) => [...p, { id, initialValue: 0, title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 960 - (viewportLive.x / viewportLive.scale), y: 260 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setCounters, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddStopwatch = useCallback((pos) => {
-    const id = createId('stopwatch'); setStopwatches(p => [...p, { id, initialSeconds: 0, elapsedSeconds: 0, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 1240 - (viewport.x / viewport.scale), y: 260 - (viewport.y / viewport.scale) } }))
+  function handleAddStopwatch(pos) {
+    const id = createId('stopwatch'); setStopwatches((p) => [...p, { id, initialSeconds: 0, elapsedSeconds: 0, title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 1240 - (viewportLive.x / viewportLive.scale), y: 260 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setStopwatches, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddCalendar = useCallback((pos) => {
+  function handleAddCalendar(pos) {
     const id = createId('calendar'); const now = new Date()
-    setCalendars(p => [...p, { id, year: now.getFullYear(), month: now.getMonth(), selectedDate: null, entries: {}, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 1500 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
+    setCalendars((p) => [...p, { id, year: now.getFullYear(), month: now.getMonth(), selectedDate: null, entries: {}, title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 1500 - (viewportLive.x / viewportLive.scale), y: 120 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setCalendars, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddHabit = useCallback((pos) => {
+  function handleAddHabit(pos) {
     const id = createId('habit'); const now = new Date()
-    setHabits(p => [...p, { id, icon: HABIT_ICON_OPTIONS[0].id, year: now.getFullYear(), month: now.getMonth(), view: 'summary', completions: {}, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 1700 - (viewport.x / viewport.scale), y: 120 - (viewport.y / viewport.scale) } }))
+    setHabits((p) => [...p, { id, icon: HABIT_ICON_OPTIONS[0].id, year: now.getFullYear(), month: now.getMonth(), view: 'summary', completions: {}, title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 1700 - (viewportLive.x / viewportLive.scale), y: 120 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setHabits, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddPicture = useCallback((pos) => {
+  function handleAddPicture(pos) {
     const id = createId('picture')
-    setPictures(p => [...p, { id, imageId: null, title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 500 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setPictures((p) => [...p, { id, imageId: null, title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 500 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setPictures, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddQuickLinks = useCallback((pos) => {
+  function handleAddQuickLinks(pos) {
     const id = createId('quick-links')
-    setQuickLinks(p => [...p, { id, links: [], title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 1000 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setQuickLinks((p) => [...p, { id, links: [], title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 1000 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setQuickLinks, saveSnapshot, setCardPositions])
+  }
 
-  const handleAddQuote = useCallback((pos) => {
+  function handleAddQuote(pos) {
     const id = createId('quote')
-    setQuotes(p => [...p, { id, text: '', author: '', title: '', color: null, minimized: false }])
-    setCardPositions(p => ({ ...p, [id]: pos || { x: 450 - (viewport.x / viewport.scale), y: 300 - (viewport.y / viewport.scale) } }))
+    setQuotes((p) => [...p, { id, text: '', author: '', title: '', color: null, minimized: false }])
+    setCardPositions((p) => ({ ...p, [id]: pos || { x: 450 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
     saveSnapshot()
-  }, [viewport, setQuotes, saveSnapshot, setCardPositions])
+  }
 
-  const handleQuickAction = useCallback((actionId, event, canvasPos) => {
+  function handleQuickAction(actionId, event, canvasPos) {
     let pos = canvasPos || null
     if (!pos && event && event.clientX !== undefined) {
-      const bounds = workspaceRef.current?.getBoundingClientRect()
+      const wsEl = typeof workspaceRef === 'function' ? workspaceRef() : workspaceRef?.current
+      const bounds = wsEl?.getBoundingClientRect()
       if (bounds) {
         pos = {
-          x: (event.clientX - bounds.left - viewport.x) / viewport.scale,
-          y: (event.clientY - bounds.top - viewport.y) / viewport.scale
+          x: (event.clientX - bounds.left - viewportLive.x) / viewportLive.scale,
+          y: (event.clientY - bounds.top - viewportLive.y) / viewportLive.scale
         }
       }
     }
@@ -1489,60 +1507,66 @@ export function useWorkspace(workspaceId, workspaceRef) {
     else if (actionId === 'quick-links') handleAddQuickLinks(pos)
     else if (actionId === 'quote') handleAddQuote(pos)
     setIsRailOpen(false)
-  }, [viewport, workspaceRef, handleAddLabel, handleAddSingleNote, handleAddNote, handleAddTodoList, handleAddCounter, handleAddTimer, handleAddStopwatch, handleAddCalendar, handleAddHabit, handleAddPicture, handleAddQuickLinks, handleAddQuote])
+  }
 
   // Long-press callbacks
-  const startLongPress = useCallback((event) => {
+  function startLongPress(event) {
     if (event.button !== 1 && event.pointerType !== 'touch') return
     // Only trigger on empty canvas (not on cards)
     if (event.target !== event.currentTarget && !event.target.classList.contains('board-stage') && !event.target.classList.contains('board')) return
     const x = event.clientX
     const y = event.clientY
-    longPressStartRef.current = { x, y }
+    longPressStart = { x, y }
     setLongPressPos({ x, y })
     setIsLongPressHolding(true)
-    clearTimeout(longPressTimerRef.current)
-    longPressTimerRef.current = setTimeout(() => {
-      const bounds = workspaceRef.current?.getBoundingClientRect()
+    clearTimeout(longPressTimer)
+    longPressTimer = setTimeout(() => {
+      const wsEl = typeof workspaceRef === 'function' ? workspaceRef() : workspaceRef?.current
+      const bounds = wsEl?.getBoundingClientRect()
       if (bounds) {
-        const canvasX = (x - bounds.left - viewport.x) / viewport.scale
-        const canvasY = (y - bounds.top - viewport.y) / viewport.scale
+        const canvasX = (x - bounds.left - viewportLive.x) / viewportLive.scale
+        const canvasY = (y - bounds.top - viewportLive.y) / viewportLive.scale
         setLongPressMenu({ visible: true, x, y, canvasX, canvasY })
       }
       setIsLongPressHolding(false)
     }, 650)
-  }, [viewport, workspaceRef])
+  }
 
-  const moveLongPress = useCallback((event) => {
-    if (!isLongPressHolding) return
-    const dx = event.clientX - longPressStartRef.current.x
-    const dy = event.clientY - longPressStartRef.current.y
+  function moveLongPress(event) {
+    if (!isLongPressHolding()) return
+    const dx = event.clientX - longPressStart.x
+    const dy = event.clientY - longPressStart.y
     if (Math.sqrt(dx * dx + dy * dy) > 5) {
-      clearTimeout(longPressTimerRef.current)
+      clearTimeout(longPressTimer)
       setIsLongPressHolding(false)
     }
-  }, [isLongPressHolding])
+  }
 
-  const cancelLongPress = useCallback(() => {
-    clearTimeout(longPressTimerRef.current)
+  function cancelLongPress() {
+    clearTimeout(longPressTimer)
     setIsLongPressHolding(false)
-  }, [])
+  }
 
-  const closeLongPressMenu = useCallback(() => {
-    setLongPressMenu(prev => ({ ...prev, visible: false }))
-  }, [])
+  function closeLongPressMenu() {
+    setLongPressMenu((prev) => ({ ...prev, visible: false }))
+  }
 
-  const importCardsFromJson = useCallback(async (file) => {
+  onCleanup(() => {
+    clearTimeout(longPressTimer)
+    clearTimeout(toastTimer)
+  })
+
+  async function importCardsFromJson(file) {
     try {
       const rawWorkspace = await parseImportedCards(file)
-      
+
       const batchSeed = `${Date.now()}-${Math.floor(Math.random() * 10000)}`
       const newPositions = {}
       const newDrafts = {}
       let totalImported = 0
 
-      const vx = viewport.x / (viewport.scale || 1)
-      const vy = viewport.y / (viewport.scale || 1)
+      const vx = viewportLive.x / (viewportLive.scale || 1)
+      const vy = viewportLive.y / (viewportLive.scale || 1)
 
       const processCard = (card, idx, defaultX, defaultY) => {
         totalImported++
@@ -1698,38 +1722,65 @@ export function useWorkspace(workspaceId, workspaceRef) {
 
       saveSnapshot()
 
-      if (importedColumns.length > 0) setColumns(c => [...c, ...importedColumns])
-      if (importedLabels.length > 0) setCustomLabels(c => [...c, ...importedLabels])
-      if (importedNotes.length > 0) setNotes(c => [...c, ...importedNotes])
-      if (importedSingleNotes.length > 0) setSingleNotes(c => [...c, ...importedSingleNotes])
-      if (importedTimers.length > 0) setTimers(c => [...c, ...importedTimers])
-      if (importedCounters.length > 0) setCounters(c => [...c, ...importedCounters])
-      if (importedStopwatches.length > 0) setStopwatches(c => [...c, ...importedStopwatches])
-      if (importedCalendars.length > 0) setCalendars(c => [...c, ...importedCalendars])
-      if (importedHabits.length > 0) setHabits(c => [...c, ...importedHabits])
-      if (importedPictures.length > 0) setPictures(c => [...c, ...importedPictures])
-      if (importedQuickLinks.length > 0) setQuickLinks(c => [...c, ...importedQuickLinks])
-      if (importedQuotes.length > 0) setQuotes(c => [...c, ...importedQuotes])
+      if (importedColumns.length > 0) setColumns((c) => [...c, ...importedColumns])
+      if (importedLabels.length > 0) setCustomLabels((c) => [...c, ...importedLabels])
+      if (importedNotes.length > 0) setNotes((c) => [...c, ...importedNotes])
+      if (importedSingleNotes.length > 0) setSingleNotes((c) => [...c, ...importedSingleNotes])
+      if (importedTimers.length > 0) setTimers((c) => [...c, ...importedTimers])
+      if (importedCounters.length > 0) setCounters((c) => [...c, ...importedCounters])
+      if (importedStopwatches.length > 0) setStopwatches((c) => [...c, ...importedStopwatches])
+      if (importedCalendars.length > 0) setCalendars((c) => [...c, ...importedCalendars])
+      if (importedHabits.length > 0) setHabits((c) => [...c, ...importedHabits])
+      if (importedPictures.length > 0) setPictures((c) => [...c, ...importedPictures])
+      if (importedQuickLinks.length > 0) setQuickLinks((c) => [...c, ...importedQuickLinks])
+      if (importedQuotes.length > 0) setQuotes((c) => [...c, ...importedQuotes])
 
-      setCardPositions(prev => ({ ...prev, ...newPositions }))
-      setDrafts(prev => ({ ...prev, ...newDrafts }))
+      setCardPositions((prev) => ({ ...prev, ...newPositions }))
+      setUi('drafts', (prev) => ({ ...prev, ...newDrafts }))
 
       showToast(`Successfully imported ${totalImported} card${totalImported === 1 ? '' : 's'}!`)
     } catch (err) {
       showToast(err.message || 'Failed to import cards.')
     }
-  }, [viewport, showToast, saveSnapshot, setColumns, setCustomLabels, setNotes, setSingleNotes, setTimers, setCounters, setStopwatches, setCalendars, setHabits, setPictures, setQuickLinks, setQuotes, setCardPositions, setDrafts])
-
+  }
 
   return {
     state: {
-      columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, themePalette, theme,
-      dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
-      archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
-      longPressMenu, isLongPressHolding, longPressPos
+      get columns() { return columns },
+      get drafts() { return ui.drafts },
+      get viewport() { return ui.viewport },
+      get isPanning() { return isPanning() },
+      get isRailOpen() { return isRailOpen() },
+      get isFocusMode() { return isFocusMode() },
+      get themeMode() { return ui.themeMode },
+      get themePalette() { return ui.themePalette },
+      get theme() { return theme() },
+      get dragState() { return dragState() },
+      get notes() { return notes },
+      get timers() { return timers },
+      get counters() { return counters },
+      get stopwatches() { return stopwatches },
+      get calendars() { return calendars },
+      get habits() { return habits },
+      get pictures() { return pictures },
+      get quickLinks() { return quickLinks },
+      get quotes() { return quotes },
+      get archivedCards() { return ui.archivedCards },
+      get detachedLabels() { return detachedLabels() },
+      get singleNotes() { return singleNotes },
+      get cardPositions() { return ui.cardPositions },
+      get draggingCard() { return draggingCard() },
+      get poppingCardIds() { return poppingCardIds() },
+      get toastMessage() { return toastMessage() },
+      get longPressMenu() { return longPressMenu() },
+      get isLongPressHolding() { return isLongPressHolding() },
+      get longPressPos() { return longPressPos() },
     },
     setters: {
-      setThemeMode, setThemePalette, setIsFocusMode, setIsRailOpen
+      setThemeMode: (mode) => setUi('themeMode', typeof mode === 'function' ? mode(ui.themeMode) : mode),
+      setThemePalette: (palette) => setUi('themePalette', typeof palette === 'function' ? palette(ui.themePalette) : palette),
+      setIsFocusMode,
+      setIsRailOpen,
     },
     actions: {
       setDraft, addItem, updateItemText, updateItemDetails, deleteItem,
@@ -1750,7 +1801,7 @@ export function useWorkspace(workspaceId, workspaceRef) {
       updatePictureTitle, updatePictureColor, togglePictureMinimize, updatePictureImageId, updatePictureDimensions, updatePictureFitMode, updatePictureFontSize, duplicatePictureCard, archivePictureCard, deletePictureCard,
       updateQuickLinksTitle, updateQuickLinksColor, toggleQuickLinksMinimize, addQuickLinkItem, updateQuickLinkItem, removeQuickLinkItem, reorderQuickLinkItems, updateQuickLinksFontSize, duplicateQuickLinksCard, archiveQuickLinksCard, deleteQuickLinksCard,
       updateQuoteTitle, updateQuoteText, updateQuoteAuthor, updateQuoteColor, toggleQuoteMinimize, updateQuoteDimensions, updateQuoteFontSize, duplicateQuoteCard, archiveQuoteCard, deleteQuoteCard, importCardsFromJson,
-      captureSnapshot, setThemePalette
+      captureSnapshot, setThemePalette: (palette) => setUi('themePalette', typeof palette === 'function' ? palette(ui.themePalette) : palette),
     }
   }
 }

@@ -1,1 +1,1 @@
-export { useSyncEngine } from './useSyncEngine.jsx'
+export { createSyncEngine } from './useSyncEngine.jsx'

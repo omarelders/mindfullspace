@@ -1,8 +1,17 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import solidPlugin from 'vite-plugin-solid'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [solidPlugin()],
+  resolve: {
+    alias: {
+      'lucide-solid': fileURLToPath(new URL('./src/utils/icons.js', import.meta.url)),
+    },
+  },
+  optimizeDeps: {
+    include: ['solid-js', 'solid-js/web', 'solid-js/store', '@supabase/supabase-js'],
+  },
   server: {
     port: 3000,
     open: true,
@@ -15,7 +24,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           'supabase-vendor': ['@supabase/supabase-js'],
-          'lucide-icons': ['lucide-react'],
         }
       }
     }
@@ -23,6 +31,13 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/setupTests.js'
+    setupFiles: './src/setupTests.js',
+    deps: {
+      optimizer: {
+        web: {
+          include: []
+        }
+      }
+    }
   }
 })

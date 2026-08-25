@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen } from '@solidjs/testing-library'
 import { ErrorBoundary } from './ErrorBoundary'
 
-function Bomb({ crash }) {
-  if (crash) throw new Error('boom')
+function Bomb(props) {
+  if (props.crash) throw new Error('boom')
   return <div>fine</div>
 }
 
@@ -13,21 +13,21 @@ describe('ErrorBoundary', () => {
   })
 
   it('renders children when nothing throws', () => {
-    render(
+    render(() => (
       <ErrorBoundary>
         <Bomb crash={false} />
       </ErrorBoundary>
-    )
+    ))
     expect(screen.getByText('fine')).toBeInTheDocument()
   })
 
   it('renders the fallback instead of a blank page when a child throws', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    render(
+    render(() => (
       <ErrorBoundary>
         <Bomb crash={true} />
       </ErrorBoundary>
-    )
+    ))
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(screen.getByText(/something went wrong/i)).toBeInTheDocument()
     expect(screen.getByText(/saved locally and was not lost/i)).toBeInTheDocument()

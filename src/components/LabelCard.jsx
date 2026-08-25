@@ -1,51 +1,39 @@
-import { memo } from 'react'
 import { CardContextMenu } from './CardContextMenu'
 
-export const LabelCard = memo(function LabelCard({
-  label,
-  position,
-  labelTextColor,
-  onPointerDown,
-  onUpdateText,
-  onUpdateColor,
-  onUpdateFontSize,
-  onMoveCard,
-  onToggleMinimize,
-  onDuplicateCard,
-  onArchiveCard,
-  onDeleteCard,
-  isPopping,
-  cardId,
-}) {
+export function LabelCard(props) {
   return (
     <div
-      className={`floating-card label-card card-label ${label.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
-      data-card-id={cardId}
+      class={`floating-card label-card card-label ${props.label.minimized ? 'is-minimized' : ''} ${props.isPopping ? 'is-popping' : ''}`}
+      data-card-id={props.cardId}
       style={{
-        left: position?.x,
-        top: position?.y,
-        margin: position ? 0 : undefined,
-        backgroundColor: label.color || undefined,
-        color: labelTextColor,
-        fontSize: label.fontSize ? `${label.fontSize}px` : undefined,
+        left: props.position?.x !== undefined ? `${props.position.x}px` : undefined,
+        top: props.position?.y !== undefined ? `${props.position.y}px` : undefined,
+        margin: props.position ? '0' : undefined,
+        "background-color": props.label.color || undefined,
+        color: props.labelTextColor,
+        "font-size": props.label.fontSize ? `${props.label.fontSize}px` : undefined,
       }}
     >
-      <div className="label-drag-handle" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ flex: 1, cursor: onPointerDown ? 'grab' : 'default', paddingRight: '4px' }}>
-        {label.text}
+      <div
+        class="label-drag-handle"
+        onPointerDown={(e) => props.onPointerDown?.(props.cardId, e)}
+        style={{ flex: '1', cursor: props.onPointerDown ? 'grab' : 'default', "padding-right": '4px' }}
+      >
+        {props.label.text}
       </div>
       <CardContextMenu
-        title={label.text}
-        minimized={Boolean(label.minimized)}
-        fontSize={label.fontSize || 11}
-        onTitleChange={(nextText) => onUpdateText(label.id, nextText)}
-        onColorChange={(color) => onUpdateColor(label.id, color)}
-        onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(label.id, nextSize)}
-        onMove={(targetId) => onMoveCard(label.id, targetId)}
-        onToggleMinimize={() => onToggleMinimize(label.id)}
-        onDuplicate={() => onDuplicateCard(label.id)}
-        onArchive={() => onArchiveCard(label.id)}
-        onDelete={() => onDeleteCard(label.id)}
+        title={props.label.text}
+        minimized={Boolean(props.label.minimized)}
+        fontSize={props.label.fontSize || 11}
+        onTitleChange={(nextText) => props.onUpdateText(props.label.id, nextText)}
+        onColorChange={(color) => props.onUpdateColor(props.label.id, color)}
+        onFontSizeChange={(nextSize) => props.onUpdateFontSize && props.onUpdateFontSize(props.label.id, nextSize)}
+        onMove={(targetId) => props.onMoveCard(props.label.id, targetId)}
+        onToggleMinimize={() => props.onToggleMinimize(props.label.id)}
+        onDuplicate={() => props.onDuplicateCard(props.label.id)}
+        onArchive={() => props.onArchiveCard(props.label.id)}
+        onDelete={() => props.onDeleteCard(props.label.id)}
       />
     </div>
   )
-})
+}

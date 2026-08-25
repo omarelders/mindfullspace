@@ -1,5 +1,5 @@
-import { useState, memo, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Zap, GraduationCap, Code2, BookOpen, Dumbbell, Droplets, Sparkles, Check } from 'lucide-react'
+import { createSignal, createMemo, Show, For, Switch, Match } from 'solid-js'
+import { ChevronLeft, ChevronRight, Zap, GraduationCap, Code2, BookOpen, Dumbbell, Droplets, Sparkles, Check } from 'lucide-solid'
 import { CardContextMenu } from './CardContextMenu'
 import { buildDateKey, formatCalendarMonthLabel } from '../utils/dateUtils'
 import { HABIT_ICON_OPTIONS, HABIT_ICON_EMOJI_FALLBACKS } from '../utils/constants'
@@ -19,61 +19,28 @@ export function normalizeHabitIconId(iconId) {
   return HABIT_ICON_OPTIONS[0].id
 }
 
-export function HabitIcon({ iconId }) {
-  const normalizedIconId = normalizeHabitIconId(iconId)
+export function HabitIcon(props) {
+  const normalizedIconId = () => normalizeHabitIconId(props.iconId)
 
-  switch (normalizedIconId) {
-    case 'running':
-      return <Zap className="habit-icon-svg" aria-hidden="true" />
-    case 'studying':
-      return <GraduationCap className="habit-icon-svg" aria-hidden="true" />
-    case 'coding':
-      return <Code2 className="habit-icon-svg" aria-hidden="true" />
-    case 'reading':
-      return <BookOpen className="habit-icon-svg" aria-hidden="true" />
-    case 'workout':
-      return <Dumbbell className="habit-icon-svg" aria-hidden="true" />
-    case 'hydration':
-      return <Droplets className="habit-icon-svg" aria-hidden="true" />
-    case 'meditation':
-      return <Sparkles className="habit-icon-svg" aria-hidden="true" />
-    default:
-      return <Zap className="habit-icon-svg" aria-hidden="true" />
-  }
+  return (
+    <Switch fallback={<Zap class="habit-icon-svg" aria-hidden="true" />}>
+      <Match when={normalizedIconId() === 'running'}><Zap class="habit-icon-svg" aria-hidden="true" /></Match>
+      <Match when={normalizedIconId() === 'studying'}><GraduationCap class="habit-icon-svg" aria-hidden="true" /></Match>
+      <Match when={normalizedIconId() === 'coding'}><Code2 class="habit-icon-svg" aria-hidden="true" /></Match>
+      <Match when={normalizedIconId() === 'reading'}><BookOpen class="habit-icon-svg" aria-hidden="true" /></Match>
+      <Match when={normalizedIconId() === 'workout'}><Dumbbell class="habit-icon-svg" aria-hidden="true" /></Match>
+      <Match when={normalizedIconId() === 'hydration'}><Droplets class="habit-icon-svg" aria-hidden="true" /></Match>
+      <Match when={normalizedIconId() === 'meditation'}><Sparkles class="habit-icon-svg" aria-hidden="true" /></Match>
+    </Switch>
+  )
 }
 
-export const HabitCard = memo(function HabitCard({
-  habit,
-  position,
-  onPointerDown,
-  onUpdateTitle,
-  onUpdateIcon,
-  onUpdateColor,
-  onUpdateFontSize,
-  onMoveCard,
-  onToggleMinimize,
-  onDuplicateCard,
-  onArchiveCard,
-  onDeleteCard,
-  onSetView,
-  onChangeMonth,
-  onToggleDate,
-  isPopping,
-  cardId,
-}) {
-  const customStyle = habit.fontSize ? { fontSize: `${habit.fontSize}px` } : undefined
+export function HabitCard(props) {
+  const customStyle = () => props.habit.fontSize ? { "font-size": `${props.habit.fontSize}px` } : undefined
   const weekdayLabels = WEEKDAY_LABELS
 
-  const {
-    firstWeekday,
-    daysInMonth,
-    todayStart,
-    todayKey,
-    isViewingCurrentMonth,
-    doneInViewedMonth,
-    missingInViewedMonth,
-    doneInCurrentMonth,
-  } = useMemo(() => {
+  const stats = createMemo(() => {
+    const habit = props.habit
     const firstDayOfMonth = new Date(habit.year, habit.month, 1)
     const fWeekday = (firstDayOfMonth.getDay() + 6) % 7
     const dInMonth = new Date(habit.year, habit.month + 1, 0).getDate()
@@ -121,26 +88,26 @@ export const HabitCard = memo(function HabitCard({
       missingInViewedMonth: missingViewed,
       doneInCurrentMonth: doneCurrent,
     }
-  }, [habit.year, habit.month, habit.completions])
+  })
 
-  const todayIsDone = Boolean(habit.completions?.[todayKey])
-  const hasHabitTitle = Boolean((habit.title || '').trim())
-  const selectedIconId = normalizeHabitIconId(habit.icon)
-  const selectedIconIndex = HABIT_ICON_OPTIONS.findIndex((option) => option.id === selectedIconId)
-  const [editingName, setEditingName] = useState(false)
-  const [editingNameValue, setEditingNameValue] = useState('')
+  const todayIsDone = () => Boolean(props.habit.completions?.[stats().todayKey])
+  const hasHabitTitle = () => Boolean((props.habit.title || '').trim())
+  const selectedIconId = () => normalizeHabitIconId(props.habit.icon)
+  const selectedIconIndex = () => HABIT_ICON_OPTIONS.findIndex((option) => option.id === selectedIconId())
+  const [editingName, setEditingName] = createSignal(false)
+  const [editingNameValue, setEditingNameValue] = createSignal('')
 
   const handleToggleDate = (dateKey) => {
-    const isDone = Boolean(habit.completions?.[dateKey])
+    const isDone = Boolean(props.habit.completions?.[dateKey])
     if (!isDone) {
       playTaskCompleteSound()
     }
-    if (onToggleDate) onToggleDate(habit.id, dateKey)
+    if (props.onToggleDate) props.onToggleDate(props.habit.id, dateKey)
   }
 
   const startEditingName = () => {
     setEditingName(true)
-    setEditingNameValue(habit.title || '')
+    setEditingNameValue(props.habit.title || '')
   }
 
   const cancelEditingName = () => {
@@ -149,14 +116,14 @@ export const HabitCard = memo(function HabitCard({
   }
 
   const commitEditingName = () => {
-    const nextTitle = editingNameValue.trim()
+    const nextTitle = editingNameValue().trim()
     if (!nextTitle) {
       cancelEditingName()
       return
     }
 
-    if (nextTitle !== (habit.title || '')) {
-      onUpdateTitle(habit.id, nextTitle)
+    if (nextTitle !== (props.habit.title || '')) {
+      props.onUpdateTitle(props.habit.id, nextTitle)
     }
 
     cancelEditingName()
@@ -168,196 +135,202 @@ export const HabitCard = memo(function HabitCard({
       return
     }
 
-    const startIndex = selectedIconIndex >= 0 ? selectedIconIndex : 0
+    const startIndex = selectedIconIndex() >= 0 ? selectedIconIndex() : 0
     const nextIndex = (startIndex + direction + totalOptions) % totalOptions
-    onUpdateIcon(habit.id, HABIT_ICON_OPTIONS[nextIndex].id)
+    props.onUpdateIcon(props.habit.id, HABIT_ICON_OPTIONS[nextIndex].id)
   }
 
   return (
     <section
-      data-card-id={cardId}
-      className={`floating-card habit-card card-habit ${habit.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''}`}
+      data-card-id={props.cardId}
+      class={`floating-card habit-card card-habit ${props.habit.minimized ? 'is-minimized' : ''} ${props.isPopping ? 'is-popping' : ''}`}
       style={{
-        left: position?.x,
-        top: position?.y,
-        margin: position ? 0 : undefined,
-        backgroundColor: habit.color || undefined,
+        left: props.position?.x !== undefined ? `${props.position.x}px` : undefined,
+        top: props.position?.y !== undefined ? `${props.position.y}px` : undefined,
+        margin: props.position ? '0' : undefined,
+        "background-color": props.habit.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
-        <span className="card-title">{habit.title || 'Habit'}</span>
+      <header class="card-header" onPointerDown={(e) => props.onPointerDown?.(props.cardId, e)} style={{ cursor: props.onPointerDown ? 'grab' : 'default' }}>
+        <span class="card-title">{props.habit.title || 'Habit'}</span>
         <CardContextMenu
-          title={habit.title || 'Habit'}
-          minimized={Boolean(habit.minimized)}
-          fontSize={habit.fontSize || 42}
-          onTitleChange={(nextTitle) => onUpdateTitle(habit.id, nextTitle)}
-          onColorChange={(color) => onUpdateColor(habit.id, color)}
-          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(habit.id, nextSize)}
-          onMove={(targetId) => onMoveCard(habit.id, targetId)}
-          onToggleMinimize={() => onToggleMinimize(habit.id)}
-          onDuplicate={() => onDuplicateCard(habit.id)}
-          onArchive={() => onArchiveCard(habit.id)}
-          onDelete={() => onDeleteCard(habit.id)}
+          title={props.habit.title || 'Habit'}
+          minimized={Boolean(props.habit.minimized)}
+          fontSize={props.habit.fontSize || 42}
+          onTitleChange={(nextTitle) => props.onUpdateTitle(props.habit.id, nextTitle)}
+          onColorChange={(color) => props.onUpdateColor(props.habit.id, color)}
+          onFontSizeChange={(nextSize) => props.onUpdateFontSize && props.onUpdateFontSize(props.habit.id, nextSize)}
+          onMove={(targetId) => props.onMoveCard(props.habit.id, targetId)}
+          onToggleMinimize={() => props.onToggleMinimize(props.habit.id)}
+          onDuplicate={() => props.onDuplicateCard(props.habit.id)}
+          onArchive={() => props.onArchiveCard(props.habit.id)}
+          onDelete={() => props.onDeleteCard(props.habit.id)}
         />
       </header>
 
-      {!habit.minimized && (
-        <div className="habit-body">
-          {habit.view === 'calendar' ? (
-            <div className="habit-calendar-view">
-              <div className="habit-calendar-toolbar">
+      <Show when={!props.habit.minimized}>
+        <div class="habit-body">
+          <Show
+            when={props.habit.view === 'calendar'}
+            fallback={
+              <div class="habit-summary-view">
+                <div class="habit-icon-switcher">
+                  <button
+                    type="button"
+                    class="habit-icon-nav"
+                    onClick={() => cycleHabitIcon(-1)}
+                    aria-label="previous habit icon"
+                  >
+                    <ChevronLeft aria-hidden="true" />
+                  </button>
+
+                  <div class="habit-icon-circle" aria-hidden="true">
+                    <HabitIcon iconId={selectedIconId()} />
+                  </div>
+
+                  <button
+                    type="button"
+                    class="habit-icon-nav"
+                    onClick={() => cycleHabitIcon(1)}
+                    aria-label="next habit icon"
+                  >
+                    <ChevronRight aria-hidden="true" />
+                  </button>
+                </div>
+
+                <div class="habit-title-row">
+                  <Show
+                    when={editingName()}
+                    fallback={
+                      <button
+                        type="button"
+                        class={`habit-name habit-name-btn ${hasHabitTitle() ? 'is-custom' : ''}`}
+                        style={customStyle()}
+                        onClick={startEditingName}
+                        aria-label="edit habit name"
+                      >
+                        {props.habit.title || 'Habit...'}
+                      </button>
+                    }
+                  >
+                    <input
+                      type="text"
+                      class="habit-name-edit"
+                      style={customStyle()}
+                      value={editingNameValue()}
+                      onInput={(event) => setEditingNameValue(event.currentTarget.value)}
+                      onBlur={commitEditingName}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          commitEditingName()
+                        }
+
+                        if (event.key === 'Escape') {
+                          cancelEditingName()
+                        }
+                      }}
+                    />
+                  </Show>
+
+                  <button
+                    type="button"
+                    class="habit-open-calendar"
+                    aria-label="open habit calendar"
+                    onClick={() => props.onSetView(props.habit.id, 'calendar')}
+                  >
+                    <ChevronRight aria-hidden="true" />
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  className="habit-back-btn"
+                  class={`habit-check-btn ${todayIsDone() ? 'is-done' : ''}`}
+                  onClick={() => handleToggleDate(stats().todayKey)}
+                  aria-label="toggle today habit done"
+                >
+                  <Check aria-hidden="true" />
+                </button>
+
+                <div class="habit-done-text">{stats().doneInCurrentMonth} x done</div>
+              </div>
+            }
+          >
+            <div class="habit-calendar-view">
+              <div class="habit-calendar-toolbar">
+                <button
+                  type="button"
+                  class="habit-back-btn"
                   aria-label="back to habit"
-                  onClick={() => onSetView(habit.id, 'summary')}
+                  onClick={() => props.onSetView(props.habit.id, 'summary')}
                 >
                   <ChevronLeft aria-hidden="true" />
                 </button>
 
-                <div className="habit-month-nav">
+                <div class="habit-month-nav">
                   <button
                     type="button"
-                    className="habit-nav-btn"
+                    class="habit-nav-btn"
                     aria-label="previous month"
-                    onClick={() => onChangeMonth(habit.id, -1)}
+                    onClick={() => props.onChangeMonth(props.habit.id, -1)}
                   >
                     <ChevronLeft aria-hidden="true" />
                   </button>
-                  <h4 className="habit-month-label">{formatCalendarMonthLabel(habit.year, habit.month)}</h4>
+                  <h4 class="habit-month-label">{formatCalendarMonthLabel(props.habit.year, props.habit.month)}</h4>
                   <button
                     type="button"
-                    className="habit-nav-btn"
+                    class="habit-nav-btn"
                     aria-label="next month"
-                    onClick={() => onChangeMonth(habit.id, 1)}
+                    onClick={() => props.onChangeMonth(props.habit.id, 1)}
                   >
                     <ChevronRight aria-hidden="true" />
                   </button>
                 </div>
               </div>
 
-              <div className="habit-weekdays">
-                {weekdayLabels.map((label) => (
-                  <span key={label}>{label}</span>
-                ))}
+              <div class="habit-weekdays">
+                <For each={weekdayLabels}>
+                  {(label) => <span>{label}</span>}
+                </For>
               </div>
 
-              <div className="habit-days-grid">
-                {Array.from({ length: firstWeekday }).map((_, index) => (
-                  <span key={`habit-blank-${index}`} className="habit-day habit-day-empty" />
-                ))}
-                {Array.from({ length: daysInMonth }).map((_, index) => {
-                  const dayNumber = index + 1
-                  const dateKey = buildDateKey(habit.year, habit.month, dayNumber)
-                  const isDone = Boolean(habit.completions?.[dateKey])
-                  const dayStart = new Date(habit.year, habit.month, dayNumber)
-                  const isToday = dayStart.getTime() === todayStart.getTime()
-                  const isMissed = isViewingCurrentMonth && dayStart < todayStart && !isDone
-                  const isFuture = dayStart > todayStart
-                  const canToggle = dayStart <= todayStart
+              <div class="habit-days-grid">
+                <For each={Array.from({ length: stats().firstWeekday })}>
+                  {() => <span class="habit-day habit-day-empty" />}
+                </For>
+                <For each={Array.from({ length: stats().daysInMonth })}>
+                  {(_, index) => {
+                    const dayNumber = index() + 1
+                    const dateKey = buildDateKey(props.habit.year, props.habit.month, dayNumber)
+                    const isDone = Boolean(props.habit.completions?.[dateKey])
+                    const dayStart = new Date(props.habit.year, props.habit.month, dayNumber)
+                    const isToday = dayStart.getTime() === stats().todayStart.getTime()
+                    const isMissed = stats().isViewingCurrentMonth && dayStart < stats().todayStart && !isDone
+                    const isFuture = dayStart > stats().todayStart
+                    const canToggle = dayStart <= stats().todayStart
 
-                  return (
-                    <button
-                      key={dateKey}
-                      type="button"
-                      className={`habit-day ${isDone ? 'is-done' : ''} ${isMissed ? 'is-missed' : ''} ${isFuture ? 'is-future' : ''} ${isToday ? 'is-today' : ''}`}
-                      onClick={() => handleToggleDate(dateKey)}
-                      disabled={!canToggle}
-                      aria-label={`toggle habit for day ${dayNumber}`}
-                    >
-                      {dayNumber}
-                    </button>
-                  )
-                })}
+                    return (
+                      <button
+                        type="button"
+                        class={`habit-day ${isDone ? 'is-done' : ''} ${isMissed ? 'is-missed' : ''} ${isFuture ? 'is-future' : ''} ${isToday ? 'is-today' : ''}`}
+                        onClick={() => handleToggleDate(dateKey)}
+                        disabled={!canToggle}
+                        aria-label={`toggle habit for day ${dayNumber}`}
+                      >
+                        {dayNumber}
+                      </button>
+                    )
+                  }}
+                </For>
               </div>
 
-              <div className="habit-calendar-stats">
-                <span>{doneInViewedMonth} done</span>
-                <span>{missingInViewedMonth} missing</span>
+              <div class="habit-calendar-stats">
+                <span>{stats().doneInViewedMonth} done</span>
+                <span>{stats().missingInViewedMonth} missing</span>
               </div>
             </div>
-          ) : (
-            <div className="habit-summary-view">
-              <div className="habit-icon-switcher">
-                <button
-                  type="button"
-                  className="habit-icon-nav"
-                  onClick={() => cycleHabitIcon(-1)}
-                  aria-label="previous habit icon"
-                >
-                  <ChevronLeft aria-hidden="true" />
-                </button>
-
-                <div className="habit-icon-circle" aria-hidden="true">
-                  <HabitIcon iconId={selectedIconId} />
-                </div>
-
-                <button
-                  type="button"
-                  className="habit-icon-nav"
-                  onClick={() => cycleHabitIcon(1)}
-                  aria-label="next habit icon"
-                >
-                  <ChevronRight aria-hidden="true" />
-                </button>
-              </div>
-
-              <div className="habit-title-row">
-                {editingName ? (
-                  <input
-                    type="text"
-                    className="habit-name-edit"
-                    style={customStyle}
-                    value={editingNameValue}
-                    onChange={(event) => setEditingNameValue(event.target.value)}
-                    onBlur={commitEditingName}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        commitEditingName()
-                      }
-
-                      if (event.key === 'Escape') {
-                        cancelEditingName()
-                      }
-                    }}
-                    autoFocus
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    className={`habit-name habit-name-btn ${hasHabitTitle ? 'is-custom' : ''}`}
-                    style={customStyle}
-                    onClick={startEditingName}
-                    aria-label="edit habit name"
-                  >
-                    {habit.title || 'Habit...'}
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  className="habit-open-calendar"
-                  aria-label="open habit calendar"
-                  onClick={() => onSetView(habit.id, 'calendar')}
-                >
-                  <ChevronRight aria-hidden="true" />
-                </button>
-              </div>
-
-              <button
-                type="button"
-                className={`habit-check-btn ${todayIsDone ? 'is-done' : ''}`}
-                onClick={() => handleToggleDate(todayKey)}
-                aria-label="toggle today habit done"
-              >
-                <Check aria-hidden="true" />
-              </button>
-
-              <div className="habit-done-text">{doneInCurrentMonth} x done</div>
-            </div>
-          )}
+          </Show>
         </div>
-      )}
+      </Show>
     </section>
   )
-})
+}

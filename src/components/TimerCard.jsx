@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, memo } from 'react'
-import { Play, Pause, Pencil, RotateCcw } from 'lucide-react'
+import { createSignal, createEffect, onCleanup, Show } from 'solid-js'
+import { Play, Pause, Pencil, RotateCcw } from 'lucide-solid'
 import { CardContextMenu } from './CardContextMenu'
 import { formatSecondsToTimer, parseTimerValue } from '../utils/dateUtils'
 import { playBeep, fireNotification } from '../utils/audio'
@@ -10,123 +10,111 @@ const POMODORO_STAGES = {
   'long-break': { label: '🛌 Long Break', next: 'work', freq: 440 },
 }
 
-export const TimerCard = memo(function TimerCard({
-  timer,
-  position,
-  onPointerDown,
-  onUpdateTitle,
-  onUpdateColor,
-  onUpdateTimerState,
-  onUpdateFontSize,
-  onMoveCard,
-  onToggleMinimize,
-  onDuplicateCard,
-  onArchiveCard,
-  onDeleteCard,
-  isPopping,
-  cardId,
-}) {
-  const customStyle = timer.fontSize ? { fontSize: `${timer.fontSize}px` } : undefined
-  const initialSeconds = Number.isFinite(timer.initialSeconds) ? timer.initialSeconds : 2700
-  const persistedSeconds = Number.isFinite(timer.remainingSeconds) ? timer.remainingSeconds : initialSeconds
-  const isRunning = Boolean(timer.isRunning)
-  const endTime = timer.endTime || null
+export function TimerCard(props) {
+  const customStyle = () => props.timer.fontSize ? { "font-size": `${props.timer.fontSize}px` } : undefined
+  const initialSeconds = () => Number.isFinite(props.timer.initialSeconds) ? props.timer.initialSeconds : 2700
+  const persistedSeconds = () => Number.isFinite(props.timer.remainingSeconds) ? props.timer.remainingSeconds : initialSeconds()
+  const isRunning = () => Boolean(props.timer.isRunning)
+  const endTime = () => props.timer.endTime || null
 
   const getSecondsLeft = () => {
-    if (!isRunning || !endTime) return persistedSeconds
-    const left = Math.floor((endTime - Date.now()) / 1000)
+    if (!isRunning() || !endTime()) return persistedSeconds()
+    const left = Math.floor((endTime() - Date.now()) / 1000)
     return Math.max(0, left)
   }
 
-  const [secondsLeft, setSecondsLeft] = useState(getSecondsLeft())
-  const [isEditing, setIsEditing] = useState(false)
-  const [editValue, setEditValue] = useState('')
+  const [secondsLeft, setSecondsLeft] = createSignal(getSecondsLeft())
+  const [isEditing, setIsEditing] = createSignal(false)
+  const [editValue, setEditValue] = createSignal('')
 
-  const isPomodoroMode = Boolean(timer.isPomodoroMode)
-  const pomodoroWork = timer.pomodoroWork || 25 * 60
-  const pomodoroShortBreak = timer.pomodoroShortBreak || 5 * 60
-  const pomodoroLongBreak = timer.pomodoroLongBreak || 15 * 60
-  const pomodoroStage = timer.pomodoroStage || 'work'
-  const pomodoroRound = timer.pomodoroRound || 1
+  const isPomodoroMode = () => Boolean(props.timer.isPomodoroMode)
+  const pomodoroWork = () => props.timer.pomodoroWork || 25 * 60
+  const pomodoroShortBreak = () => props.timer.pomodoroShortBreak || 5 * 60
+  const pomodoroLongBreak = () => props.timer.pomodoroLongBreak || 15 * 60
+  const pomodoroStage = () => props.timer.pomodoroStage || 'work'
+  const pomodoroRound = () => props.timer.pomodoroRound || 1
 
-  const [showPomodoroConfig, setShowPomodoroConfig] = useState(false)
-  const [configDraft, setConfigDraft] = useState({
-    work: Math.floor(pomodoroWork / 60),
-    shortBreak: Math.floor(pomodoroShortBreak / 60),
-    longBreak: Math.floor(pomodoroLongBreak / 60),
+  const [showPomodoroConfig, setShowPomodoroConfig] = createSignal(false)
+  const [configDraft, setConfigDraft] = createSignal({
+    work: Math.floor(pomodoroWork() / 60),
+    shortBreak: Math.floor(pomodoroShortBreak() / 60),
+    longBreak: Math.floor(pomodoroLongBreak() / 60),
   })
 
   // Keep the config draft in sync when the stored pomodoro values change
   // externally (undo, import, cross-tab sync).
-  useEffect(() => {
+  createEffect(() => {
+    const work = pomodoroWork()
+    const shortBreak = pomodoroShortBreak()
+    const longBreak = pomodoroLongBreak()
     setConfigDraft({
-      work: Math.floor(pomodoroWork / 60),
-      shortBreak: Math.floor(pomodoroShortBreak / 60),
-      longBreak: Math.floor(pomodoroLongBreak / 60),
+      work: Math.floor(work / 60),
+      shortBreak: Math.floor(shortBreak / 60),
+      longBreak: Math.floor(longBreak / 60),
     })
-  }, [pomodoroWork, pomodoroShortBreak, pomodoroLongBreak])
+  })
 
-  // Sync initial render and external updates when paused
-  useEffect(() => {
-    if (!isRunning) {
-      setSecondsLeft(persistedSeconds)
+  // Sync display when paused / external updates arrive
+  createEffect(() => {
+    if (!isRunning()) {
+      setSecondsLeft(persistedSeconds())
     }
-  }, [persistedSeconds, isRunning])
+  })
 
-  const hasFinishedRef = useRef(false)
+  let hasFinished = false
 
-  // Animation loop updating display only when visible second changes
-  useEffect(() => {
-    if (!isRunning || !endTime) return undefined
+  // Animation loop updating display only when visible second changes.
+  // onCleanup inside createEffect clears the interval on re-evaluation AND disposal.
+  createEffect(() => {
+    if (!isRunning() || !endTime()) return
 
     // Reset notification trigger if timer is started
     if (getSecondsLeft() > 0) {
-      hasFinishedRef.current = false
+      hasFinished = false
     }
-
 
     const tick = () => {
       const left = getSecondsLeft()
       setSecondsLeft((prev) => (prev !== left ? left : prev))
 
       // Timer has hit zero — fire once
-      if (left <= 0 && !hasFinishedRef.current) {
-        hasFinishedRef.current = true
+      if (left <= 0 && !hasFinished) {
+        hasFinished = true
 
-        const stage = pomodoroStage
-        const isPomodoro = isPomodoroMode
+        const stage = pomodoroStage()
+        const isPomodoro = isPomodoroMode()
         playBeep(isPomodoro ? POMODORO_STAGES[stage]?.freq || 880 : 880, 1.5)
         fireNotification(
-          timer.title || (isPomodoro ? POMODORO_STAGES[stage]?.label : 'Timer'),
+          props.timer.title || (isPomodoro ? POMODORO_STAGES[stage]?.label : 'Timer'),
           'Time is up!'
         )
 
         if (!isPomodoro) {
-          if (onUpdateTimerState) {
-            onUpdateTimerState(timer.id, { isRunning: false, remainingSeconds: 0, endTime: null })
+          if (props.onUpdateTimerState) {
+            props.onUpdateTimerState(props.timer.id, { isRunning: false, remainingSeconds: 0, endTime: null })
           }
         } else {
            // auto transition logic
-           let nextStage = POMODORO_STAGES[pomodoroStage]?.next || 'work'
-           let nextRound = pomodoroRound
+           let nextStage = POMODORO_STAGES[stage]?.next || 'work'
+           let nextRound = pomodoroRound()
 
-           if (pomodoroStage === 'work') {
-             nextStage = pomodoroRound >= 4 ? 'long-break' : 'short-break'
-           } else if (pomodoroStage === 'long-break') {
+           if (stage === 'work') {
+             nextStage = nextRound >= 4 ? 'long-break' : 'short-break'
+           } else if (stage === 'long-break') {
              nextStage = 'work'
              nextRound = 1
-           } else if (pomodoroStage === 'short-break') {
+           } else if (stage === 'short-break') {
              nextStage = 'work'
-             nextRound = pomodoroRound + 1
+             nextRound = nextRound + 1
            }
 
            const nextDuration =
-             nextStage === 'work' ? pomodoroWork :
-             nextStage === 'short-break' ? pomodoroShortBreak :
-             pomodoroLongBreak
+             nextStage === 'work' ? pomodoroWork() :
+             nextStage === 'short-break' ? pomodoroShortBreak() :
+             pomodoroLongBreak()
 
-           if (onUpdateTimerState) {
-             onUpdateTimerState(timer.id, {
+           if (props.onUpdateTimerState) {
+             props.onUpdateTimerState(props.timer.id, {
                isRunning: false,
                remainingSeconds: nextDuration,
                initialSeconds: nextDuration,
@@ -141,75 +129,75 @@ export const TimerCard = memo(function TimerCard({
 
     tick()
     const intervalId = setInterval(tick, 200)
-    return () => clearInterval(intervalId)
-  }, [isRunning, endTime, isPomodoroMode, pomodoroStage, pomodoroRound, pomodoroWork, pomodoroShortBreak, pomodoroLongBreak, timer.id, timer.title, onUpdateTimerState])
+    onCleanup(() => clearInterval(intervalId))
+  })
 
   const toggleRunning = () => {
-    if (secondsLeft <= 0 && !isRunning) return // don't start at 0 unless pomodoro resets
-    if (!onUpdateTimerState) return
+    if (secondsLeft() <= 0 && !isRunning()) return // don't start at 0 unless pomodoro resets
+    if (!props.onUpdateTimerState) return
 
-    if (isRunning) {
+    if (isRunning()) {
       // Pause
-      onUpdateTimerState(timer.id, {
+      props.onUpdateTimerState(props.timer.id, {
         isRunning: false,
-        remainingSeconds: secondsLeft,
+        remainingSeconds: secondsLeft(),
         endTime: null,
       })
     } else {
       // Start
-      onUpdateTimerState(timer.id, {
+      props.onUpdateTimerState(props.timer.id, {
         isRunning: true,
-        endTime: Date.now() + secondsLeft * 1000,
+        endTime: Date.now() + secondsLeft() * 1000,
       })
     }
   }
 
   const resetTimer = () => {
-    if (!onUpdateTimerState) return
+    if (!props.onUpdateTimerState) return
 
-    if (isPomodoroMode) {
-      onUpdateTimerState(timer.id, {
+    if (isPomodoroMode()) {
+      props.onUpdateTimerState(props.timer.id, {
         isRunning: false,
-        remainingSeconds: pomodoroWork,
-        initialSeconds: pomodoroWork,
+        remainingSeconds: pomodoroWork(),
+        initialSeconds: pomodoroWork(),
         endTime: null,
         pomodoroStage: 'work',
         pomodoroRound: 1,
       })
     } else {
-      onUpdateTimerState(timer.id, {
+      props.onUpdateTimerState(props.timer.id, {
         isRunning: false,
-        remainingSeconds: initialSeconds,
+        remainingSeconds: initialSeconds(),
         endTime: null,
       })
     }
   }
 
   const startEditing = () => {
-    if (isRunning && onUpdateTimerState) {
-       onUpdateTimerState(timer.id, { isRunning: false, remainingSeconds: secondsLeft, endTime: null })
+    if (isRunning() && props.onUpdateTimerState) {
+       props.onUpdateTimerState(props.timer.id, { isRunning: false, remainingSeconds: secondsLeft(), endTime: null })
     }
-    setEditValue(formatSecondsToTimer(secondsLeft))
+    setEditValue(formatSecondsToTimer(secondsLeft()))
     setIsEditing(true)
   }
 
   const cancelEditing = () => { setIsEditing(false) }
 
   const commitEditing = () => {
-    const rawValue = editValue.trim()
+    const rawValue = editValue().trim()
     if (!rawValue) { cancelEditing(); return }
     const parsed = parseTimerValue(rawValue)
     if (parsed === null) { cancelEditing(); return }
     setIsEditing(false)
-    if (onUpdateTimerState) {
-       onUpdateTimerState(timer.id, { isRunning: false, remainingSeconds: parsed, initialSeconds: parsed, endTime: null })
+    if (props.onUpdateTimerState) {
+       props.onUpdateTimerState(props.timer.id, { isRunning: false, remainingSeconds: parsed, initialSeconds: parsed, endTime: null })
     }
   }
 
   const togglePomodoroMode = () => {
-    const nextMode = !isPomodoroMode
-    if (onUpdateTimerState) {
-      onUpdateTimerState(timer.id, {
+    const nextMode = !isPomodoroMode()
+    if (props.onUpdateTimerState) {
+      props.onUpdateTimerState(props.timer.id, {
         isPomodoroMode: nextMode,
         isRunning: false,
         endTime: null,
@@ -221,11 +209,11 @@ export const TimerCard = memo(function TimerCard({
   }
 
   const commitPomodoroConfig = () => {
-    const workSec = Math.max(1, (Number(configDraft.work) || 25)) * 60
-    const shortSec = Math.max(1, (Number(configDraft.shortBreak) || 5)) * 60
-    const longSec = Math.max(1, (Number(configDraft.longBreak) || 15)) * 60
-    if (onUpdateTimerState) {
-      onUpdateTimerState(timer.id, {
+    const workSec = Math.max(1, (Number(configDraft().work) || 25)) * 60
+    const shortSec = Math.max(1, (Number(configDraft().shortBreak) || 5)) * 60
+    const longSec = Math.max(1, (Number(configDraft().longBreak) || 15)) * 60
+    if (props.onUpdateTimerState) {
+      props.onUpdateTimerState(props.timer.id, {
         pomodoroWork: workSec,
         pomodoroShortBreak: shortSec,
         pomodoroLongBreak: longSec,
@@ -238,160 +226,163 @@ export const TimerCard = memo(function TimerCard({
     setShowPomodoroConfig(false)
   }
 
-  const stageLabel = POMODORO_STAGES[pomodoroStage]?.label || '🍅 Work'
+  const stageLabel = () => POMODORO_STAGES[pomodoroStage()]?.label || '🍅 Work'
+  const updateConfigField = (field) => (e) => setConfigDraft((d) => ({ ...d, [field]: e.currentTarget.value }))
 
   return (
     <section
-      data-card-id={cardId}
-      className={`floating-card timer-card card-timer ${timer.minimized ? 'is-minimized' : ''} ${isPopping ? 'is-popping' : ''} ${isPomodoroMode ? 'pomodoro-active' : ''}`}
+      data-card-id={props.cardId}
+      class={`floating-card timer-card card-timer ${props.timer.minimized ? 'is-minimized' : ''} ${props.isPopping ? 'is-popping' : ''} ${isPomodoroMode() ? 'pomodoro-active' : ''}`}
       style={{
-        left: position?.x,
-        top: position?.y,
-        margin: position ? 0 : undefined,
-        backgroundColor: timer.color || undefined,
+        left: props.position?.x !== undefined ? `${props.position.x}px` : undefined,
+        top: props.position?.y !== undefined ? `${props.position.y}px` : undefined,
+        margin: props.position ? '0' : undefined,
+        "background-color": props.timer.color || undefined,
       }}
     >
-      <header className="card-header" onPointerDown={(e) => onPointerDown(cardId, e)} style={{ cursor: onPointerDown ? 'grab' : 'default' }}>
-        <span className="card-title">{timer.title}</span>
+      <header class="card-header" onPointerDown={(e) => props.onPointerDown?.(props.cardId, e)} style={{ cursor: props.onPointerDown ? 'grab' : 'default' }}>
+        <span class="card-title">{props.timer.title}</span>
         <button
           type="button"
-          className={`pomodoro-toggle-btn ${isPomodoroMode ? 'is-active' : ''}`}
+          class={`pomodoro-toggle-btn ${isPomodoroMode() ? 'is-active' : ''}`}
           onClick={(e) => { e.stopPropagation(); togglePomodoroMode() }}
           onPointerDown={(e) => e.stopPropagation()}
-          aria-label={isPomodoroMode ? 'Disable Pomodoro mode' : 'Enable Pomodoro mode'}
-          title={isPomodoroMode ? 'Disable Pomodoro' : 'Enable Pomodoro'}
+          aria-label={isPomodoroMode() ? 'Disable Pomodoro mode' : 'Enable Pomodoro mode'}
+          title={isPomodoroMode() ? 'Disable Pomodoro' : 'Enable Pomodoro'}
         >
           🍅
         </button>
         <CardContextMenu
-          title={timer.title}
-          minimized={Boolean(timer.minimized)}
-          fontSize={timer.fontSize || 38}
-          onTitleChange={(nextTitle) => onUpdateTitle(timer.id, nextTitle)}
-          onColorChange={(color) => onUpdateColor(timer.id, color)}
-          onFontSizeChange={(nextSize) => onUpdateFontSize && onUpdateFontSize(timer.id, nextSize)}
-          onMove={(targetId) => onMoveCard(timer.id, targetId)}
-          onToggleMinimize={() => onToggleMinimize(timer.id)}
-          onDuplicate={() => onDuplicateCard(timer.id)}
-          onArchive={() => onArchiveCard(timer.id)}
-          onDelete={() => onDeleteCard(timer.id)}
+          title={props.timer.title}
+          minimized={Boolean(props.timer.minimized)}
+          fontSize={props.timer.fontSize || 38}
+          onTitleChange={(nextTitle) => props.onUpdateTitle(props.timer.id, nextTitle)}
+          onColorChange={(color) => props.onUpdateColor(props.timer.id, color)}
+          onFontSizeChange={(nextSize) => props.onUpdateFontSize && props.onUpdateFontSize(props.timer.id, nextSize)}
+          onMove={(targetId) => props.onMoveCard(props.timer.id, targetId)}
+          onToggleMinimize={() => props.onToggleMinimize(props.timer.id)}
+          onDuplicate={() => props.onDuplicateCard(props.timer.id)}
+          onArchive={() => props.onArchiveCard(props.timer.id)}
+          onDelete={() => props.onDeleteCard(props.timer.id)}
         />
       </header>
 
-      {!timer.minimized && (
-        <div className="timer-panel">
+      <Show when={!props.timer.minimized}>
+        <div class="timer-panel">
           {/* Pomodoro stage indicator */}
-          {isPomodoroMode && (
-            <div className="pomodoro-stage-bar">
-              <span className="pomodoro-stage-label">{stageLabel}</span>
-              <span className="pomodoro-round-badge">Round {Math.min(pomodoroRound, 4)}/4</span>
+          <Show when={isPomodoroMode()}>
+            <div class="pomodoro-stage-bar">
+              <span class="pomodoro-stage-label">{stageLabel()}</span>
+              <span class="pomodoro-round-badge">Round {Math.min(pomodoroRound(), 4)}/4</span>
               <button
                 type="button"
-                className="pomodoro-config-btn"
+                class="pomodoro-config-btn"
                 onClick={() => setShowPomodoroConfig((v) => !v)}
                 aria-label="Configure Pomodoro"
               >
                 ⚙
               </button>
             </div>
-          )}
+          </Show>
 
           {/* Pomodoro config panel */}
-          {isPomodoroMode && showPomodoroConfig && (
-            <div className="pomodoro-config-panel">
-              <label className="pomodoro-config-row">
+          <Show when={isPomodoroMode() && showPomodoroConfig()}>
+            <div class="pomodoro-config-panel">
+              <label class="pomodoro-config-row">
                 <span>Work (min)</span>
                 <input
                   type="number"
-                  className="pomodoro-config-input"
+                  class="pomodoro-config-input"
                   min={1}
                   max={120}
-                  value={configDraft.work}
-                  onChange={(e) => setConfigDraft((d) => ({ ...d, work: e.target.value }))}
+                  value={configDraft().work}
+                  onInput={updateConfigField('work')}
                 />
               </label>
-              <label className="pomodoro-config-row">
+              <label class="pomodoro-config-row">
                 <span>Short break (min)</span>
                 <input
                   type="number"
-                  className="pomodoro-config-input"
+                  class="pomodoro-config-input"
                   min={1}
                   max={60}
-                  value={configDraft.shortBreak}
-                  onChange={(e) => setConfigDraft((d) => ({ ...d, shortBreak: e.target.value }))}
+                  value={configDraft().shortBreak}
+                  onInput={updateConfigField('shortBreak')}
                 />
               </label>
-              <label className="pomodoro-config-row">
+              <label class="pomodoro-config-row">
                 <span>Long break (min)</span>
                 <input
                   type="number"
-                  className="pomodoro-config-input"
+                  class="pomodoro-config-input"
                   min={1}
                   max={120}
-                  value={configDraft.longBreak}
-                  onChange={(e) => setConfigDraft((d) => ({ ...d, longBreak: e.target.value }))}
+                  value={configDraft().longBreak}
+                  onInput={updateConfigField('longBreak')}
                 />
               </label>
-              <button type="button" className="pomodoro-apply-btn" onClick={commitPomodoroConfig}>
+              <button type="button" class="pomodoro-apply-btn" onClick={commitPomodoroConfig}>
                 Apply & Reset
               </button>
             </div>
-          )}
+          </Show>
 
           {/* Timer display */}
-          {isEditing ? (
+          <Show
+            when={isEditing()}
+            fallback={
+              <>
+                <div class={`timer-value ${secondsLeft() === 0 ? 'timer-value-done' : ''}`} style={customStyle()}>
+                  {formatSecondsToTimer(secondsLeft())}
+                </div>
+                <div class="timer-controls">
+                  <button
+                    type="button"
+                    class={`timer-control play ${isRunning() ? 'is-running' : ''}`}
+                    onClick={toggleRunning}
+                    aria-label={isRunning() ? 'pause timer' : 'start timer'}
+                    disabled={!isRunning() && secondsLeft() <= 0}
+                  >
+                    {isRunning() ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                  </button>
+
+                  <Show when={!isPomodoroMode()}>
+                    <button type="button" class="timer-control" onClick={startEditing} aria-label="edit timer value">
+                      <Pencil aria-hidden="true" />
+                    </button>
+                  </Show>
+
+                  <button type="button" class="timer-control" onClick={resetTimer} aria-label="reset timer">
+                    <RotateCcw aria-hidden="true" />
+                  </button>
+                </div>
+              </>
+            }
+          >
             <input
               type="text"
-              className="timer-value-edit"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
+              class="timer-value-edit"
+              value={editValue()}
+              onInput={(e) => setEditValue(e.currentTarget.value)}
               onBlur={commitEditing}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') commitEditing()
                 if (e.key === 'Escape') cancelEditing()
               }}
-              autoFocus
               style={{
                 background: 'transparent',
                 border: 'none',
                 color: 'inherit',
-                fontSize: timer.fontSize ? `${timer.fontSize}px` : '2rem',
-                fontWeight: '600',
-                textAlign: 'center',
+                "font-size": props.timer.fontSize ? `${props.timer.fontSize}px` : '2rem',
+                "font-weight": '600',
+                "text-align": 'center',
                 width: '100%',
                 outline: 'none',
               }}
             />
-          ) : (
-            <>
-              <div className={`timer-value ${secondsLeft === 0 ? 'timer-value-done' : ''}`} style={customStyle}>
-                {formatSecondsToTimer(secondsLeft)}
-              </div>
-              <div className="timer-controls">
-                <button
-                  type="button"
-                  className={`timer-control play ${isRunning ? 'is-running' : ''}`}
-                  onClick={toggleRunning}
-                  aria-label={isRunning ? 'pause timer' : 'start timer'}
-                  disabled={!isRunning && secondsLeft <= 0}
-                >
-                  {isRunning ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-                </button>
-
-                {!isPomodoroMode && (
-                  <button type="button" className="timer-control" onClick={startEditing} aria-label="edit timer value">
-                    <Pencil aria-hidden="true" />
-                  </button>
-                )}
-
-                <button type="button" className="timer-control" onClick={resetTimer} aria-label="reset timer">
-                  <RotateCcw aria-hidden="true" />
-                </button>
-              </div>
-            </>
-          )}
+          </Show>
         </div>
-      )}
+      </Show>
     </section>
   )
-})
+}

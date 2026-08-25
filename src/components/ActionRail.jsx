@@ -1,35 +1,23 @@
-import { Plus, Tag, FileText, ListTodo, Hash, TimerReset, Timer, Link2, CalendarDays, CircleCheck, Image, Quote, StickyNote } from 'lucide-react'
+import { For, Switch, Match, Show } from 'solid-js'
+import { Plus, Tag, FileText, ListTodo, Hash, TimerReset, Timer, Link2, CalendarDays, CircleCheck, Image, Quote, StickyNote } from 'lucide-solid'
 
-export function ActionRailIcon({ kind }) {
-  switch (kind) {
-    case 'label':
-      return <Tag aria-hidden="true" />
-    case 'singlenote':
-    case 'single-note':
-      return <StickyNote aria-hidden="true" />
-    case 'note':
-      return <FileText aria-hidden="true" />
-    case 'todo-list':
-      return <ListTodo aria-hidden="true" />
-    case 'counter':
-      return <Hash aria-hidden="true" />
-    case 'stopwatch':
-      return <TimerReset aria-hidden="true" />
-    case 'timer':
-      return <Timer aria-hidden="true" />
-    case 'quick-links':
-      return <Link2 aria-hidden="true" />
-    case 'calendar':
-      return <CalendarDays aria-hidden="true" />
-    case 'habit':
-      return <CircleCheck aria-hidden="true" />
-    case 'picture':
-      return <Image aria-hidden="true" />
-    case 'quote':
-      return <Quote aria-hidden="true" />
-    default:
-      return null
-  }
+export function ActionRailIcon(props) {
+  return (
+    <Switch fallback={null}>
+      <Match when={props.kind === 'label'}><Tag aria-hidden="true" /></Match>
+      <Match when={props.kind === 'singlenote' || props.kind === 'single-note'}><StickyNote aria-hidden="true" /></Match>
+      <Match when={props.kind === 'note'}><FileText aria-hidden="true" /></Match>
+      <Match when={props.kind === 'todo-list'}><ListTodo aria-hidden="true" /></Match>
+      <Match when={props.kind === 'counter'}><Hash aria-hidden="true" /></Match>
+      <Match when={props.kind === 'stopwatch'}><TimerReset aria-hidden="true" /></Match>
+      <Match when={props.kind === 'timer'}><Timer aria-hidden="true" /></Match>
+      <Match when={props.kind === 'quick-links'}><Link2 aria-hidden="true" /></Match>
+      <Match when={props.kind === 'calendar'}><CalendarDays aria-hidden="true" /></Match>
+      <Match when={props.kind === 'habit'}><CircleCheck aria-hidden="true" /></Match>
+      <Match when={props.kind === 'picture'}><Image aria-hidden="true" /></Match>
+      <Match when={props.kind === 'quote'}><Quote aria-hidden="true" /></Match>
+    </Switch>
+  )
 }
 
 // 12 Items distributed across 2 concentric orbital arcs:
@@ -52,46 +40,50 @@ const ORBITAL_LAYOUT = [
   { radius: 134, angle: 86 },
 ]
 
-export function ActionRail({ open, onToggle, quickActions, onQuickAction }) {
+export function ActionRail(props) {
   return (
-    <aside className={`action-rail orbital-rail ${open ? 'is-open' : ''}`} aria-label="action rail">
-      <div className={`rail-items ${open ? 'open' : ''}`}>
-        {quickActions.map((action, index) => {
-          const config = ORBITAL_LAYOUT[index] || { radius: 180, angle: 45 }
-          const rad = (config.angle * Math.PI) / 180
-          const tx = -(config.radius * Math.cos(rad)).toFixed(1)
-          const ty = -(config.radius * Math.sin(rad)).toFixed(1)
-          const isInner = index >= 7
+    <aside class={`action-rail orbital-rail ${props.open ? 'is-open' : ''}`} aria-label="action rail">
+      <div class={`rail-items ${props.open ? 'open' : ''}`}>
+        <For each={props.quickActions}>
+          {(action, index) => {
+            const i = index()
+            const config = ORBITAL_LAYOUT[i] || { radius: 180, angle: 45 }
+            const rad = (config.angle * Math.PI) / 180
+            const tx = -(config.radius * Math.cos(rad)).toFixed(1)
+            const ty = -(config.radius * Math.sin(rad)).toFixed(1)
+            const isInner = i >= 7
 
-          return (
-            <button
-              key={action.id}
-              className={`rail-button orbital-satellite ${isInner ? 'inner-orbit' : 'outer-orbit'}`}
-              aria-label={action.title}
-              title={action.title}
-              data-card-type={action.id}
-              style={{
-                '--item-index': index,
-                '--orbit-index': isInner ? index - 7 : index,
-                '--is-inner': isInner ? 1 : 0,
-                '--total-items': quickActions.length,
-                '--tx': `${tx}px`,
-                '--ty': `${ty}px`,
-              }}
-              onClick={() => onQuickAction(action.id)}
-            >
-              <ActionRailIcon kind={action.icon} />
-            </button>
-          )
-        })}
+            return (
+              <button
+                type="button"
+                class={`rail-button orbital-satellite ${isInner ? 'inner-orbit' : 'outer-orbit'}`}
+                aria-label={action.title}
+                title={action.title}
+                data-card-type={action.id}
+                style={{
+                  '--item-index': `${i}`,
+                  '--orbit-index': `${isInner ? i - 7 : i}`,
+                  '--is-inner': isInner ? 1 : 0,
+                  '--total-items': `${props.quickActions.length}`,
+                  '--tx': `${tx}px`,
+                  '--ty': `${ty}px`,
+                }}
+                onClick={() => props.onQuickAction(action.id)}
+              >
+                <ActionRailIcon kind={action.icon} />
+              </button>
+            )
+          }}
+        </For>
       </div>
 
       <button
-        className={`rail-button rail-add ${open ? 'is-open' : ''}`}
-        aria-label={open ? 'Close action menu' : 'Add card'}
-        title={open ? 'Close action menu' : 'Add card'}
-        aria-expanded={open}
-        onClick={onToggle}
+        type="button"
+        class={`rail-button rail-add ${props.open ? 'is-open' : ''}`}
+        aria-label={props.open ? 'Close action menu' : 'Add card'}
+        title={props.open ? 'Close action menu' : 'Add card'}
+        aria-expanded={props.open}
+        onClick={() => props.onToggle?.()}
       >
         <Plus aria-hidden="true" />
       </button>

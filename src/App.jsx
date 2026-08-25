@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { createSignal, createEffect, onMount, onCleanup, createMemo, Show } from 'solid-js'
 import { getInitialAppState, writeJsonStorage, readJsonStorage } from './utils/storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX, APP_STORAGE_KEY } from './utils/constants'
 import { createId } from './utils/id'
@@ -20,12 +20,17 @@ function generateId() {
 }
 
 function WorkspaceManager() {
-  const { user } = useAuth()
-  const [allWorkspaces, setAllWorkspaces] = useState(() => getInitialAppState().workspaces)
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState(() => getInitialAppState().activeWorkspaceId)
-  const previousUserIdRef = useRef(null)
+  // Keep the context object live — never destructure
+  const auth = useAuth()
+  const _initial = getInitialAppState()
+  const [allWorkspaces, setAllWorkspaces] = createSignal(_initial.workspaces)
+  const [activeWorkspaceId, setActiveWorkspaceId] = createSignal(_initial.activeWorkspaceId)
 
-  useEffect(() => {
+  // Closure variables replace React refs — the component body runs once
+  let previousUserId = null
+  let lastRemoteAppValue = null
+
+  onMount(() => {
     // Cleanup legacy keys
     try {
       localStorage.removeItem(WORKSPACES_LIST_KEY)
@@ -33,39 +38,39 @@ function WorkspaceManager() {
     } catch {
       // ignore
     }
-  }, [])
+  })
 
   // Cross-tab sync for the workspace list. Without this, two open tabs would
   // clobber each other's list writes (created/deleted/renamed workspaces
   // would silently vanish).
-  const lastRemoteAppValueRef = useRef(null)
-
-  useEffect(() => {
-    const serialized = JSON.stringify({ workspaces: allWorkspaces, activeWorkspaceId })
-    if (serialized === lastRemoteAppValueRef.current) {
+  createEffect(() => {
+    const workspaces = allWorkspaces()
+    const activeId = activeWorkspaceId()
+    const serialized = JSON.stringify({ workspaces, activeWorkspaceId: activeId })
+    if (serialized === lastRemoteAppValue) {
       // Identical to what another tab just sent us — don't echo it back.
-      lastRemoteAppValueRef.current = null
+      lastRemoteAppValue = null
       return
     }
     writeJsonStorage(APP_STORAGE_KEY, {
-      workspaces: allWorkspaces,
-      activeWorkspaceId: activeWorkspaceId
+      workspaces,
+      activeWorkspaceId: activeId
     })
-  }, [allWorkspaces, activeWorkspaceId])
+  })
 
-  useEffect(() => {
+  onMount(() => {
     const handleStorage = (e) => {
       if (e.key !== APP_STORAGE_KEY || e.newValue === null) return
       try {
         const incoming = JSON.parse(e.newValue)
         if (!Array.isArray(incoming?.workspaces) || incoming.workspaces.length === 0) return
-        lastRemoteAppValueRef.current = e.newValue
+        lastRemoteAppValue = e.newValue
         setAllWorkspaces(incoming.workspaces)
-        setActiveWorkspaceId(prev => {
-          if (incoming.workspaces.some(ws => ws && ws.id === prev)) return prev
+        setActiveWorkspaceId((prev) => {
+          if (incoming.workspaces.some((ws) => ws && ws.id === prev)) return prev
           const fallbackId =
             typeof incoming.activeWorkspaceId === 'string' &&
-            incoming.workspaces.some(ws => ws && ws.id === incoming.activeWorkspaceId)
+            incoming.workspaces.some((ws) => ws && ws.id === incoming.activeWorkspaceId)
               ? incoming.activeWorkspaceId
               : incoming.workspaces[0].id
           return prev === fallbackId ? prev : fallbackId
@@ -75,38 +80,40 @@ function WorkspaceManager() {
       }
     }
     window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
-  }, [])
+    onCleanup(() => window.removeEventListener('storage', handleStorage))
+  })
 
-  const handleSwitchWorkspace = useCallback((id) => {
+  function handleSwitchWorkspace(id) {
     setActiveWorkspaceId(id)
-  }, [])
+  }
 
-  const handleUpdateWorkspaceName = useCallback((id, nextName) => {
-    setAllWorkspaces(current =>
-      current.map(ws => ws.id === id ? { ...ws, name: nextName } : ws)
+  function handleUpdateWorkspaceName(id, nextName) {
+    setAllWorkspaces((current) =>
+      current.map((ws) => ws.id === id ? { ...ws, name: nextName } : ws)
     )
+    const user = auth.user
     if (user) {
       renameCloudWorkspace(user.id, id, nextName).catch((err) =>
         console.warn('[App] Cloud workspace rename failed:', err?.message)
       )
     }
-  }, [user])
+  }
 
-  const handleCreateWorkspace = useCallback((name) => {
+  function handleCreateWorkspace(name) {
     const newId = generateId()
-    setAllWorkspaces(current => [...current, { id: newId, name: name || 'New Workspace' }])
+    setAllWorkspaces((current) => [...current, { id: newId, name: name || 'New Workspace' }])
     setActiveWorkspaceId(newId)
+    const user = auth.user
     if (user) {
       ensureCloudWorkspace(user.id, newId, name || 'New Workspace').catch((err) =>
         console.warn('[App] Cloud workspace create failed:', err?.message)
       )
     }
-  }, [user])
+  }
 
-  const handleDuplicateWorkspace = useCallback((id) => {
-    setAllWorkspaces(current => {
-      const sourceWs = current.find(ws => ws.id === id)
+  function handleDuplicateWorkspace(id) {
+    setAllWorkspaces((current) => {
+      const sourceWs = current.find((ws) => ws.id === id)
       if (!sourceWs) return current
       const newId = generateId()
       // Copy storage
@@ -115,6 +122,7 @@ function WorkspaceManager() {
         writeJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${newId}`, sourceState)
       }
       setActiveWorkspaceId(newId)
+      const user = auth.user
       if (user) {
         ensureCloudWorkspace(user.id, newId, `${sourceWs.name} Copy`).catch((err) =>
           console.warn('[App] Cloud workspace duplicate failed:', err?.message)
@@ -122,73 +130,80 @@ function WorkspaceManager() {
       }
       return [...current, { id: newId, name: `${sourceWs.name} Copy` }]
     })
-  }, [user])
+  }
 
-  const handleDeleteWorkspace = useCallback((id) => {
-    setAllWorkspaces(current => {
+  function handleDeleteWorkspace(id) {
+    setAllWorkspaces((current) => {
       if (current.length <= 1) return current // Prevent deleting the last workspace
-      const filtered = current.filter(ws => ws.id !== id)
-      setActiveWorkspaceId(prev => (prev === id ? filtered[0].id : prev))
+      const filtered = current.filter((ws) => ws.id !== id)
+      setActiveWorkspaceId((prev) => (prev === id ? filtered[0].id : prev))
       // Cleanup storage
       try { localStorage.removeItem(`${WORKSPACE_STORAGE_KEY_PREFIX}${id}`) } catch { /* ignore */ }
       return filtered
     })
     // Remove the cloud registry row too — the FK cascade wipes its data so
     // the workspace cannot resurrect on another device. Fire-and-forget.
+    const user = auth.user
     if (user) {
       deleteCloudWorkspace(user.id, id).catch((err) =>
         console.warn('[App] Cloud workspace delete failed:', err?.message)
       )
     }
-  }, [user])
+  }
 
-  const handleSetAllWorkspaces = useCallback((workspaces, activeId = null) => {
+  function handleSetAllWorkspaces(workspaces, activeId = null) {
     if (!Array.isArray(workspaces) || workspaces.length === 0) return
     setAllWorkspaces(workspaces)
-    if (activeId && workspaces.some(w => w.id === activeId)) {
+    if (activeId && workspaces.some((w) => w.id === activeId)) {
       setActiveWorkspaceId(activeId)
-    } else if (!workspaces.some(w => w.id === activeWorkspaceId)) {
+    } else if (!workspaces.some((w) => w.id === activeWorkspaceId())) {
       setActiveWorkspaceId(workspaces[0].id)
     }
-  }, [activeWorkspaceId])
+  }
 
   // Handle first sign in or account switch migration.
   // The heavy flow runs once per account (marker-guarded inside
   // handleFirstSignIn); passive session restores are no-ops — the sync
   // engine's mount reconciliation keeps data fresh instead.
-  useEffect(() => {
-    if (user && user.id !== previousUserIdRef.current) {
-      previousUserIdRef.current = user.id
+  createEffect(() => {
+    const user = auth.user
+    if (user && user.id !== previousUserId) {
+      previousUserId = user.id
       handleFirstSignIn(user.id, (workspaces, activeId) => {
         handleSetAllWorkspaces(workspaces, activeId)
       }).catch((err) => {
         console.warn('[App] Sign-in sync failed:', err?.message)
       })
     } else if (!user) {
-      previousUserIdRef.current = null
+      previousUserId = null
     }
-  }, [user, handleSetAllWorkspaces])
+  })
 
-  const activeWorkspace = allWorkspaces.find(ws => ws.id === activeWorkspaceId)
+  const activeWorkspace = createMemo(
+    () => allWorkspaces().find((ws) => ws.id === activeWorkspaceId()),
+  )
 
   return (
     <>
-      {activeWorkspace && (
-        <ErrorBoundary key={activeWorkspace.id}>
-          <WorkspaceBoard
-            key={activeWorkspace.id}
-            workspace={activeWorkspace}
-            isVisible={true}
-            allWorkspaces={allWorkspaces}
-            onSwitchWorkspace={handleSwitchWorkspace}
-            onUpdateName={handleUpdateWorkspaceName}
-            onDuplicateWorkspace={handleDuplicateWorkspace}
-            onDeleteWorkspace={handleDeleteWorkspace}
-            onCreateWorkspace={handleCreateWorkspace}
-            onSetAllWorkspaces={handleSetAllWorkspaces}
-          />
-        </ErrorBoundary>
-      )}
+      <Show when={activeWorkspace()} keyed>
+        {(workspace) => (
+          // keyed <Show> remounts on workspace ID change (replaces key={}):
+          // each workspace gets a fresh ErrorBoundary + board instance.
+          <ErrorBoundary>
+            <WorkspaceBoard
+              workspace={workspace}
+              isVisible={true}
+              allWorkspaces={allWorkspaces()}
+              onSwitchWorkspace={handleSwitchWorkspace}
+              onUpdateName={handleUpdateWorkspaceName}
+              onDuplicateWorkspace={handleDuplicateWorkspace}
+              onDeleteWorkspace={handleDeleteWorkspace}
+              onCreateWorkspace={handleCreateWorkspace}
+              onSetAllWorkspaces={handleSetAllWorkspaces}
+            />
+          </ErrorBoundary>
+        )}
+      </Show>
       <InstallPrompt />
     </>
   )
@@ -203,4 +218,3 @@ function App() {
 }
 
 export default App
-

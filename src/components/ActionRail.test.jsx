@@ -1,20 +1,23 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent } from '@solidjs/testing-library'
+import { createSignal } from 'solid-js'
 import { ActionRail, ActionRailIcon } from './ActionRail'
 import { QUICK_CREATE_ACTIONS } from '../utils/constants'
 
 describe('ActionRail', () => {
-  it('renders the toggle button with accessible label', () => {
+  it('renders the toggle button with accessible label', async () => {
     const onToggle = vi.fn()
     const onQuickAction = vi.fn()
-    const { rerender } = render(
+    // Solid replacement for rerender: drive the `open` prop through a signal
+    const [open, setOpen] = createSignal(false)
+    render(() => (
       <ActionRail
-        open={false}
+        open={open()}
         onToggle={onToggle}
         quickActions={QUICK_CREATE_ACTIONS}
         onQuickAction={onQuickAction}
       />
-    )
+    ))
 
     const toggleButton = screen.getByRole('button', { name: /add card/i })
     expect(toggleButton).toBeInTheDocument()
@@ -23,14 +26,8 @@ describe('ActionRail', () => {
     fireEvent.click(toggleButton)
     expect(onToggle).toHaveBeenCalledTimes(1)
 
-    rerender(
-      <ActionRail
-        open={true}
-        onToggle={onToggle}
-        quickActions={QUICK_CREATE_ACTIONS}
-        onQuickAction={onQuickAction}
-      />
-    )
+    setOpen(true)
+    await Promise.resolve()
     expect(screen.getByRole('button', { name: /close action menu/i })).toBeInTheDocument()
   })
 
@@ -38,14 +35,14 @@ describe('ActionRail', () => {
     const onToggle = vi.fn()
     const onQuickAction = vi.fn()
 
-    render(
+    render(() => (
       <ActionRail
         open={true}
         onToggle={onToggle}
         quickActions={QUICK_CREATE_ACTIONS}
         onQuickAction={onQuickAction}
       />
-    )
+    ))
 
     expect(QUICK_CREATE_ACTIONS).toHaveLength(12)
 
@@ -82,8 +79,9 @@ describe('ActionRail', () => {
     ]
 
     kinds.forEach((kind) => {
-      const { container } = render(<ActionRailIcon kind={kind} />)
+      const { container, unmount } = render(() => <ActionRailIcon kind={kind} />)
       expect(container.querySelector('svg')).toBeInTheDocument()
+      unmount()
     })
   })
 })

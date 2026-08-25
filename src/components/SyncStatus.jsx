@@ -1,67 +1,44 @@
-import { RefreshCw, CloudOff, AlertCircle } from 'lucide-react'
+import { Show, mergeProps, Switch, Match } from 'solid-js'
+import { RefreshCw, CloudOff, AlertCircle } from 'lucide-solid'
 
-export function SyncStatus({ status = 'idle', lastSyncedAt = null, onSyncNow = null, message = null }) {
-  const getStatusText = () => {
-    switch (status) {
-      case 'syncing':
-        return 'Syncing...'
-      case 'offline':
-        return 'Offline — saved locally'
-      case 'error':
-        return 'Sync error — retrying'
-      case 'conflict':
-        return 'Sync conflict — resolved'
-      case 'idle':
-      default:
-        return lastSyncedAt
-          ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}`
-          : 'Cloud sync active'
-    }
-  }
-
-  const getStatusIcon = () => {
-    switch (status) {
-      case 'syncing':
-        return <RefreshCw className="auth-spinner" size={13} />
-      case 'offline':
-        return <CloudOff size={13} />
-      case 'error':
-      case 'conflict':
-        return <AlertCircle size={13} style={{ color: 'var(--tone-red)' }} />
-      case 'idle':
-      default:
-        return <div className="sync-status-dot idle" />
-    }
-  }
+export function SyncStatus(props) {
+  const merged = mergeProps({ status: 'idle' }, props)
 
   return (
-    <div className="sync-status-card">
-      <div className="sync-status-header">
-        <div className="sync-status-indicator">
-          <span className={`sync-status-dot ${status}`} />
-          <span>{getStatusText()}</span>
+    <div class="sync-status-card">
+      <div class="sync-status-header">
+        <div class="sync-status-indicator">
+          <span class={`sync-status-dot ${merged.status}`} />
+          <span>
+            <Switch fallback={merged.lastSyncedAt ? `Synced ${new Date(merged.lastSyncedAt).toLocaleTimeString()}` : 'Cloud sync active'}>
+              <Match when={merged.status === 'syncing'}>Syncing...</Match>
+              <Match when={merged.status === 'offline'}>Offline — saved locally</Match>
+              <Match when={merged.status === 'error'}>Sync error — retrying</Match>
+              <Match when={merged.status === 'conflict'}>Sync conflict — resolved</Match>
+            </Switch>
+          </span>
         </div>
-        {onSyncNow && (
+        <Show when={merged.onSyncNow}>
           <button
             type="button"
-            className="sync-now-btn"
-            onClick={onSyncNow}
-            disabled={status === 'syncing'}
+            class="sync-now-btn"
+            onClick={() => merged.onSyncNow?.()}
+            disabled={merged.status === 'syncing'}
           >
             Sync Now
           </button>
-        )}
+        </Show>
       </div>
-      {message && (
-        <div style={{ fontSize: '11px', color: 'var(--ui-icon)', marginTop: '4px' }}>
-          {message}
+      <Show when={merged.message}>
+        <div style={{ "font-size": '11px', color: 'var(--ui-icon)', "margin-top": '4px' }}>
+          {merged.message}
         </div>
-      )}
-      {lastSyncedAt && (
-        <div style={{ fontSize: '11px', color: 'var(--ui-icon)' }}>
-          Last synced {new Date(lastSyncedAt).toLocaleTimeString()}
+      </Show>
+      <Show when={merged.lastSyncedAt}>
+        <div style={{ "font-size": '11px', color: 'var(--ui-icon)' }}>
+          Last synced {new Date(merged.lastSyncedAt).toLocaleTimeString()}
         </div>
-      )}
+      </Show>
     </div>
   )
 }

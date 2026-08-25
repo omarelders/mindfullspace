@@ -1,25 +1,25 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent } from '@solidjs/testing-library'
 import { NoteCard } from './NoteCard'
 
 describe('NoteCard font size controls inside dropdown menu', () => {
-  const defaultNote = {
+  const defaultNote = () => ({
     id: 'note-1',
     title: 'Test Note',
     text: 'Hello world',
     minimized: false,
     fontSize: 14,
-  }
+  })
 
   it('renders font size controls inside 3 dots menu and updates font size when clicked', () => {
     const onUpdateFontSize = vi.fn()
-    render(
+    render(() => (
       <NoteCard
-        note={defaultNote}
-        cardId={defaultNote.id}
+        note={defaultNote()}
+        cardId="note-1"
         onUpdateFontSize={onUpdateFontSize}
       />
-    )
+    ))
 
     // Open 3 dots menu
     const menuBtn = screen.getByRole('button', { name: 'card menu' })
@@ -42,8 +42,7 @@ describe('NoteCard font size controls inside dropdown menu', () => {
   })
 
   it('disables decrease button at minimum font size (10px)', () => {
-    const minNote = { ...defaultNote, fontSize: 10 }
-    render(<NoteCard note={minNote} cardId={minNote.id} />)
+    render(() => <NoteCard note={{ ...defaultNote(), fontSize: 10 }} cardId="note-1" />)
 
     // Open 3 dots menu
     fireEvent.click(screen.getByRole('button', { name: 'card menu' }))
@@ -53,8 +52,7 @@ describe('NoteCard font size controls inside dropdown menu', () => {
   })
 
   it('disables increase button at maximum font size (48px)', () => {
-    const maxNote = { ...defaultNote, fontSize: 48 }
-    render(<NoteCard note={maxNote} cardId={maxNote.id} />)
+    render(() => <NoteCard note={{ ...defaultNote(), fontSize: 48 }} cardId="note-1" />)
 
     // Open 3 dots menu
     fireEvent.click(screen.getByRole('button', { name: 'card menu' }))
@@ -64,8 +62,7 @@ describe('NoteCard font size controls inside dropdown menu', () => {
   })
 
   it('renders font size controls in menu even when card is minimized', () => {
-    const minCard = { ...defaultNote, minimized: true }
-    render(<NoteCard note={minCard} cardId={minCard.id} />)
+    render(() => <NoteCard note={{ ...defaultNote(), minimized: true }} cardId="note-1" />)
 
     // Open 3 dots menu
     fireEvent.click(screen.getByRole('button', { name: 'card menu' }))

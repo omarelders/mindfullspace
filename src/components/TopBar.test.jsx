@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent } from '@solidjs/testing-library'
 import { TopBar } from './TopBar'
 
 const { mockAuthValue } = vi.hoisted(() => ({
@@ -23,7 +23,6 @@ const { mockAuthValue } = vi.hoisted(() => ({
 
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => mockAuthValue,
-  AuthProvider: ({ children }) => children,
 }))
 
 describe('TopBar', () => {
@@ -35,7 +34,7 @@ describe('TopBar', () => {
     vi.clearAllMocks()
   })
 
-  const defaultProps = {
+  const defaultProps = () => ({
     mode: 'night',
     onToggleMode: vi.fn(),
     isFocusMode: false,
@@ -54,10 +53,10 @@ describe('TopBar', () => {
     archivedCards: [],
     habits: [{ id: 'h1', title: 'Exercise' }],
     onRestoreArchivedCard: vi.fn(),
-  }
+  })
 
   it('renders settings tab without crashing and shows label count', () => {
-    render(<TopBar {...defaultProps} />)
+    render(() => <TopBar {...defaultProps()} />)
 
     // Open account menu
     const menuButton = screen.getByRole('button', { name: /menu/i })
@@ -75,7 +74,7 @@ describe('TopBar', () => {
 
   it('renders color palette options and triggers onSelectPalette when clicked', () => {
     const onSelectPalette = vi.fn()
-    render(<TopBar {...defaultProps} palette="sage" onSelectPalette={onSelectPalette} />)
+    render(() => <TopBar {...defaultProps()} palette="sage" onSelectPalette={onSelectPalette} />)
 
     // Open account menu
     const menuButton = screen.getByRole('button', { name: /menu/i })
@@ -98,16 +97,16 @@ describe('TopBar', () => {
 
   it('opens the workspace menu and switches to another workspace', () => {
     const onSwitchWorkspace = vi.fn()
-    render(
+    render(() => (
       <TopBar
-        {...defaultProps}
+        {...defaultProps()}
         allWorkspaces={[
           { id: 'ws-1', name: 'Default Workspace' },
           { id: 'ws-2', name: 'Deep Work' },
         ]}
         onSwitchWorkspace={onSwitchWorkspace}
       />
-    )
+    ))
 
     // Workspace menu is closed initially
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
@@ -124,7 +123,7 @@ describe('TopBar', () => {
   })
 
   it('renders AuthForm in profile tab when user is guest', () => {
-    render(<TopBar {...defaultProps} />)
+    render(() => <TopBar {...defaultProps()} />)
 
     // Open account menu
     const menuButton = screen.getByRole('button', { name: /menu/i })
@@ -143,7 +142,7 @@ describe('TopBar', () => {
     mockAuthValue.isAuthenticated = true
     mockAuthValue.isGuest = false
 
-    render(<TopBar {...defaultProps} syncStatus="idle" lastSyncedAt={Date.now()} />)
+    render(() => <TopBar {...defaultProps()} syncStatus="idle" lastSyncedAt={Date.now()} />)
 
     // Open account menu
     const menuButton = screen.getByRole('button', { name: /menu/i })
@@ -169,13 +168,13 @@ describe('TopBar', () => {
       { id: 'timer', title: 'Timer', icon: 'timer' },
     ]
 
-    render(
+    render(() => (
       <TopBar
-        {...defaultProps}
+        {...defaultProps()}
         quickActions={sampleQuickActions}
         onQuickAction={onQuickAction}
       />
-    )
+    ))
 
     // Quick menu should be closed initially
     expect(screen.queryByRole('menu', { name: /add card menu/i })).not.toBeInTheDocument()
@@ -207,13 +206,13 @@ describe('TopBar', () => {
       { id: 'timer', title: 'Timer', icon: 'timer' },
     ]
 
-    render(
+    render(() => (
       <TopBar
-        {...defaultProps}
+        {...defaultProps()}
         quickActions={sampleQuickActions}
         onQuickAction={onQuickAction}
       />
-    )
+    ))
 
     // Open quick menu
     const addCardBtn = screen.getByRole('button', { name: /add card/i })
@@ -236,12 +235,12 @@ describe('TopBar', () => {
       { id: 'note', title: 'Note', icon: 'note' },
     ]
 
-    render(
+    render(() => (
       <TopBar
-        {...defaultProps}
+        {...defaultProps()}
         quickActions={sampleQuickActions}
       />
-    )
+    ))
 
     // Open quick menu
     const addCardBtn = screen.getByRole('button', { name: /add card/i })

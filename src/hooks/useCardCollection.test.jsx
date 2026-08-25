@@ -1,88 +1,72 @@
-import { describe, it, expect, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import { useCardCollection } from './useCardCollection'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createRoot } from 'solid-js'
+import { createCardCollection } from './useCardCollection'
 
-describe('useCardCollection hook', () => {
-  const setupCollection = (initial = [{ id: 'card-1', title: 'Card 1', color: null, minimized: false }]) => {
-    const saveSnapshot = vi.fn()
-    const archiveCardSnapshot = vi.fn()
-    const removeCardPosition = vi.fn()
-    const setCardPositions = vi.fn()
-    const setDraggingCard = vi.fn()
-    const onDelete = vi.fn()
-    const onDuplicate = vi.fn((src, dup) => dup)
+describe('createCardCollection', () => {
+  let collection
+  const spies = {}
 
-    const hook = renderHook(() =>
-      useCardCollection({
-        initialItems: initial,
+  beforeEach(() => {
+    spies.saveSnapshot = vi.fn()
+    spies.archiveCardSnapshot = vi.fn()
+    spies.removeCardPosition = vi.fn()
+    spies.setCardPositions = vi.fn()
+    spies.setDraggingCard = vi.fn()
+    spies.onDelete = vi.fn()
+    spies.onDuplicate = vi.fn((src, dup) => dup)
+
+    createRoot((dispose) => {
+      collection = createCardCollection({
+        initialItems: [
+          { id: 'card-1', title: 'Test', color: null, minimized: false },
+          { id: 'card-2', title: 'Other', color: '#ff0', minimized: false },
+        ],
         idPrefix: 'card',
-        saveSnapshot,
-        archiveCardSnapshot,
-        removeCardPosition,
-        setCardPositions,
-        setDraggingCard,
-        onDelete,
-        onDuplicate,
+        ...spies,
       })
-    )
-
-    return { hook, spies: { saveSnapshot, archiveCardSnapshot, removeCardPosition, setCardPositions, setDraggingCard, onDelete, onDuplicate } }
-  }
+    })
+  })
 
   it('updates title, color, and minimized state', () => {
-    const { hook } = setupCollection()
+    collection.updateTitle('card-1', 'Updated Title')
+    expect(collection.items[0].title).toBe('Updated Title')
 
-    act(() => {
-      hook.result.current.updateTitle('card-1', 'Updated Title')
-    })
-    expect(hook.result.current.items[0].title).toBe('Updated Title')
+    collection.updateColor('card-1', '#ff0000')
+    expect(collection.items[0].color).toBe('#ff0000')
 
-    act(() => {
-      hook.result.current.updateColor('card-1', '#ff0000')
-    })
-    expect(hook.result.current.items[0].color).toBe('#ff0000')
-
-    act(() => {
-      hook.result.current.toggleMinimize('card-1')
-    })
-    expect(hook.result.current.items[0].minimized).toBe(true)
+    collection.toggleMinimize('card-1')
+    expect(collection.items[0].minimized).toBe(true)
   })
 
   it('removes a card and triggers callbacks', () => {
-    const { hook, spies } = setupCollection()
+    collection.remove('card-1')
 
-    act(() => {
-      hook.result.current.remove('card-1')
-    })
-
-    expect(hook.result.current.items).toHaveLength(0)
+    expect(collection.items).toHaveLength(1)
     expect(spies.saveSnapshot).toHaveBeenCalled()
     expect(spies.removeCardPosition).toHaveBeenCalledWith('card-1')
     expect(spies.onDelete).toHaveBeenCalledWith('card-1')
   })
 
   it('archives a card and creates snapshot', () => {
-    const { hook, spies } = setupCollection()
+    collection.archive('card-1')
 
-    act(() => {
-      hook.result.current.archive('card-1')
-    })
-
-    expect(hook.result.current.items).toHaveLength(0)
+    expect(collection.items).toHaveLength(1)
     expect(spies.saveSnapshot).toHaveBeenCalled()
     expect(spies.archiveCardSnapshot).toHaveBeenCalledWith('card', expect.objectContaining({ id: 'card-1' }))
     expect(spies.removeCardPosition).toHaveBeenCalledWith('card-1')
   })
 
   it('duplicates a card with a new id and offset position', () => {
-    const { hook, spies } = setupCollection()
+    collection.duplicate('card-1')
 
-    act(() => {
-      hook.result.current.duplicate('card-1')
-    })
-
-    expect(hook.result.current.items).toHaveLength(2)
-    expect(hook.result.current.items[1].title).toBe('Card 1 Copy')
+    expect(collection.items).toHaveLength(3)
+    expect(collection.items[2].title).toBe('Test Copy')
     expect(spies.setCardPositions).toHaveBeenCalled()
+  })
+
+  it('clears dragging card when the dragged card is removed', () => {
+    // The setDraggingCard callback contract mirrors React setState semantics
+    collection.remove('card-1')
+    expect(spies.setDraggingCard).toHaveBeenCalled()
   })
 })

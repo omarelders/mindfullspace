@@ -1,6 +1,6 @@
 // Bump whenever precached app shell assets change in a way that matters
 // offline (runtime assets are content-hashed and cached on the fly).
-const CACHE_VERSION = 'v2'
+const CACHE_VERSION = 'v3'
 const STATIC_CACHE = `mindful-static-${CACHE_VERSION}`
 const RUNTIME_CACHE = `mindful-runtime-${CACHE_VERSION}`
 const PRECACHE_URLS = [
@@ -35,9 +35,36 @@ self.addEventListener('message', (event) => {
   }
 })
 
-async function networkFirst(request) {
-  const runtimeCache = await caches.open(RUNTIME_CACHE)
+async function navigationCacheFirst(request) {
+  const staticMatch = await caches.match(request)
+  if (staticMatch) {
+    // Serve cached HTML instantly, revalidate in background
+    fetch(request)
+      .then(async (networkResponse) => {
+        if (networkResponse && networkResponse.ok) {
+          const runtimeCache = await caches.open(RUNTIME_CACHE)
+          runtimeCache.put(request, networkResponse)
+        }
+      })
+      .catch(() => {})
+    return staticMatch
+  }
 
+  // Also check runtime cache
+  const runtimeCache = await caches.open(RUNTIME_CACHE)
+  const runtimeMatch = await runtimeCache.match(request)
+  if (runtimeMatch) {
+    fetch(request)
+      .then(async (networkResponse) => {
+        if (networkResponse && networkResponse.ok) {
+          runtimeCache.put(request, networkResponse)
+        }
+      })
+      .catch(() => {})
+    return runtimeMatch
+  }
+
+  // No cache — must go to network
   try {
     const networkResponse = await fetch(request)
     if (networkResponse && networkResponse.ok) {
@@ -45,17 +72,7 @@ async function networkFirst(request) {
     }
     return networkResponse
   } catch {
-    const runtimeMatch = await runtimeCache.match(request)
-    if (runtimeMatch) {
-      return runtimeMatch
-    }
-
-    const staticMatch = await caches.match(request)
-    if (staticMatch) {
-      return staticMatch
-    }
-
-    return (await caches.match('/index.html')) || (await caches.match('/offline.html'))
+    return (await caches.match('/offline.html')) || new Response('Offline', { status: 503 })
   }
 }
 
@@ -95,7 +112,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (event.request.mode === 'navigate') {
-    event.respondWith(networkFirst(event.request))
+    event.respondWith(navigationCacheFirst(event.request))
     return
   }
 

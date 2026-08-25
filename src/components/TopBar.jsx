@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, memo } from 'react'
+import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For } from 'solid-js'
 import {
   Archive,
   Menu,
@@ -16,19 +16,9 @@ import {
   FilePlus2,
   Crosshair,
   Expand,
-  Tag,
-  FileText,
-  ListTodo,
-  Hash,
-  Timer,
-  TimerReset,
-  Link2,
-  CalendarDays,
-  Sparkles,
-  Image,
   Palette,
   LogOut,
-} from 'lucide-react'
+} from 'lucide-solid'
 import { buildDateKey } from '../utils/dateUtils'
 import { ConfirmModal } from './ConfirmModal'
 import { ActionRailIcon } from './ActionRail'
@@ -38,61 +28,38 @@ import { useAuth } from '../hooks/useAuth'
 import { AuthForm } from './AuthForm'
 import { SyncStatus } from './SyncStatus'
 
-// Memoized: the bar is large and its props are referentially stable, so it
-// must not re-render on every board state change (e.g. typing inside a card).
-export const TopBar = memo(function TopBar({
-  mode,
-  onToggleMode,
-  palette = 'sage',
-  onSelectPalette,
-  isFocusMode,
-  onToggleFocusMode,
-  workspace,
-  allWorkspaces,
-  onSwitchWorkspace,
-  onUpdateName,
-  onDuplicateWorkspace,
-  onDeleteWorkspace,
-  onCreateWorkspace,
-  quickActions,
-  onQuickAction,
-  labels,
-  onSelectLabel,
-  archivedCards,
-  habits,
-  onRestoreArchivedCard,
-  onImportCards,
-  onImportWorkspace,
-  onCaptureSnapshot,
-  syncStatus = 'idle',
-  lastSyncedAt = null,
-  onSyncNow = null,
-  syncMessage = null,
-}) {
-  const { user, profile, isAuthenticated, signOut, isConfigured } = useAuth()
-  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
-  const [activeAccountTab, setActiveAccountTab] = useState('profile')
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false)
-  const [workspaceToDelete, setWorkspaceToDelete] = useState(null)
-  const [alertMessage, setAlertMessage] = useState(null)
+// Plain function: Solid components run once, so there is nothing to memoize.
+export function TopBar(props) {
+  // Keep the context object — destructuring would freeze these values
+  const auth = useAuth()
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = createSignal(false)
+  const [searchQuery, setSearchQuery] = createSignal('')
+  const [isSearchOpen, setIsSearchOpen] = createSignal(false)
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = createSignal(false)
+  const [activeAccountTab, setActiveAccountTab] = createSignal('profile')
+  const [isFullscreen, setIsFullscreen] = createSignal(false)
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = createSignal(false)
+  const [workspaceToDelete, setWorkspaceToDelete] = createSignal(null)
+  const [alertMessage, setAlertMessage] = createSignal(null)
 
-  const [isImportConfirmOpen, setIsImportConfirmOpen] = useState(false)
-  const [selectedFile, setSelectedFile] = useState(null)
-  const fileInputRef = useRef(null)
+  const [isImportConfirmOpen, setIsImportConfirmOpen] = createSignal(false)
+  const [selectedFile, setSelectedFile] = createSignal(null)
+  let fileInputRef
 
-  const [isImportCardsConfirmOpen, setIsImportCardsConfirmOpen] = useState(false)
-  const [selectedCardsFile, setSelectedCardsFile] = useState(null)
-  const importCardsInputRef = useRef(null)
+  const [isImportCardsConfirmOpen, setIsImportCardsConfirmOpen] = createSignal(false)
+  const [selectedCardsFile, setSelectedCardsFile] = createSignal(null)
+  let importCardsInputRef
 
-  const [storageUsage, setStorageUsage] = useState(0)
-  const [storageQuota, setStorageQuota] = useState(0)
+  const [storageUsage, setStorageUsage] = createSignal(0)
+  const [storageQuota, setStorageQuota] = createSignal(0)
 
-  useEffect(() => {
-    if (isAccountMenuOpen && activeAccountTab === 'settings') {
+  let menuRef
+  let quickMenuRef
+  let searchRef
+  let accountRef
+
+  createEffect(() => {
+    if (isAccountMenuOpen() && activeAccountTab() === 'settings') {
       if (navigator.storage && navigator.storage.estimate) {
         navigator.storage.estimate().then((estimate) => {
           setStorageUsage(estimate.usage || 0)
@@ -100,19 +67,19 @@ export const TopBar = memo(function TopBar({
         }).catch(() => {})
       }
     }
-  }, [isAccountMenuOpen, activeAccountTab])
+  })
 
   const handleExportClick = () => {
     // Capture the live in-memory state so the export always reflects the
     // current workspace even if the debounced autosave hasn't flushed yet.
-    const liveState = onCaptureSnapshot ? onCaptureSnapshot() : null
-    exportWorkspace(workspace.id, workspace.name, liveState).catch((err) => {
+    const liveState = props.onCaptureSnapshot ? props.onCaptureSnapshot() : null
+    exportWorkspace(props.workspace.id, props.workspace.name, liveState).catch((err) => {
       setAlertMessage(err.message || 'Export failed.')
     })
   }
 
   const handleImportClick = () => {
-    fileInputRef.current?.click()
+    fileInputRef?.click()
   }
 
   const handleFileChange = (e) => {
@@ -125,13 +92,13 @@ export const TopBar = memo(function TopBar({
   }
 
   const handleConfirmImport = () => {
-    if (selectedFile && onImportWorkspace) {
-      // Parse + restore images, then apply to React state directly — no page
+    if (selectedFile() && props.onImportWorkspace) {
+      // Parse + restore images, then apply to reactive state directly — no page
       // reload. The previous state is pushed onto the undo stack by
       // importWorkspaceState, so the import can be undone.
-      parseWorkspaceBackup(selectedFile)
+      parseWorkspaceBackup(selectedFile())
         .then((sanitizedWorkspace) => {
-          onImportWorkspace(sanitizedWorkspace)
+          props.onImportWorkspace(sanitizedWorkspace)
           setIsImportConfirmOpen(false)
           setSelectedFile(null)
           setIsAccountMenuOpen(false)
@@ -145,7 +112,7 @@ export const TopBar = memo(function TopBar({
   }
 
   const handleImportCardsClick = () => {
-    importCardsInputRef.current?.click()
+    importCardsInputRef?.click()
   }
 
   const handleImportCardsFileChange = (e) => {
@@ -158,30 +125,28 @@ export const TopBar = memo(function TopBar({
   }
 
   const handleConfirmImportCards = () => {
-    if (selectedCardsFile && onImportCards) {
-      onImportCards(selectedCardsFile)
+    if (selectedCardsFile() && props.onImportCards) {
+      props.onImportCards(selectedCardsFile())
       setIsImportCardsConfirmOpen(false)
       setSelectedCardsFile(null)
       setIsAccountMenuOpen(false)
     }
   }
-  const menuRef = useRef(null)
-  const quickMenuRef = useRef(null)
-  const searchRef = useRef(null)
-  const accountRef = useRef(null)
-  const labelOptions = useMemo(() => (Array.isArray(labels) ? labels : []), [labels])
-  const filteredLabels = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase()
-    return labelOptions.filter((label) =>
+
+  const labelOptions = createMemo(() => (Array.isArray(props.labels) ? props.labels : []))
+  const filteredLabels = createMemo(() => {
+    const normalizedQuery = searchQuery().trim().toLowerCase()
+    return labelOptions().filter((label) =>
       !normalizedQuery || (label.text && label.text.toLowerCase().includes(normalizedQuery)),
     )
-  }, [labelOptions, searchQuery])
+  })
 
-  const habitOptions = useMemo(() => (Array.isArray(habits) ? habits : []), [habits])
-  const archiveOptions = useMemo(() => (Array.isArray(archivedCards) ? archivedCards : []), [archivedCards])
+  const habitOptions = createMemo(() => (Array.isArray(props.habits) ? props.habits : []))
+  const archiveOptions = createMemo(() => (Array.isArray(props.archivedCards) ? props.archivedCards : []))
 
-  const { streakDays, streakTimeline } = useMemo(() => {
-    if (habitOptions.length === 0) {
+  const streak = createMemo(() => {
+    const habits = habitOptions()
+    if (habits.length === 0) {
       return {
         streakDays: 0,
         streakTimeline: [-3, -2, -1, 0, 1, 2].map((offset) => {
@@ -202,7 +167,7 @@ export const TopBar = memo(function TopBar({
     let nextStreakDays = 0
 
     const isAllDoneOnDate = (dateKey) => {
-      return habitOptions.every((habit) => habit.completions?.[dateKey] === true)
+      return habits.every((habit) => habit.completions?.[dateKey] === true)
     }
 
     while (isAllDoneOnDate(buildDateKey(cursor.getFullYear(), cursor.getMonth(), cursor.getDate()))) {
@@ -235,46 +200,48 @@ export const TopBar = memo(function TopBar({
       streakDays: nextStreakDays,
       streakTimeline: nextTimeline,
     }
-  }, [habitOptions])
+  })
+  const streakDays = () => streak().streakDays
+  const streakTimeline = () => streak().streakTimeline
 
-  const archivedItems = useMemo(
-    () => [...archiveOptions].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0)),
-    [archiveOptions],
+  const archivedItems = createMemo(
+    () => [...archiveOptions()].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0)),
   )
 
-  useEffect(() => {
+  onMount(() => {
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+      if (menuRef && !menuRef.contains(e.target)) {
         setIsWorkspaceMenuOpen(false)
       }
 
-      if (quickMenuRef.current && !quickMenuRef.current.contains(e.target)) {
+      if (quickMenuRef && !quickMenuRef.contains(e.target)) {
         setIsQuickMenuOpen(false)
       }
 
-      if (searchRef.current && !searchRef.current.contains(e.target)) {
+      if (searchRef && !searchRef.contains(e.target)) {
         setIsSearchOpen(false)
       }
 
-      if (accountRef.current && !accountRef.current.contains(e.target)) {
+      if (accountRef && !accountRef.contains(e.target)) {
         setIsAccountMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
-  useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement))
     }
     document.addEventListener('fullscreenchange', handleFullscreenChange)
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
-  }, [])
+
+    onCleanup(() => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    })
+  })
 
   const handleSelectLabel = (label) => {
-    if (onSelectLabel) {
-      onSelectLabel(label.id)
+    if (props.onSelectLabel) {
+      props.onSelectLabel(label.id)
     }
     setSearchQuery('')
     setIsSearchOpen(false)
@@ -305,600 +272,625 @@ export const TopBar = memo(function TopBar({
     return 'Archived Card'
   }
 
-  const profileName = isAuthenticated
-    ? (profile?.display_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Mindful User')
-    : 'Mindful User'
-  const profileSubtitle = isAuthenticated
-    ? user?.email
-    : 'Local workspace — your data stays on this device'
+  const profileName = () =>
+    auth.isAuthenticated
+      ? (auth.profile?.display_name || auth.user?.user_metadata?.full_name || auth.user?.email?.split('@')[0] || 'Mindful User')
+      : 'Mindful User'
+  const profileSubtitle = () =>
+    auth.isAuthenticated
+      ? auth.user?.email
+      : 'Local workspace — your data stays on this device'
   const profileLevel = 1
 
-  if (isFullscreen) return null
-
+  // Fullscreen hides the bar entirely — <Show> instead of an early return so
+  // reactive tracking is never bypassed.
   return (
-    <header className="top-bar">
-      <div className="top-left">
-        <div className="account-menu-wrap" ref={accountRef}>
-          <button
-            className={`nav-box ${isAccountMenuOpen ? 'is-open' : ''}`}
-            aria-label="menu"
-            aria-expanded={isAccountMenuOpen}
-            onClick={() => {
-              setIsAccountMenuOpen((open) => !open)
-              setIsQuickMenuOpen(false)
-              setIsSearchOpen(false)
-              setIsWorkspaceMenuOpen(false)
-            }}
-          >
-            <Menu aria-hidden="true" />
-            {isAuthenticated && (
-              <span className="auth-presence-dot" title={`Signed in as ${user?.email || 'user'}`} aria-hidden="true" />
-            )}
-          </button>
+    <Show when={!isFullscreen()}>
+      <header class="top-bar">
+        <div class="top-left">
+          <div class="account-menu-wrap" ref={accountRef}>
+            <button
+              type="button"
+              class={`nav-box ${isAccountMenuOpen() ? 'is-open' : ''}`}
+              aria-label="menu"
+              aria-expanded={isAccountMenuOpen()}
+              onClick={() => {
+                setIsAccountMenuOpen((open) => !open)
+                setIsQuickMenuOpen(false)
+                setIsSearchOpen(false)
+                setIsWorkspaceMenuOpen(false)
+              }}
+            >
+              <Menu aria-hidden="true" />
+              <Show when={auth.isAuthenticated}>
+                <span class="auth-presence-dot" title={`Signed in as ${auth.user?.email || 'user'}`} aria-hidden="true" />
+              </Show>
+            </button>
 
-          {isAccountMenuOpen && (
-            <section className="account-panel" aria-label="account menu">
-              <div className="account-tabs">
-                <button
-                  type="button"
-                  className={`account-tab ${activeAccountTab === 'profile' ? 'is-active' : ''}`}
-                  onClick={() => setActiveAccountTab('profile')}
-                >
-                  <User aria-hidden="true" />
-                  Profile
-                </button>
-                <button
-                  type="button"
-                  className={`account-tab ${activeAccountTab === 'archive' ? 'is-active' : ''}`}
-                  onClick={() => setActiveAccountTab('archive')}
-                >
-                  <Archive aria-hidden="true" />
-                  Archive
-                </button>
-                <button
-                  type="button"
-                  className={`account-tab ${activeAccountTab === 'settings' ? 'is-active' : ''}`}
-                  onClick={() => setActiveAccountTab('settings')}
-                >
-                  <Settings aria-hidden="true" />
-                  Settings
-                </button>
-              </div>
-
-              {activeAccountTab === 'profile' && (
-                <div className="account-content">
-                  {isAuthenticated ? (
-                    <>
-                      <div className="account-profile-grid">
-                        <div className="account-avatar-wrap">
-                          <div className="account-avatar">
-                            {profile?.avatar_url ? (
-                              <img
-                                src={profile.avatar_url}
-                                alt={profileName}
-                                style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
-                              />
-                            ) : (
-                              <UserRound aria-hidden="true" />
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="account-meta-stack">
-                          <div className="account-meta-card account-meta-strong">{profileName}</div>
-                          <div className="account-meta-card">
-                            <User aria-hidden="true" />
-                            Level {profileLevel}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="account-email-row">
-                        <span
-                          className="account-email-dot"
-                          style={{ background: '#2ecc71', boxShadow: '0 0 8px #2ecc71' }}
-                          aria-hidden="true"
-                        />
-                        <span>{profileSubtitle}</span>
-                      </div>
-
-                      <SyncStatus
-                        status={syncStatus}
-                        lastSyncedAt={lastSyncedAt}
-                        onSyncNow={onSyncNow}
-                        message={syncMessage}
-                      />
-
-                      <button
-                        type="button"
-                        className="account-signout-btn"
-                        onClick={async () => {
-                          await signOut()
-                        }}
-                      >
-                        <LogOut size={15} />
-                        <span>Sign Out</span>
-                      </button>
-
-                      <div className="account-streak-card">
-                        <div className="account-streak-header">
-                          <span>You're on a</span>
-                          <span>{streakDays} day streak in total 🔥</span>
-                        </div>
-                        <div className="account-streak-main">{streakDays} day streak</div>
-
-                        <div className="account-streak-track" aria-hidden="true">
-                          {streakTimeline.map((node) => (
-                            <span key={node.key} className={`streak-node ${node.status}`} />
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <AuthForm />
-                  )}
+            <Show when={isAccountMenuOpen()}>
+              <section class="account-panel" aria-label="account menu">
+                <div class="account-tabs">
+                  <button
+                    type="button"
+                    class={`account-tab ${activeAccountTab() === 'profile' ? 'is-active' : ''}`}
+                    onClick={() => setActiveAccountTab('profile')}
+                  >
+                    <User aria-hidden="true" />
+                    Profile
+                  </button>
+                  <button
+                    type="button"
+                    class={`account-tab ${activeAccountTab() === 'archive' ? 'is-active' : ''}`}
+                    onClick={() => setActiveAccountTab('archive')}
+                  >
+                    <Archive aria-hidden="true" />
+                    Archive
+                  </button>
+                  <button
+                    type="button"
+                    class={`account-tab ${activeAccountTab() === 'settings' ? 'is-active' : ''}`}
+                    onClick={() => setActiveAccountTab('settings')}
+                  >
+                    <Settings aria-hidden="true" />
+                    Settings
+                  </button>
                 </div>
-              )}
 
-              {activeAccountTab === 'archive' && (
-                <div className="account-content">
-                  {archivedItems.length > 0 ? (
-                    <div className="account-archive-list">
-                      {archivedItems.slice(0, 12).map((entry) => (
-                        <article key={entry.id} className="account-archive-item">
-                          <div className="account-archive-main">
-                            <div className="account-archive-title">{formatArchiveTitle(entry)}</div>
-                            <div className="account-archive-meta">
-                              {formatArchiveTypeLabel(entry.type)} •{' '}
-                              {new Date(entry.archivedAt || Date.now()).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                              })}
+                <Show when={activeAccountTab() === 'profile'}>
+                  <div class="account-content">
+                    <Show
+                      when={auth.isAuthenticated}
+                      fallback={<AuthForm />}
+                    >
+                      <>
+                        <div class="account-profile-grid">
+                          <div class="account-avatar-wrap">
+                            <div class="account-avatar">
+                              <Show
+                                when={auth.profile?.avatar_url}
+                                fallback={<UserRound aria-hidden="true" />}
+                              >
+                                <img
+                                  src={auth.profile.avatar_url}
+                                  alt={profileName()}
+                                  style={{ width: '100%', height: '100%', "border-radius": '50%', "object-fit": 'cover' }}
+                                />
+                              </Show>
                             </div>
                           </div>
-                          <div className="account-archive-actions">
-                            <button
-                              type="button"
-                              className="account-archive-restore"
-                              onClick={() => onRestoreArchivedCard?.(entry.id)}
-                            >
-                              Restore
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="account-empty-state">No archived cards yet.</div>
-                  )}
-                </div>
-              )}
 
-              {activeAccountTab === 'settings' && (
-                <div className="account-content">
-                  <div className="account-settings-list">
-                    <div className="account-setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '6px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        {isAuthenticated && (
-                          <span className="auth-presence-dot" aria-hidden="true" />
-                        )}
-                        <strong>{isAuthenticated ? 'Signed in' : 'Guest mode'}</strong>
+                          <div class="account-meta-stack">
+                            <div class="account-meta-card account-meta-strong">{profileName()}</div>
+                            <div class="account-meta-card">
+                              <User aria-hidden="true" />
+                              Level {profileLevel}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="account-email-row">
+                          <span
+                            class="account-email-dot"
+                            style={{ background: '#2ecc71', "box-shadow": '0 0 8px #2ecc71' }}
+                            aria-hidden="true"
+                          />
+                          <span>{profileSubtitle()}</span>
+                        </div>
+
+                        <SyncStatus
+                          status={props.syncStatus ?? 'idle'}
+                          lastSyncedAt={props.lastSyncedAt ?? null}
+                          onSyncNow={props.onSyncNow ?? null}
+                          message={props.syncMessage ?? null}
+                        />
+
+                        <button
+                          type="button"
+                          class="account-signout-btn"
+                          onClick={async () => {
+                            await auth.signOut()
+                          }}
+                        >
+                          <LogOut size={15} />
+                          <span>Sign Out</span>
+                        </button>
+
+                        <div class="account-streak-card">
+                          <div class="account-streak-header">
+                            <span>You're on a</span>
+                            <span>{streakDays()} day streak in total 🔥</span>
+                          </div>
+                          <div class="account-streak-main">{streakDays()} day streak</div>
+
+                          <div class="account-streak-track" aria-hidden="true">
+                            <For each={streakTimeline()}>
+                              {(node) => (
+                                <span class={`streak-node ${node.status}`} />
+                              )}
+                            </For>
+                          </div>
+                        </div>
+                      </>
+                    </Show>
+                  </div>
+                </Show>
+
+                <Show when={activeAccountTab() === 'archive'}>
+                  <div class="account-content">
+                    <Show
+                      when={archivedItems().length > 0}
+                      fallback={<div class="account-empty-state">No archived cards yet.</div>}
+                    >
+                      <div class="account-archive-list">
+                        <For each={archivedItems().slice(0, 12)}>
+                          {(entry) => (
+                            <article class="account-archive-item">
+                              <div class="account-archive-main">
+                                <div class="account-archive-title">{formatArchiveTitle(entry)}</div>
+                                <div class="account-archive-meta">
+                                  {formatArchiveTypeLabel(entry.type)} •{' '}
+                                  {new Date(entry.archivedAt || Date.now()).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })}
+                                </div>
+                              </div>
+                              <div class="account-archive-actions">
+                                <button
+                                  type="button"
+                                  class="account-archive-restore"
+                                  onClick={() => props.onRestoreArchivedCard?.(entry.id)}
+                                >
+                                  Restore
+                                </button>
+                              </div>
+                            </article>
+                          )}
+                        </For>
                       </div>
-                      <span style={{ fontSize: '12px', color: 'var(--ui-text)', opacity: 0.75, wordBreak: 'break-all' }}>
-                        {isAuthenticated
-                          ? `${user?.email || profileName} — your changes sync to the cloud`
-                          : 'Sign in from the Profile tab to enable cloud sync'}
-                      </span>
-                    </div>
-                    <div className="account-setting-row">
-                      <span>Theme</span>
-                      <button type="button" className="account-setting-btn" onClick={onToggleMode}>
-                        {mode === 'night' ? 'Switch to day' : 'Switch to night'}
-                      </button>
-                    </div>
-                    <div className="account-setting-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Palette aria-hidden="true" style={{ width: 14, height: 14, color: 'var(--ui-icon)' }} />
-                          <span>Color Palette</span>
+                    </Show>
+                  </div>
+                </Show>
+
+                <Show when={activeAccountTab() === 'settings'}>
+                  <div class="account-content">
+                    <div class="account-settings-list">
+                      <div class="account-setting-row" style={{ "flex-direction": 'column', "align-items": 'flex-start', gap: '6px' }}>
+                        <div style={{ display: 'flex', "align-items": 'center', gap: '8px' }}>
+                          <Show when={auth.isAuthenticated}>
+                            <span class="auth-presence-dot" aria-hidden="true" />
+                          </Show>
+                          <strong>{auth.isAuthenticated ? 'Signed in' : 'Guest mode'}</strong>
+                        </div>
+                        <span style={{ "font-size": '12px', color: 'var(--ui-text)', opacity: 0.75, "word-break": 'break-all' }}>
+                          {auth.isAuthenticated
+                            ? `${auth.user?.email || profileName()} — your changes sync to the cloud`
+                            : 'Sign in from the Profile tab to enable cloud sync'}
                         </span>
                       </div>
-                      <div className="palette-picker-grid">
-                        {PALETTE_OPTIONS.map((p) => {
-                          const isSelected = (palette || 'sage') === p.id
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              className={`palette-option-btn ${isSelected ? 'is-active' : ''}`}
-                              onClick={() => onSelectPalette?.(p.id)}
-                              aria-label={`Select ${p.name} palette`}
-                              aria-pressed={isSelected}
-                            >
-                              <div className="palette-preview-dots">
-                                {p.swatches.map((color, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="palette-preview-dot"
-                                    style={{ backgroundColor: color }}
-                                    aria-hidden="true"
-                                  />
-                                ))}
-                              </div>
-                              <div className="palette-option-text">
-                                <span className="palette-name">{p.name}</span>
-                                <span className="palette-desc">{p.subtitle}</span>
-                              </div>
-                              {isSelected && (
-                                <span className="palette-active-badge">
-                                  <Check style={{ width: 12, height: 12 }} aria-hidden="true" />
-                                </span>
-                              )}
-                            </button>
-                          )
-                        })}
+                      <div class="account-setting-row">
+                        <span>Theme</span>
+                        <button type="button" class="account-setting-btn" onClick={() => props.onToggleMode?.()}>
+                          {props.mode === 'night' ? 'Switch to day' : 'Switch to night'}
+                        </button>
                       </div>
-                    </div>
-                    <div className="account-setting-row">
-                      <span>Export Workspace</span>
-                      <button type="button" className="account-setting-btn" onClick={handleExportClick}>
-                        Export JSON
-                      </button>
-                    </div>
-                    <div className="account-setting-row">
-                      <span>Import Workspace</span>
-                      <button type="button" className="account-setting-btn" onClick={handleImportClick}>
-                        Import JSON
-                      </button>
-                    </div>
-                    <div className="account-setting-row">
-                      <span>Import Cards</span>
-                      <button type="button" className="account-setting-btn" onClick={handleImportCardsClick}>
-                        Import Cards JSON
-                      </button>
-                    </div>
-                    <div className="account-setting-row">
-                      <span>Archived cards</span>
-                      <strong>{archivedItems.length}</strong>
-                    </div>
-                    <div className="account-setting-row">
-                      <span>Active habits</span>
-                      <strong>{habitOptions.length}</strong>
-                    </div>
-                    <div className="account-setting-row">
-                      <span>Labels</span>
-                      <strong>{labelOptions.length}</strong>
-                    </div>
-                    {storageQuota > 0 && (
-                      <div className="account-setting-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '8px', marginTop: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '12px', color: 'var(--text-muted)' }}>
-                          <span>Storage Usage</span>
-                          <span>{(storageUsage / 1024 / 1024).toFixed(2)} MB / {(storageQuota / 1024 / 1024).toFixed(2)} MB</span>
+                      <div class="account-setting-row" style={{ "flex-direction": 'column', "align-items": 'stretch', gap: '8px' }}>
+                        <div style={{ display: 'flex', "align-items": 'center', "justify-content": 'space-between' }}>
+                          <span style={{ display: 'flex', "align-items": 'center', gap: '6px' }}>
+                            <Palette aria-hidden="true" style={{ width: '14px', height: '14px', color: 'var(--ui-icon)' }} />
+                            <span>Color Palette</span>
+                          </span>
                         </div>
-                        <div style={{ width: '100%', height: '6px', background: 'var(--panel-border)', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${Math.min(100, (storageUsage / storageQuota) * 100)}%`, background: 'var(--switch-track)', transition: 'width 0.3s ease' }} />
+                        <div class="palette-picker-grid">
+                          <For each={PALETTE_OPTIONS}>
+                            {(p) => {
+                              const isSelected = (props.palette || 'sage') === p.id
+                              return (
+                                <button
+                                  type="button"
+                                  class={`palette-option-btn ${isSelected ? 'is-active' : ''}`}
+                                  onClick={() => props.onSelectPalette?.(p.id)}
+                                  aria-label={`Select ${p.name} palette`}
+                                  aria-pressed={isSelected}
+                                >
+                                  <div class="palette-preview-dots">
+                                    <For each={p.swatches}>
+                                      {(color) => (
+                                        <span
+                                          class="palette-preview-dot"
+                                          style={{ "background-color": color }}
+                                          aria-hidden="true"
+                                        />
+                                      )}
+                                    </For>
+                                  </div>
+                                  <div class="palette-option-text">
+                                    <span class="palette-name">{p.name}</span>
+                                    <span class="palette-desc">{p.subtitle}</span>
+                                  </div>
+                                  <Show when={isSelected}>
+                                    <span class="palette-active-badge">
+                                      <Check style={{ width: '12px', height: '12px' }} aria-hidden="true" />
+                                    </span>
+                                  </Show>
+                                </button>
+                              )
+                            }}
+                          </For>
                         </div>
-                        <div style={{ fontSize: '11px', color: 'var(--tone-gold)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                          <AlertCircle size={12} />
-                          <span>All your data is stored locally. Remember to export your workspace to back it up!</span>
+                      </div>
+                      <div class="account-setting-row">
+                        <span>Export Workspace</span>
+                        <button type="button" class="account-setting-btn" onClick={handleExportClick}>
+                          Export JSON
+                        </button>
+                      </div>
+                      <div class="account-setting-row">
+                        <span>Import Workspace</span>
+                        <button type="button" class="account-setting-btn" onClick={handleImportClick}>
+                          Import JSON
+                        </button>
+                      </div>
+                      <div class="account-setting-row">
+                        <span>Import Cards</span>
+                        <button type="button" class="account-setting-btn" onClick={handleImportCardsClick}>
+                          Import Cards JSON
+                        </button>
+                      </div>
+                      <div class="account-setting-row">
+                        <span>Archived cards</span>
+                        <strong>{archivedItems().length}</strong>
+                      </div>
+                      <div class="account-setting-row">
+                        <span>Active habits</span>
+                        <strong>{habitOptions().length}</strong>
+                      </div>
+                      <div class="account-setting-row">
+                        <span>Labels</span>
+                        <strong>{labelOptions().length}</strong>
+                      </div>
+                      <Show when={storageQuota() > 0}>
+                        <div class="account-setting-row" style={{ "flex-direction": 'column', "align-items": 'flex-start', gap: '8px', "margin-top": '12px' }}>
+                          <div style={{ display: 'flex', "justify-content": 'space-between', width: '100%', "font-size": '12px', color: 'var(--text-muted)' }}>
+                            <span>Storage Usage</span>
+                            <span>{(storageUsage() / 1024 / 1024).toFixed(2)} MB / {(storageQuota() / 1024 / 1024).toFixed(2)} MB</span>
+                          </div>
+                          <div style={{ width: '100%', height: '6px', background: 'var(--panel-border)', "border-radius": '3px', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${Math.min(100, (storageUsage() / storageQuota()) * 100)}%`, background: 'var(--switch-track)', transition: 'width 0.3s ease' }} />
+                          </div>
+                          <div style={{ "font-size": '11px', color: 'var(--tone-gold)', display: 'flex', "align-items": 'center', gap: '4px', "margin-top": '4px' }}>
+                            <AlertCircle size={12} />
+                            <span>All your data is stored locally. Remember to export your workspace to back it up!</span>
+                          </div>
+                        </div>
+                      </Show>
+                    </div>
+                  </div>
+                </Show>
+              </section>
+            </Show>
+          </div>
+
+          <div class="workspace-selector-wrap" ref={menuRef}>
+            <button
+              type="button"
+              class={`welcome-box ${isWorkspaceMenuOpen() ? 'is-open' : ''}`}
+              aria-label="workspace selector"
+              onClick={() => {
+                setIsWorkspaceMenuOpen((open) => !open)
+                setIsAccountMenuOpen(false)
+                setIsQuickMenuOpen(false)
+                setIsSearchOpen(false)
+              }}
+            >
+              <span class="welcome-text">{props.workspace.name}</span>
+              <ChevronDown class="caret-icon" aria-hidden="true" />
+            </button>
+
+            <Show when={isWorkspaceMenuOpen()}>
+              <section class="workspace-menu-panel" role="menu">
+                <div class="workspace-list">
+                  <For each={props.allWorkspaces}>
+                    {(ws) => (
+                      <div class={`workspace-item ${ws.id === props.workspace.id ? 'is-active' : ''}`}>
+                        <Show
+                          when={ws.id === props.workspace.id}
+                          fallback={<div class="workspace-drag-handle-placeholder" />}
+                        >
+                          <div class="workspace-drag-handle">
+                            <GripVertical aria-hidden="true" />
+                          </div>
+                        </Show>
+
+                        <input
+                          class="workspace-name-input"
+                          value={ws.name}
+                          onInput={(e) => props.onUpdateName(ws.id, e.currentTarget.value)}
+                          onClick={() => {
+                            if (ws.id !== props.workspace.id) {
+                              props.onSwitchWorkspace(ws.id)
+                              setIsWorkspaceMenuOpen(false)
+                            }
+                          }}
+                        />
+
+                        <div class="workspace-actions">
+                          <button
+                            type="button"
+                            class="workspace-action-btn"
+                            onClick={() => {
+                              props.onSwitchWorkspace(ws.id)
+                              setIsWorkspaceMenuOpen(false)
+                            }}
+                            aria-label="select workspace"
+                          >
+                            <Check aria-hidden="true" />
+                          </button>
+
+                          <button
+                            type="button"
+                            class="workspace-action-btn"
+                            onClick={() => {
+                              props.onDuplicateWorkspace(ws.id)
+                              setIsWorkspaceMenuOpen(false)
+                            }}
+                            aria-label="duplicate workspace"
+                          >
+                            <Copy aria-hidden="true" />
+                          </button>
+
+                          <button
+                            type="button"
+                            class="workspace-action-btn workspace-delete-btn"
+                            onClick={() => {
+                              if (props.allWorkspaces.length <= 1) {
+                                setAlertMessage("You must have at least one workspace.")
+                                return
+                              }
+                              setWorkspaceToDelete(ws)
+                            }}
+                            aria-label="delete workspace"
+                          >
+                            <Trash2 aria-hidden="true" />
+                          </button>
                         </div>
                       </div>
                     )}
-                  </div>
+                  </For>
                 </div>
-              )}
-            </section>
-          )}
-        </div>
 
-        <div className="workspace-selector-wrap" ref={menuRef}>
-          <button
-            className={`welcome-box ${isWorkspaceMenuOpen ? 'is-open' : ''}`}
-            aria-label="workspace selector"
-            onClick={() => {
-              setIsWorkspaceMenuOpen(open => !open)
-              setIsAccountMenuOpen(false)
-              setIsQuickMenuOpen(false)
-              setIsSearchOpen(false)
-            }}
-          >
-            <span className="welcome-text">{workspace.name}</span>
-            <ChevronDown className="caret-icon" aria-hidden="true" />
-          </button>
+                <div class="workspace-menu-footer">
+                  <button
+                    type="button"
+                    class="workspace-add-btn"
+                    onClick={() => {
+                      props.onCreateWorkspace()
+                      setIsWorkspaceMenuOpen(false)
+                    }}
+                  >
+                    <Plus aria-hidden="true" />
+                  </button>
+                </div>
+              </section>
+            </Show>
+          </div>
 
-          {isWorkspaceMenuOpen && (
-            <section className="workspace-menu-panel" role="menu">
-              <div className="workspace-list">
-                {allWorkspaces.map(ws => (
-                  <div key={ws.id} className={`workspace-item ${ws.id === workspace.id ? 'is-active' : ''}`}>
-                    {ws.id === workspace.id ? (
-                      <div className="workspace-drag-handle">
-                        <GripVertical aria-hidden="true" />
-                      </div>
-                    ) : (
-                      <div className="workspace-drag-handle-placeholder" />
-                    )}
-                    
-                    <input
-                      className="workspace-name-input"
-                      value={ws.name}
-                      onChange={(e) => onUpdateName(ws.id, e.target.value)}
+          <div class="quick-menu-wrap" ref={quickMenuRef} style={{ position: 'relative' }}>
+            <button
+              type="button"
+              class={`quick-box ${isQuickMenuOpen() ? 'is-open' : ''}`}
+              aria-label="Add card"
+              title="Add card"
+              aria-expanded={isQuickMenuOpen()}
+              aria-haspopup="menu"
+              onClick={() => {
+                setIsQuickMenuOpen((open) => !open)
+                setIsAccountMenuOpen(false)
+                setIsWorkspaceMenuOpen(false)
+                setIsSearchOpen(false)
+              }}
+            >
+              <FilePlus2 aria-hidden="true" />
+              <ChevronDown class="caret-icon" aria-hidden="true" />
+            </button>
+
+            <Show when={isQuickMenuOpen()}>
+              <div class="quick-menu" role="menu" aria-label="Add card menu">
+                <For each={props.quickActions || []}>
+                  {(action) => (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="quick-menu-item"
                       onClick={() => {
-                        if (ws.id !== workspace.id) {
-                          onSwitchWorkspace(ws.id)
-                          setIsWorkspaceMenuOpen(false)
-                        }
+                        props.onQuickAction?.(action.id)
+                        setIsQuickMenuOpen(false)
                       }}
-                    />
-
-                    <div className="workspace-actions">
-                      <button
-                        className="workspace-action-btn"
-                        onClick={() => {
-                          onSwitchWorkspace(ws.id)
-                          setIsWorkspaceMenuOpen(false)
-                        }}
-                        aria-label="select workspace"
-                      >
-                        <Check aria-hidden="true" />
-                      </button>
-                      
-                      <button
-                        className="workspace-action-btn"
-                        onClick={() => {
-                          onDuplicateWorkspace(ws.id)
-                          setIsWorkspaceMenuOpen(false)
-                        }}
-                        aria-label="duplicate workspace"
-                      >
-                        <Copy aria-hidden="true" />
-                      </button>
-
-                      <button
-                        className="workspace-action-btn workspace-delete-btn"
-                        onClick={() => {
-                          if (allWorkspaces.length <= 1) {
-                            setAlertMessage("You must have at least one workspace.")
-                            return
-                          }
-                          setWorkspaceToDelete(ws)
-                        }}
-                        aria-label="delete workspace"
-                      >
-                        <Trash2 aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="workspace-menu-footer">
-                <button
-                  className="workspace-add-btn"
-                  onClick={() => {
-                    onCreateWorkspace()
-                    setIsWorkspaceMenuOpen(false)
+                    >
+                      <ActionRailIcon kind={action.icon} />
+                      <span>{action.title}</span>
+                    </button>
+                  )}
+                </For>
+                <div
+                  style={{
+                    height: '1px',
+                    background: 'var(--surface-border)',
+                    margin: '4px 0',
+                    "grid-column": '1 / -1',
                   }}
-                >
-                  <Plus aria-hidden="true" />
-                </button>
-              </div>
-            </section>
-          )}
-        </div>
-
-        <div className="quick-menu-wrap" ref={quickMenuRef} style={{ position: 'relative' }}>
-          <button
-            type="button"
-            className={`quick-box ${isQuickMenuOpen ? 'is-open' : ''}`}
-            aria-label="Add card"
-            title="Add card"
-            aria-expanded={isQuickMenuOpen}
-            aria-haspopup="menu"
-            onClick={() => {
-              setIsQuickMenuOpen((open) => !open)
-              setIsAccountMenuOpen(false)
-              setIsWorkspaceMenuOpen(false)
-              setIsSearchOpen(false)
-            }}
-          >
-            <FilePlus2 aria-hidden="true" />
-            <ChevronDown className="caret-icon" aria-hidden="true" />
-          </button>
-
-          {isQuickMenuOpen && (
-            <div className="quick-menu" role="menu" aria-label="Add card menu">
-              {(quickActions || []).map((action) => (
+                  aria-hidden="true"
+                />
                 <button
-                  key={action.id}
                   type="button"
                   role="menuitem"
-                  className="quick-menu-item"
+                  class="quick-menu-item"
+                  style={{ "grid-column": '1 / -1' }}
                   onClick={() => {
-                    onQuickAction?.(action.id)
+                    handleImportCardsClick()
                     setIsQuickMenuOpen(false)
                   }}
                 >
-                  <ActionRailIcon kind={action.icon} />
-                  <span>{action.title}</span>
+                  <FilePlus2 aria-hidden="true" style={{ width: '16px', height: '16px' }} />
+                  <span>Import Cards from JSON</span>
                 </button>
-              ))}
-              <div
-                style={{
-                  height: '1px',
-                  background: 'var(--surface-border)',
-                  margin: '4px 0',
-                  gridColumn: '1 / -1',
+              </div>
+            </Show>
+          </div>
+        </div>
+
+        <div class="top-right">
+          <div class="label-search-wrap" ref={searchRef}>
+            <label class="search-shell">
+              <input
+                type="text"
+                value={searchQuery()}
+                placeholder="Search for a label..."
+                onFocus={() => {
+                  setIsSearchOpen(true)
+                  setIsAccountMenuOpen(false)
+                  setIsWorkspaceMenuOpen(false)
                 }}
-                aria-hidden="true"
+                onInput={(event) => {
+                  setSearchQuery(event.currentTarget.value)
+                  setIsSearchOpen(true)
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && filteredLabels().length > 0) {
+                    handleSelectLabel(filteredLabels()[0])
+                  }
+
+                  if (event.key === 'Escape') {
+                    setIsSearchOpen(false)
+                  }
+                }}
               />
-              <button
-                type="button"
-                role="menuitem"
-                className="quick-menu-item"
-                style={{ gridColumn: '1 / -1' }}
-                onClick={() => {
-                  handleImportCardsClick()
-                  setIsQuickMenuOpen(false)
-                }}
-              >
-                <FilePlus2 aria-hidden="true" style={{ width: 16, height: 16 }} />
-                <span>Import Cards from JSON</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+              <Search aria-hidden="true" />
+            </label>
 
-      <div className="top-right">
-        <div className="label-search-wrap" ref={searchRef}>
-          <label className="search-shell">
-            <input
-              type="text"
-              value={searchQuery}
-              placeholder="Search for a label..."
-              onFocus={() => {
-                setIsSearchOpen(true)
-                setIsAccountMenuOpen(false)
-                setIsWorkspaceMenuOpen(false)
-              }}
-              onChange={(event) => {
-                setSearchQuery(event.target.value)
-                setIsSearchOpen(true)
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && filteredLabels.length > 0) {
-                  handleSelectLabel(filteredLabels[0])
-                }
+            <Show when={isSearchOpen()}>
+              <div class="label-search-results" role="listbox" aria-label="label search results">
+                <Show
+                  when={filteredLabels().length > 0}
+                  fallback={<div class="label-search-empty">No labels found</div>}
+                >
+                  <For each={filteredLabels()}>
+                    {(label) => (
+                      <button
+                        type="button"
+                        class="label-search-item"
+                        style={{ "background-color": label.color || undefined, color: 'var(--label-text)' }}
+                        onClick={() => handleSelectLabel(label)}
+                      >
+                        {label.text}
+                      </button>
+                    )}
+                  </For>
+                </Show>
+              </div>
+            </Show>
+          </div>
 
-                if (event.key === 'Escape') {
-                  setIsSearchOpen(false)
-                }
-              }}
-            />
-            <Search aria-hidden="true" />
-          </label>
+          <button
+            type="button"
+            class={`icon-box focus-toggle ${props.isFocusMode ? 'is-active' : ''}`}
+            aria-label={props.isFocusMode ? 'Exit Focus Mode' : 'Focus Mode'}
+            aria-pressed={props.isFocusMode}
+            onClick={() => props.onToggleFocusMode?.()}
+          >
+            <Crosshair aria-hidden="true" />
+          </button>
 
-          {isSearchOpen && (
-            <div className="label-search-results" role="listbox" aria-label="label search results">
-              {filteredLabels.length > 0 ? (
-                filteredLabels.map((label) => (
-                  <button
-                    key={label.id}
-                    type="button"
-                    className="label-search-item"
-                    style={{ backgroundColor: label.color || undefined, color: 'var(--label-text)' }}
-                    onClick={() => handleSelectLabel(label)}
-                  >
-                    {label.text}
-                  </button>
-                ))
-              ) : (
-                <div className="label-search-empty">No labels found</div>
-              )}
-            </div>
-          )}
+          <button
+            type="button"
+            class="icon-box"
+            aria-label="fullscreen"
+            onClick={() => {
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {})
+              } else if (document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {})
+              }
+            }}
+          >
+            <Expand aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
+            class={`theme-switch ${props.mode === 'day' ? 'is-day' : 'is-night'}`}
+            aria-label="theme switch"
+            onClick={() => props.onToggleMode?.()}
+          >
+            <span class="theme-moon" />
+          </button>
         </div>
 
-
-
-        <button
-          type="button"
-          className={`icon-box focus-toggle ${isFocusMode ? 'is-active' : ''}`}
-          aria-label={isFocusMode ? 'Exit Focus Mode' : 'Focus Mode'}
-          aria-pressed={isFocusMode}
-          onClick={onToggleFocusMode}
-        >
-          <Crosshair aria-hidden="true" />
-        </button>
-
-        <button
-          className="icon-box"
-          aria-label="fullscreen"
-          onClick={() => {
-            if (!document.fullscreenElement) {
-              document.documentElement.requestFullscreen().catch(() => {})
-            } else if (document.exitFullscreen) {
-              document.exitFullscreen().catch(() => {})
+        <ConfirmModal
+          isOpen={!!workspaceToDelete()}
+          title="Delete Workspace"
+          message={`Are you sure you want to delete workspace "${workspaceToDelete()?.name}"?`}
+          confirmText="Delete"
+          onConfirm={() => {
+            if (workspaceToDelete()) {
+              props.onDeleteWorkspace(workspaceToDelete().id)
+              setIsWorkspaceMenuOpen(false)
             }
+            setWorkspaceToDelete(null)
           }}
-        >
-          <Expand aria-hidden="true" />
-        </button>
+          onCancel={() => setWorkspaceToDelete(null)}
+        />
 
-        <button
-          className={`theme-switch ${mode === 'day' ? 'is-day' : 'is-night'}`}
-          aria-label="theme switch"
-          onClick={onToggleMode}
-        >
-          <span className="theme-moon" />
-        </button>
-      </div>
+        <ConfirmModal
+          isOpen={!!alertMessage()}
+          title="Notice"
+          message={alertMessage()}
+          confirmText="OK"
+          hideCancel={true}
+          onConfirm={() => setAlertMessage(null)}
+          onCancel={() => setAlertMessage(null)}
+        />
 
-      <ConfirmModal
-        isOpen={!!workspaceToDelete}
-        title="Delete Workspace"
-        message={`Are you sure you want to delete workspace "${workspaceToDelete?.name}"?`}
-        confirmText="Delete"
-        onConfirm={() => {
-          if (workspaceToDelete) {
-            onDeleteWorkspace(workspaceToDelete.id)
-            setIsWorkspaceMenuOpen(false)
-          }
-          setWorkspaceToDelete(null)
-        }}
-        onCancel={() => setWorkspaceToDelete(null)}
-      />
+        <ConfirmModal
+          isOpen={isImportConfirmOpen()}
+          title="Import Workspace"
+          message="Are you sure you want to import this workspace? This will completely overwrite all cards and settings in your current active workspace!"
+          confirmText="Overwrite & Import"
+          onConfirm={handleConfirmImport}
+          onCancel={() => {
+            setIsImportConfirmOpen(false)
+            setSelectedFile(null)
+          }}
+        />
 
-      <ConfirmModal
-        isOpen={!!alertMessage}
-        title="Notice"
-        message={alertMessage}
-        confirmText="OK"
-        hideCancel={true}
-        onConfirm={() => setAlertMessage(null)}
-        onCancel={() => setAlertMessage(null)}
-      />
+        <ConfirmModal
+          isOpen={isImportCardsConfirmOpen()}
+          title="Import Cards"
+          message="Are you sure you want to import cards from this file? The imported cards will be added to your current screen without replacing any existing cards."
+          confirmText="Import Cards"
+          onConfirm={handleConfirmImportCards}
+          onCancel={() => {
+            setIsImportCardsConfirmOpen(false)
+            setSelectedCardsFile(null)
+          }}
+        />
 
-      <ConfirmModal
-        isOpen={isImportConfirmOpen}
-        title="Import Workspace"
-        message="Are you sure you want to import this workspace? This will completely overwrite all cards and settings in your current active workspace!"
-        confirmText="Overwrite & Import"
-        onConfirm={handleConfirmImport}
-        onCancel={() => {
-          setIsImportConfirmOpen(false)
-          setSelectedFile(null)
-        }}
-      />
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="application/json"
+          onChange={handleFileChange}
+          style={{ display: 'none' }}
+        />
 
-      <ConfirmModal
-        isOpen={isImportCardsConfirmOpen}
-        title="Import Cards"
-        message="Are you sure you want to import cards from this file? The imported cards will be added to your current screen without replacing any existing cards."
-        confirmText="Import Cards"
-        onConfirm={handleConfirmImportCards}
-        onCancel={() => {
-          setIsImportCardsConfirmOpen(false)
-          setSelectedCardsFile(null)
-        }}
-      />
-
-      <input
-        type="file"
-        ref={fileInputRef}
-        accept="application/json"
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-      />
-
-      <input
-        type="file"
-        ref={importCardsInputRef}
-        accept="application/json"
-        onChange={handleImportCardsFileChange}
-        style={{ display: 'none' }}
-      />
-    </header>
+        <input
+          type="file"
+          ref={importCardsInputRef}
+          accept="application/json"
+          onChange={handleImportCardsFileChange}
+          style={{ display: 'none' }}
+        />
+      </header>
+    </Show>
   )
-})
+}

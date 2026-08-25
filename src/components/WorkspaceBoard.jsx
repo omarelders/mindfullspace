@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { createSignal, createEffect, onMount, onCleanup, Show, For } from 'solid-js'
 import { ActionRail, ActionRailIcon } from './ActionRail'
 import { TodoCard } from './TodoCard'
 import { LabelCard } from './LabelCard'
@@ -13,570 +13,521 @@ import { PictureCard } from './PictureCard'
 import { QuickLinksCard } from './QuickLinksCard'
 import { QuoteCard } from './QuoteCard'
 import { TopBar } from './TopBar'
-import { useWorkspace } from '../hooks/useWorkspace'
-import { useDocumentTitleTimer } from '../hooks/useDocumentTitleTimer'
+import { createWorkspace } from '../hooks/useWorkspace'
+import { createDocumentTitleTimer } from '../hooks/useDocumentTitleTimer'
 import { useAuth } from '../hooks/useAuth'
-import { useSyncEngine } from '../hooks/useSyncEngine'
+import { createSyncEngine } from '../hooks/useSyncEngine'
 import { QUICK_CREATE_ACTIONS } from '../utils/constants'
 import { supportsNativeZoom } from '../utils/browserSupport'
 
-export function WorkspaceBoard({
-  workspace,
-  isVisible,
-  allWorkspaces,
-  onSwitchWorkspace,
-  onUpdateName,
-  onDuplicateWorkspace,
-  onDeleteWorkspace,
-  onCreateWorkspace,
-}) {
-  const workspaceRef = useRef(null)
-  
-  const {
-    state: {
-      columns, drafts, viewport, isPanning, isRailOpen, isFocusMode, themeMode, themePalette, theme,
-      dragState, notes, timers, counters, stopwatches, calendars, habits, pictures, quickLinks, quotes,
-      archivedCards, detachedLabels, singleNotes, cardPositions, draggingCard, poppingCardIds, toastMessage,
-      longPressMenu, isLongPressHolding, longPressPos
-    },
-    setters: {
-      setThemeMode, setThemePalette, setIsFocusMode, setIsRailOpen
-    },
-    actions,
-  } = useWorkspace(workspace.id, workspaceRef)
+export function WorkspaceBoard(props) {
+  let workspaceEl
+  // Ref-compatible accessor: the workspace factory accepts either a DOM node
+  // or a React-style { current } ref — it normalizes both.
+  const workspaceRef = () => workspaceEl
 
-  const { user } = useAuth()
-  const { syncStatus, lastSyncedAt, syncError, syncNow, notifyChange } = useSyncEngine({
-    workspaceId: workspace.id,
+  const ws = createWorkspace(props.workspace.id, workspaceRef)
+  const {
+    setThemeMode, setThemePalette, setIsFocusMode, setIsRailOpen,
+  } = ws.setters
+  const actions = ws.actions
+
+  const auth = useAuth()
+  const sync = createSyncEngine({
+    workspaceId: props.workspace.id,
     captureSnapshot: actions.captureSnapshot,
-    user,
-    workspaceName: workspace.name,
+    get user() { return auth.user },
+    workspaceName: props.workspace.name,
     onRemoteWorkspaceLoaded: actions.importWorkspaceState,
   })
 
-  // Trigger debounced cloud sync whenever local state changes
-  useEffect(() => {
-    notifyChange()
-  }, [
-    columns, drafts, viewport, themeMode, themePalette, notes, timers, counters,
-    stopwatches, calendars, habits, pictures, quickLinks, quotes, archivedCards,
-    detachedLabels, singleNotes, cardPositions, notifyChange
-  ])
+  // Trigger debounced cloud sync whenever local state changes.
+  // captureSnapshot deep-reads every slice, so this effect tracks all of them.
+  createEffect(() => {
+    const _tracked = actions.captureSnapshot()
+    void _tracked
+    sync.notifyChange()
+  })
 
-  useDocumentTitleTimer(timers, workspace.name)
+  createDocumentTitleTimer(
+    () => ws.state.timers,
+    () => props.workspace.name,
+  )
 
-  const handleToggleThemeMode = useCallback(() => setThemeMode((mode) => (mode === 'night' ? 'day' : 'night')), [setThemeMode])
-  const handleToggleFocusMode = useCallback(() => setIsFocusMode((active) => !active), [setIsFocusMode])
-  const handleToggleRail = useCallback(() => setIsRailOpen((isOpen) => !isOpen), [setIsRailOpen])
+  const handleToggleThemeMode = () => setThemeMode((mode) => (mode === 'night' ? 'day' : 'night'))
+  const handleToggleFocusMode = () => setIsFocusMode((active) => !active)
+  const handleToggleRail = () => setIsRailOpen((isOpen) => !isOpen)
 
-  const noteDimensionsCallbacks = useRef({})
-  const noteIdsKey = notes.map((n) => n.id).join('|')
-  useEffect(() => {
-    // Evict cached callbacks for deleted notes so the cache can't grow forever.
-    const live = new Set(noteIdsKey ? noteIdsKey.split('|') : [])
-    Object.keys(noteDimensionsCallbacks.current)
-      .filter((id) => !live.has(id))
-      .forEach((id) => delete noteDimensionsCallbacks.current[id])
-  }, [noteIdsKey])
-  const getUpdateNoteDimensions = useCallback((id) => {
-    if (!noteDimensionsCallbacks.current[id]) {
-      noteDimensionsCallbacks.current[id] = (w, h) => actions.updateNoteDimensions(id, w, h)
-    }
-    return noteDimensionsCallbacks.current[id]
-  }, [actions.updateNoteDimensions])
+  // Non-passive wheel listener: Solid JSX can't set { passive: false },
+  // so attach manually (replaces the React WorkspaceWheelHandler component).
+  onMount(() => {
+    const el = workspaceRef()
+    if (!el) return
+    el.addEventListener('wheel', actions.handleWheel, { passive: false })
+    onCleanup(() => el.removeEventListener('wheel', actions.handleWheel))
+  })
 
-  const pictureDimensionsCallbacks = useRef({})
-  const pictureIdsKey = pictures.map((p) => p.id).join('|')
-  useEffect(() => {
-    const live = new Set(pictureIdsKey ? pictureIdsKey.split('|') : [])
-    Object.keys(pictureDimensionsCallbacks.current)
-      .filter((id) => !live.has(id))
-      .forEach((id) => delete pictureDimensionsCallbacks.current[id])
-  }, [pictureIdsKey])
-  const getUpdatePictureDimensions = useCallback((id) => {
-    if (!pictureDimensionsCallbacks.current[id]) {
-      pictureDimensionsCallbacks.current[id] = (w, h) => actions.updatePictureDimensions(id, w, h)
-    }
-    return pictureDimensionsCallbacks.current[id]
-  }, [actions.updatePictureDimensions])
-
-  const quoteDimensionsCallbacks = useRef({})
-  const quoteIdsKey = quotes.map((q) => q.id).join('|')
-  useEffect(() => {
-    const live = new Set(quoteIdsKey ? quoteIdsKey.split('|') : [])
-    Object.keys(quoteDimensionsCallbacks.current)
-      .filter((id) => !live.has(id))
-      .forEach((id) => delete quoteDimensionsCallbacks.current[id])
-  }, [quoteIdsKey])
-  const getUpdateQuoteDimensions = useCallback((id) => {
-    if (!quoteDimensionsCallbacks.current[id]) {
-      quoteDimensionsCallbacks.current[id] = (w, h) => actions.updateQuoteDimensions(id, w, h)
-    }
-    return quoteDimensionsCallbacks.current[id]
-  }, [actions.updateQuoteDimensions])
-
-  const boardStageStyle = supportsNativeZoom
+  const boardStageStyle = () => supportsNativeZoom
     ? {
-        left: viewport.x / viewport.scale,
-        top: viewport.y / viewport.scale,
-        zoom: viewport.scale,
+        left: `${ws.state.viewport.x / ws.state.viewport.scale}px`,
+        top: `${ws.state.viewport.y / ws.state.viewport.scale}px`,
+        zoom: `${ws.state.viewport.scale}`,
       }
     : {
-        left: 0,
-        top: 0,
-        transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.scale})`,
+        left: '0px',
+        top: '0px',
+        transform: `translate(${ws.state.viewport.x}px, ${ws.state.viewport.y}px) scale(${ws.state.viewport.scale})`,
       }
 
   return (
     <div
-      className={`app-shell theme-${themeMode} palette-${themePalette} ${isFocusMode ? 'is-focus-mode' : ''}`}
+      class={`app-shell theme-${ws.state.themeMode} palette-${ws.state.themePalette} ${ws.state.isFocusMode ? 'is-focus-mode' : ''}`}
       style={{
-        '--workspace-bg': theme.workspaceBg,
-        '--workspace-bg-alt': theme.workspaceBgAlt,
-        '--navbar-bg-start': theme.navbarBgStart,
-        '--navbar-bg-mid': theme.navbarBgMid,
-        '--navbar-bg-end': theme.navbarBgEnd,
-        '--surface-panel': theme.panel,
-        '--surface-panel-muted': theme.panelMuted,
-        '--surface-border': theme.panelBorder,
-        '--ui-text': theme.text,
-        '--ui-text-strong': theme.textStrong,
-        '--ui-icon': theme.icon,
-        '--input-text': theme.inputText,
-        '--input-placeholder': theme.inputPlaceholder,
-        '--card-text': theme.cardText,
-        '--card-ui-soft': theme.cardUiSoft,
-        '--card-ui-mid': theme.cardUiMid,
-        '--card-ui-strong': theme.cardUiStrong,
-        '--tone-charcoal': theme.toneCharcoal,
-        '--tone-gold': theme.toneGold,
-        '--tone-violet': theme.toneViolet,
-        '--tone-red': theme.toneRed,
-        '--tone-blue': theme.toneBlue,
-        '--card-counter-bg': theme.cardCounter,
-        '--card-stopwatch-bg': theme.cardStopwatch,
-        '--card-calendar-bg': theme.cardCalendar,
-        '--card-habit-bg': theme.cardHabit,
-        '--ink-strong': theme.inkStrong,
-        '--label-routine': theme.labelRoutine,
-        '--label-programming': theme.labelProgramming,
-        '--label-english': theme.labelEnglish,
-        '--label-text': theme.labelText,
-        '--rail-button-bg': theme.railButton,
-        '--rail-button-icon': theme.railIcon,
-        '--switch-track': theme.switchTrack,
-        '--switch-knob': theme.switchKnob,
-        '--palette-color-1': theme.palette.color1,
-        '--palette-color-2': theme.palette.color2,
-        '--palette-color-3': theme.palette.color3,
-        '--palette-color-4': theme.palette.color4,
-        '--palette-color-5': theme.palette.color5,
-        '--palette-color-6': theme.palette.color6,
-        '--palette-color-7': theme.palette.color7,
-        '--palette-color-8': theme.palette.color8,
-        '--palette-color-9': theme.palette.color9,
-        '--palette-color-10': theme.palette.color10,
-        '--palette-neutral': theme.palette.neutral,
+        '--workspace-bg': ws.state.theme.workspaceBg,
+        '--workspace-bg-alt': ws.state.theme.workspaceBgAlt,
+        '--navbar-bg-start': ws.state.theme.navbarBgStart,
+        '--navbar-bg-mid': ws.state.theme.navbarBgMid,
+        '--navbar-bg-end': ws.state.theme.navbarBgEnd,
+        '--surface-panel': ws.state.theme.panel,
+        '--surface-panel-muted': ws.state.theme.panelMuted,
+        '--surface-border': ws.state.theme.panelBorder,
+        '--ui-text': ws.state.theme.text,
+        '--ui-text-strong': ws.state.theme.textStrong,
+        '--ui-icon': ws.state.theme.icon,
+        '--input-text': ws.state.theme.inputText,
+        '--input-placeholder': ws.state.theme.inputPlaceholder,
+        '--card-text': ws.state.theme.cardText,
+        '--card-ui-soft': ws.state.theme.cardUiSoft,
+        '--card-ui-mid': ws.state.theme.cardUiMid,
+        '--card-ui-strong': ws.state.theme.cardUiStrong,
+        '--tone-charcoal': ws.state.theme.toneCharcoal,
+        '--tone-gold': ws.state.theme.toneGold,
+        '--tone-violet': ws.state.theme.toneViolet,
+        '--tone-red': ws.state.theme.toneRed,
+        '--tone-blue': ws.state.theme.toneBlue,
+        '--card-counter-bg': ws.state.theme.cardCounter,
+        '--card-stopwatch-bg': ws.state.theme.cardStopwatch,
+        '--card-calendar-bg': ws.state.theme.cardCalendar,
+        '--card-habit-bg': ws.state.theme.cardHabit,
+        '--ink-strong': ws.state.theme.inkStrong,
+        '--label-routine': ws.state.theme.labelRoutine,
+        '--label-programming': ws.state.theme.labelProgramming,
+        '--label-english': ws.state.theme.labelEnglish,
+        '--label-text': ws.state.theme.labelText,
+        '--rail-button-bg': ws.state.theme.railButton,
+        '--rail-button-icon': ws.state.theme.railIcon,
+        '--switch-track': ws.state.theme.switchTrack,
+        '--switch-knob': ws.state.theme.switchKnob,
+        '--palette-color-1': ws.state.theme.palette.color1,
+        '--palette-color-2': ws.state.theme.palette.color2,
+        '--palette-color-3': ws.state.theme.palette.color3,
+        '--palette-color-4': ws.state.theme.palette.color4,
+        '--palette-color-5': ws.state.theme.palette.color5,
+        '--palette-color-6': ws.state.theme.palette.color6,
+        '--palette-color-7': ws.state.theme.palette.color7,
+        '--palette-color-8': ws.state.theme.palette.color8,
+        '--palette-color-9': ws.state.theme.palette.color9,
+        '--palette-color-10': ws.state.theme.palette.color10,
+        '--palette-neutral': ws.state.theme.palette.neutral,
       }}
     >
-      <TopBar 
-        mode={themeMode} 
-        onToggleMode={handleToggleThemeMode} 
-        palette={themePalette}
+      <TopBar
+        mode={ws.state.themeMode}
+        onToggleMode={handleToggleThemeMode}
+        palette={ws.state.themePalette}
         onSelectPalette={setThemePalette}
-        isFocusMode={isFocusMode}
+        isFocusMode={ws.state.isFocusMode}
         onToggleFocusMode={handleToggleFocusMode}
-        workspace={workspace}
-        allWorkspaces={allWorkspaces}
-        onSwitchWorkspace={onSwitchWorkspace}
-        onUpdateName={onUpdateName}
-        onDuplicateWorkspace={onDuplicateWorkspace}
-        onDeleteWorkspace={onDeleteWorkspace}
-        onCreateWorkspace={onCreateWorkspace}
+        workspace={props.workspace}
+        allWorkspaces={props.allWorkspaces}
+        onSwitchWorkspace={props.onSwitchWorkspace}
+        onUpdateName={props.onUpdateName}
+        onDuplicateWorkspace={props.onDuplicateWorkspace}
+        onDeleteWorkspace={props.onDeleteWorkspace}
+        onCreateWorkspace={props.onCreateWorkspace}
         quickActions={QUICK_CREATE_ACTIONS}
         onQuickAction={actions.handleQuickAction}
-        labels={detachedLabels}
+        labels={ws.state.detachedLabels}
         onSelectLabel={actions.focusLabelCard}
-        archivedCards={archivedCards}
-        habits={habits}
+        archivedCards={ws.state.archivedCards}
+        habits={ws.state.habits}
         onRestoreArchivedCard={actions.restoreArchivedCard}
         onImportCards={actions.importCardsFromJson}
         onImportWorkspace={actions.importWorkspaceState}
         onCaptureSnapshot={actions.captureSnapshot}
-        syncStatus={syncStatus}
-        lastSyncedAt={lastSyncedAt}
-        onSyncNow={syncNow}
-        syncMessage={syncError}
+        syncStatus={sync.syncStatus}
+        lastSyncedAt={sync.lastSyncedAt}
+        onSyncNow={sync.syncNow}
+        syncMessage={sync.syncError}
       />
 
-      <div className={`focus-overlay ${isFocusMode ? 'is-active' : ''}`} aria-hidden="true" />
-      <WorkspaceWheelHandler workspaceRef={workspaceRef} onWheel={actions.handleWheel} />
+      <div class={`focus-overlay ${ws.state.isFocusMode ? 'is-active' : ''}`} aria-hidden="true" />
       <div
-        className={`workspace ${isPanning ? 'is-panning' : ''} ${draggingCard ? 'is-card-dragging' : ''}`}
-        ref={workspaceRef}
+        class={`workspace ${ws.state.isPanning ? 'is-panning' : ''} ${ws.state.draggingCard ? 'is-card-dragging' : ''}`}
+        ref={workspaceEl}
         onContextMenu={(event) => event.preventDefault()}
         onPointerDown={(e) => { actions.startPanning(e); actions.startLongPress(e); actions.handleMiddleClick(e) }}
         onPointerMove={(e) => { actions.movePanning(e); actions.moveLongPress(e) }}
         onPointerUp={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
         onPointerLeave={(e) => { actions.endPanning(e); actions.cancelLongPress() }}
       >
-        <div className="board-stage" style={boardStageStyle}>
-          <main className="board">
-            {columns.map((column) => (
-              <TodoCard
-                key={column.id}
-                cardId={column.id}
-                column={column}
-                draft={drafts[column.id]}
-                onDraftChange={actions.setDraft}
-                onAdd={actions.addItem}
-                onUpdateItemText={actions.updateItemText}
-                onUpdateItemDetails={actions.updateItemDetails}
-                onDeleteItem={actions.deleteItem}
-                onDragStartItem={actions.handleDragStartItem}
-                onDragOverItem={actions.handleDragOverItem}
-                onDropOnItem={actions.handleDropOnItem}
-                onDropOnList={actions.handleDropOnList}
-                onDragEndItem={actions.handleDragEndItem}
-                draggingItemId={dragState.columnId === column.id ? dragState.itemId : null}
-                position={cardPositions[column.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateTodoCardTitle}
-                onUpdateColor={actions.updateTodoCardColor}
-                onUpdateFontSize={actions.updateTodoCardFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleTodoCardMinimize}
-                onDuplicateCard={actions.duplicateTodoCard}
-                onArchiveCard={actions.archiveTodoCard}
-                onDeleteCard={actions.deleteTodoCard}
-                isPopping={poppingCardIds.has(column.id)}
-              />
-            ))}
+        <div class="board-stage" style={boardStageStyle()}>
+          <main class="board">
+            <For each={ws.state.columns}>
+              {(column) => (
+                <TodoCard
+                  cardId={column.id}
+                  column={column}
+                  draft={ws.state.drafts[column.id]}
+                  onDraftChange={actions.setDraft}
+                  onAdd={actions.addItem}
+                  onUpdateItemText={actions.updateItemText}
+                  onUpdateItemDetails={actions.updateItemDetails}
+                  onDeleteItem={actions.deleteItem}
+                  onDragStartItem={actions.handleDragStartItem}
+                  onDragOverItem={actions.handleDragOverItem}
+                  onDropOnItem={actions.handleDropOnItem}
+                  onDropOnList={actions.handleDropOnList}
+                  onDragEndItem={actions.handleDragEndItem}
+                  draggingItemId={ws.state.dragState.columnId === column.id ? ws.state.dragState.itemId : null}
+                  position={ws.state.cardPositions[column.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateTodoCardTitle}
+                  onUpdateColor={actions.updateTodoCardColor}
+                  onUpdateFontSize={actions.updateTodoCardFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleTodoCardMinimize}
+                  onDuplicateCard={actions.duplicateTodoCard}
+                  onArchiveCard={actions.archiveTodoCard}
+                  onDeleteCard={actions.deleteTodoCard}
+                  isPopping={ws.state.poppingCardIds.has(column.id)}
+                />
+              )}
+            </For>
 
-            {detachedLabels.map((label) => (
-              <LabelCard
-                key={label.id}
-                cardId={label.id}
-                label={label}
-                labelTextColor={theme.labelText}
-                position={cardPositions[label.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateText={actions.updateLabelText}
-                onUpdateColor={actions.updateLabelColor}
-                onUpdateFontSize={actions.updateLabelFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleLabelMinimize}
-                onDuplicateCard={actions.duplicateLabelCard}
-                onArchiveCard={actions.archiveLabelCard}
-                onDeleteCard={actions.deleteLabelCard}
-                isPopping={poppingCardIds.has(label.id)}
-              />
-            ))}
+            <For each={ws.state.detachedLabels}>
+              {(label) => (
+                <LabelCard
+                  cardId={label.id}
+                  label={label}
+                  labelTextColor={ws.state.theme.labelText}
+                  position={ws.state.cardPositions[label.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateText={actions.updateLabelText}
+                  onUpdateColor={actions.updateLabelColor}
+                  onUpdateFontSize={actions.updateLabelFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleLabelMinimize}
+                  onDuplicateCard={actions.duplicateLabelCard}
+                  onArchiveCard={actions.archiveLabelCard}
+                  onDeleteCard={actions.deleteLabelCard}
+                  isPopping={ws.state.poppingCardIds.has(label.id)}
+                />
+              )}
+            </For>
 
-            {singleNotes.map((note) => (
-              <SingleNoteCard
-                key={note.id}
-                cardId={note.id}
-                singleNote={note}
-                position={cardPositions[note.id]}
-                textColor="var(--label-text)"
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateText={actions.updateSingleNoteText}
-                onUpdateColor={actions.updateSingleNoteColor}
-                onUpdateFontSize={actions.updateSingleNoteFontSize}
-                onUpdateShape={actions.updateSingleNoteShape}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleSingleNoteMinimize}
-                onDuplicateCard={actions.duplicateSingleNoteCard}
-                onArchiveCard={actions.archiveSingleNoteCard}
-                onDeleteCard={actions.deleteSingleNoteCard}
-                isPopping={poppingCardIds.has(note.id)}
-              />
-            ))}
+            <For each={ws.state.singleNotes}>
+              {(note) => (
+                <SingleNoteCard
+                  cardId={note.id}
+                  singleNote={note}
+                  position={ws.state.cardPositions[note.id]}
+                  textColor="var(--label-text)"
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateText={actions.updateSingleNoteText}
+                  onUpdateColor={actions.updateSingleNoteColor}
+                  onUpdateFontSize={actions.updateSingleNoteFontSize}
+                  onUpdateShape={actions.updateSingleNoteShape}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleSingleNoteMinimize}
+                  onDuplicateCard={actions.duplicateSingleNoteCard}
+                  onArchiveCard={actions.archiveSingleNoteCard}
+                  onDeleteCard={actions.deleteSingleNoteCard}
+                  isPopping={ws.state.poppingCardIds.has(note.id)}
+                />
+              )}
+            </For>
 
-            {notes.map((note) => (
-              <NoteCard
-                key={note.id}
-                cardId={note.id}
-                note={note}
-                position={cardPositions[note.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateNoteTitle}
-                onUpdateText={actions.updateNoteText}
-                onUpdateColor={actions.updateNoteColor}
-                onUpdateFontSize={actions.updateNoteFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleNoteMinimize}
-                onDuplicateCard={actions.duplicateNoteCard}
-                onArchiveCard={actions.archiveNoteCard}
-                onDeleteCard={actions.deleteNoteCard}
-                onUpdateDimensions={getUpdateNoteDimensions(note.id)}
-                scale={viewport.scale}
-                isPopping={poppingCardIds.has(note.id)}
-              />
-            ))}
-            
-            {timers.map((timer) => (
-              <TimerCard
-                key={timer.id}
-                cardId={timer.id}
-                timer={timer}
-                position={cardPositions[timer.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateTimerTitle}
-                onUpdateColor={actions.updateTimerColor}
-                onUpdateFontSize={actions.updateTimerFontSize}
-                onUpdateTimerState={actions.updateTimerState}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleTimerMinimize}
-                onDuplicateCard={actions.duplicateTimerCard}
-                onArchiveCard={actions.archiveTimerCard}
-                onDeleteCard={actions.deleteTimerCard}
-                isPopping={poppingCardIds.has(timer.id)}
-              />
-            ))}
-            
-            {counters.map((counter) => (
-              <CounterCard
-                key={counter.id}
-                cardId={counter.id}
-                counter={counter}
-                position={cardPositions[counter.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateCounterTitle}
-                onUpdateValue={actions.updateCounterValue}
-                onUpdateColor={actions.updateCounterColor}
-                onUpdateFontSize={actions.updateCounterFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleCounterMinimize}
-                onDuplicateCard={actions.duplicateCounterCard}
-                onArchiveCard={actions.archiveCounterCard}
-                onDeleteCard={actions.deleteCounterCard}
-                isPopping={poppingCardIds.has(counter.id)}
-              />
-            ))}
+            <For each={ws.state.notes}>
+              {(note) => (
+                <NoteCard
+                  cardId={note.id}
+                  note={note}
+                  position={ws.state.cardPositions[note.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateNoteTitle}
+                  onUpdateText={actions.updateNoteText}
+                  onUpdateColor={actions.updateNoteColor}
+                  onUpdateFontSize={actions.updateNoteFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleNoteMinimize}
+                  onDuplicateCard={actions.duplicateNoteCard}
+                  onArchiveCard={actions.archiveNoteCard}
+                  onDeleteCard={actions.deleteNoteCard}
+                  onUpdateDimensions={(w, h) => actions.updateNoteDimensions(note.id, w, h)}
+                  scale={ws.state.viewport.scale}
+                  isPopping={ws.state.poppingCardIds.has(note.id)}
+                />
+              )}
+            </For>
 
-            {stopwatches.map((stopwatch) => (
-              <StopwatchCard
-                key={stopwatch.id}
-                cardId={stopwatch.id}
-                stopwatch={stopwatch}
-                position={cardPositions[stopwatch.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateStopwatchTitle}
-                onUpdateColor={actions.updateStopwatchColor}
-                onUpdateFontSize={actions.updateStopwatchFontSize}
-                onUpdateStopwatchState={actions.updateStopwatchState}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleStopwatchMinimize}
-                onDuplicateCard={actions.duplicateStopwatchCard}
-                onArchiveCard={actions.archiveStopwatchCard}
-                onDeleteCard={actions.deleteStopwatchCard}
-                isPopping={poppingCardIds.has(stopwatch.id)}
-              />
-            ))}
+            <For each={ws.state.timers}>
+              {(timer) => (
+                <TimerCard
+                  cardId={timer.id}
+                  timer={timer}
+                  position={ws.state.cardPositions[timer.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateTimerTitle}
+                  onUpdateColor={actions.updateTimerColor}
+                  onUpdateFontSize={actions.updateTimerFontSize}
+                  onUpdateTimerState={actions.updateTimerState}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleTimerMinimize}
+                  onDuplicateCard={actions.duplicateTimerCard}
+                  onArchiveCard={actions.archiveTimerCard}
+                  onDeleteCard={actions.deleteTimerCard}
+                  isPopping={ws.state.poppingCardIds.has(timer.id)}
+                />
+              )}
+            </For>
 
-            {calendars.map((calendar) => (
-              <CalendarCard
-                key={calendar.id}
-                cardId={calendar.id}
-                calendar={calendar}
-                allHabits={habits}
-                position={cardPositions[calendar.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateCalendarTitle}
-                onUpdateColor={actions.updateCalendarColor}
-                onUpdateFontSize={actions.updateCalendarFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleCalendarMinimize}
-                onDuplicateCard={actions.duplicateCalendarCard}
-                onArchiveCard={actions.archiveCalendarCard}
-                onDeleteCard={actions.deleteCalendarCard}
-                onChangeMonth={actions.changeCalendarMonth}
-                onOpenDay={actions.openCalendarDay}
-                onCloseDay={actions.closeCalendarDay}
-                onUpdateEntry={actions.updateCalendarEntry}
-                isPopping={poppingCardIds.has(calendar.id)}
-              />
-            ))}
+            <For each={ws.state.counters}>
+              {(counter) => (
+                <CounterCard
+                  cardId={counter.id}
+                  counter={counter}
+                  position={ws.state.cardPositions[counter.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateCounterTitle}
+                  onUpdateValue={actions.updateCounterValue}
+                  onUpdateColor={actions.updateCounterColor}
+                  onUpdateFontSize={actions.updateCounterFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleCounterMinimize}
+                  onDuplicateCard={actions.duplicateCounterCard}
+                  onArchiveCard={actions.archiveCounterCard}
+                  onDeleteCard={actions.deleteCounterCard}
+                  isPopping={ws.state.poppingCardIds.has(counter.id)}
+                />
+              )}
+            </For>
 
-            {habits.map((habit) => (
-              <HabitCard
-                key={habit.id}
-                cardId={habit.id}
-                habit={habit}
-                position={cardPositions[habit.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateHabitTitle}
-                onUpdateIcon={actions.updateHabitIcon}
-                onUpdateColor={actions.updateHabitColor}
-                onUpdateFontSize={actions.updateHabitFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleHabitMinimize}
-                onDuplicateCard={actions.duplicateHabitCard}
-                onArchiveCard={actions.archiveHabitCard}
-                onDeleteCard={actions.deleteHabitCard}
-                onSetView={actions.setHabitView}
-                onChangeMonth={actions.changeHabitMonth}
-                onToggleDate={actions.toggleHabitDate}
-                isPopping={poppingCardIds.has(habit.id)}
-              />
-            ))}
+            <For each={ws.state.stopwatches}>
+              {(stopwatch) => (
+                <StopwatchCard
+                  cardId={stopwatch.id}
+                  stopwatch={stopwatch}
+                  position={ws.state.cardPositions[stopwatch.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateStopwatchTitle}
+                  onUpdateColor={actions.updateStopwatchColor}
+                  onUpdateFontSize={actions.updateStopwatchFontSize}
+                  onUpdateStopwatchState={actions.updateStopwatchState}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleStopwatchMinimize}
+                  onDuplicateCard={actions.duplicateStopwatchCard}
+                  onArchiveCard={actions.archiveStopwatchCard}
+                  onDeleteCard={actions.deleteStopwatchCard}
+                  isPopping={ws.state.poppingCardIds.has(stopwatch.id)}
+                />
+              )}
+            </For>
 
-            {pictures.map((picture) => (
-              <PictureCard
-                key={picture.id}
-                cardId={picture.id}
-                picture={picture}
-                position={cardPositions[picture.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updatePictureTitle}
-                onUpdateColor={actions.updatePictureColor}
-                onUpdateFontSize={actions.updatePictureFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.togglePictureMinimize}
-                onDuplicateCard={actions.duplicatePictureCard}
-                onArchiveCard={actions.archivePictureCard}
-                onDeleteCard={actions.deletePictureCard}
-                onUpdateImageId={actions.updatePictureImageId}
-                onUpdateDimensions={getUpdatePictureDimensions(picture.id)}
-                onUpdateFitMode={actions.updatePictureFitMode}
-                scale={viewport.scale}
-                isPopping={poppingCardIds.has(picture.id)}
-              />
-            ))}
+            <For each={ws.state.calendars}>
+              {(calendar) => (
+                <CalendarCard
+                  cardId={calendar.id}
+                  calendar={calendar}
+                  allHabits={ws.state.habits}
+                  position={ws.state.cardPositions[calendar.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateCalendarTitle}
+                  onUpdateColor={actions.updateCalendarColor}
+                  onUpdateFontSize={actions.updateCalendarFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleCalendarMinimize}
+                  onDuplicateCard={actions.duplicateCalendarCard}
+                  onArchiveCard={actions.archiveCalendarCard}
+                  onDeleteCard={actions.deleteCalendarCard}
+                  onChangeMonth={actions.changeCalendarMonth}
+                  onOpenDay={actions.openCalendarDay}
+                  onCloseDay={actions.closeCalendarDay}
+                  onUpdateEntry={actions.updateCalendarEntry}
+                  isPopping={ws.state.poppingCardIds.has(calendar.id)}
+                />
+              )}
+            </For>
 
-            {quickLinks.map((qlCard) => (
-              <QuickLinksCard
-                key={qlCard.id}
-                cardId={qlCard.id}
-                quickLinkCard={qlCard}
-                position={cardPositions[qlCard.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateQuickLinksTitle}
-                onUpdateColor={actions.updateQuickLinksColor}
-                onUpdateFontSize={actions.updateQuickLinksFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleQuickLinksMinimize}
-                onDuplicateCard={actions.duplicateQuickLinksCard}
-                onArchiveCard={actions.archiveQuickLinksCard}
-                onDeleteCard={actions.deleteQuickLinksCard}
-                onAddLink={actions.addQuickLinkItem}
-                onUpdateLink={actions.updateQuickLinkItem}
-                onRemoveLink={actions.removeQuickLinkItem}
-                onReorderLinks={actions.reorderQuickLinkItems}
-                isPopping={poppingCardIds.has(qlCard.id)}
-              />
-            ))}
+            <For each={ws.state.habits}>
+              {(habit) => (
+                <HabitCard
+                  cardId={habit.id}
+                  habit={habit}
+                  position={ws.state.cardPositions[habit.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateHabitTitle}
+                  onUpdateIcon={actions.updateHabitIcon}
+                  onUpdateColor={actions.updateHabitColor}
+                  onUpdateFontSize={actions.updateHabitFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleHabitMinimize}
+                  onDuplicateCard={actions.duplicateHabitCard}
+                  onArchiveCard={actions.archiveHabitCard}
+                  onDeleteCard={actions.deleteHabitCard}
+                  onSetView={actions.setHabitView}
+                  onChangeMonth={actions.changeHabitMonth}
+                  onToggleDate={actions.toggleHabitDate}
+                  isPopping={ws.state.poppingCardIds.has(habit.id)}
+                />
+              )}
+            </For>
 
-            {quotes.map((quote) => (
-              <QuoteCard
-                key={quote.id}
-                cardId={quote.id}
-                quote={quote}
-                position={cardPositions[quote.id]}
-                onPointerDown={actions.handleCardPointerDown}
-                onUpdateTitle={actions.updateQuoteTitle}
-                onUpdateText={actions.updateQuoteText}
-                onUpdateAuthor={actions.updateQuoteAuthor}
-                onUpdateColor={actions.updateQuoteColor}
-                onUpdateFontSize={actions.updateQuoteFontSize}
-                onMoveCard={actions.moveCardToTarget}
-                onToggleMinimize={actions.toggleQuoteMinimize}
-                onDuplicateCard={actions.duplicateQuoteCard}
-                onArchiveCard={actions.archiveQuoteCard}
-                onDeleteCard={actions.deleteQuoteCard}
-                onUpdateDimensions={getUpdateQuoteDimensions(quote.id)}
-                scale={viewport.scale}
-                isPopping={poppingCardIds.has(quote.id)}
-              />
-            ))}
+            <For each={ws.state.pictures}>
+              {(picture) => (
+                <PictureCard
+                  cardId={picture.id}
+                  picture={picture}
+                  position={ws.state.cardPositions[picture.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updatePictureTitle}
+                  onUpdateColor={actions.updatePictureColor}
+                  onUpdateFontSize={actions.updatePictureFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.togglePictureMinimize}
+                  onDuplicateCard={actions.duplicatePictureCard}
+                  onArchiveCard={actions.archivePictureCard}
+                  onDeleteCard={actions.deletePictureCard}
+                  onUpdateImageId={actions.updatePictureImageId}
+                  onUpdateDimensions={(w, h) => actions.updatePictureDimensions(picture.id, w, h)}
+                  onUpdateFitMode={actions.updatePictureFitMode}
+                  scale={ws.state.viewport.scale}
+                  isPopping={ws.state.poppingCardIds.has(picture.id)}
+                />
+              )}
+            </For>
+
+            <For each={ws.state.quickLinks}>
+              {(qlCard) => (
+                <QuickLinksCard
+                  cardId={qlCard.id}
+                  quickLinkCard={qlCard}
+                  position={ws.state.cardPositions[qlCard.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateQuickLinksTitle}
+                  onUpdateColor={actions.updateQuickLinksColor}
+                  onUpdateFontSize={actions.updateQuickLinksFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleQuickLinksMinimize}
+                  onDuplicateCard={actions.duplicateQuickLinksCard}
+                  onArchiveCard={actions.archiveQuickLinksCard}
+                  onDeleteCard={actions.deleteQuickLinksCard}
+                  onAddLink={actions.addQuickLinkItem}
+                  onUpdateLink={actions.updateQuickLinkItem}
+                  onRemoveLink={actions.removeQuickLinkItem}
+                  onReorderLinks={actions.reorderQuickLinkItems}
+                  isPopping={ws.state.poppingCardIds.has(qlCard.id)}
+                />
+              )}
+            </For>
+
+            <For each={ws.state.quotes}>
+              {(quote) => (
+                <QuoteCard
+                  cardId={quote.id}
+                  quote={quote}
+                  position={ws.state.cardPositions[quote.id]}
+                  onPointerDown={actions.handleCardPointerDown}
+                  onUpdateTitle={actions.updateQuoteTitle}
+                  onUpdateText={actions.updateQuoteText}
+                  onUpdateAuthor={actions.updateQuoteAuthor}
+                  onUpdateColor={actions.updateQuoteColor}
+                  onUpdateFontSize={actions.updateQuoteFontSize}
+                  onMoveCard={actions.moveCardToTarget}
+                  onToggleMinimize={actions.toggleQuoteMinimize}
+                  onDuplicateCard={actions.duplicateQuoteCard}
+                  onArchiveCard={actions.archiveQuoteCard}
+                  onDeleteCard={actions.deleteQuoteCard}
+                  onUpdateDimensions={(w, h) => actions.updateQuoteDimensions(quote.id, w, h)}
+                  scale={ws.state.viewport.scale}
+                  isPopping={ws.state.poppingCardIds.has(quote.id)}
+                />
+              )}
+            </For>
           </main>
         </div>
 
         <ActionRail
-          open={isRailOpen}
+          open={ws.state.isRailOpen}
           onToggle={handleToggleRail}
           quickActions={QUICK_CREATE_ACTIONS}
           onQuickAction={actions.handleQuickAction}
         />
       </div>
 
-      {toastMessage && (
-        <div className="undo-toast" key={toastMessage}>{toastMessage}</div>
-      )}
+      <Show when={ws.state.toastMessage}>
+        <div class="undo-toast">{ws.state.toastMessage}</div>
+      </Show>
 
-      {isLongPressHolding && (
+      <Show when={ws.state.isLongPressHolding}>
         <div
-          className="long-press-ring"
-          style={{ left: longPressPos.x, top: longPressPos.y }}
+          class="long-press-ring"
+          style={{ left: `${ws.state.longPressPos.x}px`, top: `${ws.state.longPressPos.y}px` }}
         >
           <svg width="24" height="24" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="3" />
-            <circle className="long-press-ring-fill" cx="12" cy="12" r="10" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="3" />
+            <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3" />
+            <circle class="long-press-ring-fill" cx="12" cy="12" r="10" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="3" />
           </svg>
         </div>
-      )}
+      </Show>
 
-      {longPressMenu.visible && (
+      <Show when={ws.state.longPressMenu.visible}>
         <LongPressContextMenu
-          menu={longPressMenu}
+          menu={ws.state.longPressMenu}
           quickActions={QUICK_CREATE_ACTIONS}
           onAction={(actionId) => {
-            actions.handleQuickAction(actionId, null, { x: longPressMenu.canvasX, y: longPressMenu.canvasY })
+            actions.handleQuickAction(actionId, null, { x: ws.state.longPressMenu.canvasX, y: ws.state.longPressMenu.canvasY })
             actions.closeLongPressMenu()
           }}
           onClose={actions.closeLongPressMenu}
         />
-      )}
+      </Show>
     </div>
   )
 }
 
-function LongPressContextMenu({ menu, quickActions, onAction, onClose }) {
-  const menuRef = useRef(null)
+function LongPressContextMenu(props) {
+  let menuRef
 
-  useEffect(() => {
+  onMount(() => {
     const handleKey = (e) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') props.onClose()
     }
     window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [onClose])
+    onCleanup(() => window.removeEventListener('keydown', handleKey))
+  })
 
   return (
     <>
-      <div className="long-press-backdrop" onClick={onClose} />
+      <div class="long-press-backdrop" onClick={() => props.onClose()} />
       <div
         ref={menuRef}
-        className="long-press-menu"
-        style={{ left: menu.x, top: menu.y }}
+        class="long-press-menu"
+        style={{ left: `${props.menu.x}px`, top: `${props.menu.y}px` }}
       >
-        {quickActions.map((action) => (
-          <button
-            key={action.id}
-            className="long-press-menu-item"
-            onClick={() => onAction(action.id)}
-          >
-            <ActionRailIcon kind={action.icon} />
-            <span>{action.title}</span>
-          </button>
-        ))}
+        <For each={props.quickActions}>
+          {(action) => (
+            <button
+              type="button"
+              class="long-press-menu-item"
+              onClick={() => props.onAction(action.id)}
+            >
+              <ActionRailIcon kind={action.icon} />
+              <span>{action.title}</span>
+            </button>
+          )}
+        </For>
       </div>
     </>
   )
-}
-
-function WorkspaceWheelHandler({ workspaceRef, onWheel }) {
-  useEffect(() => {
-    const el = workspaceRef.current
-    if (!el) return
-    const handleWheel = (e) => {
-      onWheel(e)
-    }
-    el.addEventListener('wheel', handleWheel, { passive: false })
-    return () => el.removeEventListener('wheel', handleWheel)
-  }, [workspaceRef, onWheel])
-  
-  return null
 }
