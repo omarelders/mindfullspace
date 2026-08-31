@@ -39,11 +39,15 @@ export function computeStateHash(state) {
 
 // ─── Local sync metadata (per device) ────────────────────────────
 
-export function getLastPushMeta(workspaceId) {
+export function getLastPushMeta(workspaceId, userId = null) {
   if (!workspaceId || typeof window === 'undefined') return null
   try {
     const raw = window.localStorage.getItem(`${LAST_PUSH_META_PREFIX}${workspaceId}`)
-    return raw ? JSON.parse(raw) : null
+    const meta = raw ? JSON.parse(raw) : null
+    // Legacy metadata was not account-scoped. Never use it to make a
+    // cross-account reconciliation decision.
+    if (userId && (!meta?.userId || meta.userId !== userId)) return null
+    return meta
   } catch {
     return null
   }
@@ -177,7 +181,7 @@ export async function pushWorkspace(userId, workspaceId, workspaceData, {
 
     // Record local push time — used by migration and mount reconciliation
     // to decide which side is newer without extra server round-trips.
-    setLastPushMeta(workspaceId, { at: Date.now(), version: newVersion })
+    setLastPushMeta(workspaceId, { at: Date.now(), version: newVersion, userId })
 
     recordSyncMetadata(userId).catch(() => {})
 
@@ -231,7 +235,7 @@ async function pushWorkspaceDirectFallback(userId, workspaceId, workspaceData, {
     }
 
     const nextVersion = (existing.version || 0) + 1
-    const { error: updateErr } = await supabase
+    const { data: updatedRows, error: updateErr } = await supabase
       .from('workspace_data')
       .update({
         data: workspaceData,
@@ -240,10 +244,29 @@ async function pushWorkspaceDirectFallback(userId, workspaceId, workspaceData, {
       })
       .eq('workspace_id', workspaceId)
       .eq('user_id', userId)
+      .eq('version', existing.version)
+      .select('version')
 
     if (updateErr) throw updateErr
 
-    setLastPushMeta(workspaceId, { at: Date.now(), version: nextVersion })
+    // If no row was updated, a concurrent client wrote in the interim
+    if (Array.isArray(updatedRows) && updatedRows.length === 0) {
+      const { data: latest } = await supabase
+        .from('workspace_data')
+        .select('version, data')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      return {
+        success: false,
+        reason: 'conflict',
+        cloudVersion: latest?.version ?? null,
+        cloudData: latest?.data ? validateWorkspaceState(latest.data) : null,
+      }
+    }
+
+    setLastPushMeta(workspaceId, { at: Date.now(), version: nextVersion, userId })
     recordSyncMetadata(userId).catch(() => {})
 
     return {
@@ -264,9 +287,30 @@ async function pushWorkspaceDirectFallback(userId, workspaceId, workspaceData, {
       synced_at: new Date().toISOString(),
     })
 
-  if (insertErr) throw insertErr
+  if (insertErr) {
+    // Two clients can both observe an empty row and race to insert version 1.
+    // Treat a unique violation as an optimistic-lock conflict; never retry it
+    // as an unconstrained overwrite.
+    const isDuplicate = insertErr.code === '23505' || /duplicate|unique constraint/i.test(insertErr.message || '')
+    if (!isDuplicate) throw insertErr
 
-  setLastPushMeta(workspaceId, { at: Date.now(), version: 1 })
+    const { data: latest, error: latestErr } = await supabase
+      .from('workspace_data')
+      .select('version, data')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (latestErr) throw latestErr
+    return {
+      success: false,
+      reason: 'conflict',
+      cloudVersion: latest?.version ?? null,
+      cloudData: latest?.data ? validateWorkspaceState(latest.data) : null,
+    }
+  }
+
+  setLastPushMeta(workspaceId, { at: Date.now(), version: 1, userId })
   recordSyncMetadata(userId).catch(() => {})
 
   return {
@@ -286,7 +330,10 @@ export async function pullWorkspace(userId, workspaceId) {
     .eq('user_id', userId)
     .maybeSingle()
 
-  if (error || !data) return null
+  if (error) {
+    throw error
+  }
+  if (!data) return null
 
   return {
     data: data.data ? validateWorkspaceState(data.data) : null,
@@ -319,22 +366,26 @@ export async function renameCloudWorkspace(userId, workspaceId, name) {
 }
 
 export async function syncWorkspaceList(userId, workspaces) {
-  if (!supabase || !userId || !Array.isArray(workspaces) || workspaces.length === 0) return []
+  if (!supabase || !userId || !Array.isArray(workspaces) || workspaces.length === 0) {
+    return workspaces
+  }
 
-  const rows = workspaces.map((ws, idx) => ({
+  const rows = workspaces.map((ws, index) => ({
     id: ws.id,
     user_id: userId,
     name: ws.name || 'Workspace',
-    sort_order: idx,
+    sort_order: index,
   }))
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('workspaces')
     .upsert(rows, { onConflict: 'id,user_id' })
-    .select('id, name, sort_order')
 
-  if (error) throw error
-  return data || rows
+  if (error) {
+    throw error
+  }
+
+  return workspaces
 }
 
 export async function fetchCloudWorkspaces(userId) {
@@ -346,7 +397,10 @@ export async function fetchCloudWorkspaces(userId) {
     .eq('user_id', userId)
     .order('sort_order', { ascending: true })
 
-  if (error) throw error
+  if (error) {
+    throw error
+  }
+
   return data || []
 }
 
@@ -363,7 +417,10 @@ export async function deleteCloudWorkspace(userId, workspaceId) {
   // row and its Storage object are intentionally left for v1 (documented
   // limitation) because image references may still exist in other
   // snapshots on other devices.
-  if (error) console.warn('[CloudDb] Cloud workspace delete failed:', error.message)
+  if (error) {
+    console.warn('[CloudDb] Cloud workspace delete failed:', error.message)
+    throw error
+  }
 }
 
 export async function recordSyncMetadata(userId) {

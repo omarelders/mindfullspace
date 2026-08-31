@@ -1,9 +1,10 @@
 import { createSignal, createEffect, onCleanup, Show } from 'solid-js'
 import { ImagePlus, Upload, Maximize, Minimize } from 'lucide-solid'
 import { CardContextMenu } from './CardContextMenu'
-import { getImage, saveImage, deleteImage, MAX_IMAGE_SIZE } from '../utils/imageStore'
+import { getImage, saveImage } from '../utils/imageStore'
+import { validateImageBlob } from '../utils/imageValidation'
 import { useAuth } from '../hooks/useAuth'
-import { uploadImageToCloud, downloadImageFromCloud, deleteImageFromCloud } from '../lib/imageSync'
+import { uploadImageToCloud, downloadImageFromCloud } from '../lib/imageSync'
 
 export function PictureCard(props) {
   // Keep the context object live — never destructure
@@ -32,7 +33,13 @@ export function PictureCard(props) {
         if (revoked) return
         const user = auth.user
         if (blob) {
-          setObjectUrl(URL.createObjectURL(blob))
+          const validation = await validateImageBlob(blob)
+          if (validation.valid) {
+            setObjectUrl(URL.createObjectURL(blob))
+          } else if (!revoked) {
+            setObjectUrl(null)
+            setError('The stored image is invalid and was not displayed.')
+          }
         } else if (user) {
           // Cloud fallback when image isn't in local IndexedDB
           const cloudBlob = await downloadImageFromCloud(user.id, imageId)
@@ -59,12 +66,11 @@ export function PictureCard(props) {
 
   async function handleFile(file) {
     setError(null)
-    if (!file || !file.type.startsWith('image/')) {
-      setError('Please select an image file.')
-      return
-    }
-    if (file.size > MAX_IMAGE_SIZE) {
-      setError(`Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max 5MB.`)
+    const validation = await validateImageBlob(file)
+    if (!validation.valid) {
+      setError(validation.reason === 'too-large'
+        ? `Image too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max 5MB.`
+        : 'Please select a valid image file (JPEG, PNG, GIF, or WebP). SVGs are not allowed.')
       return
     }
     try {
@@ -75,14 +81,8 @@ export function PictureCard(props) {
       if (user) {
         uploadImageToCloud(user.id, newImageId, file).catch(() => {})
       }
-      if (props.onUpdateImageId) props.onUpdateImageId(props.picture.id, newImageId)
-
-      // Cleanup old image from local and cloud storage if it exists
-      if (oldImageId) {
-        deleteImage(oldImageId).catch((err) => console.error('Failed to cleanup old image:', err))
-        if (user) {
-          deleteImageFromCloud(user.id, oldImageId).catch(() => {})
-        }
+      if (props.onUpdateImageId) {
+        props.onUpdateImageId(props.picture.id, newImageId, oldImageId)
       }
     } catch (err) {
       setError(err.message || 'Failed to save image.')
@@ -260,7 +260,7 @@ export function PictureCard(props) {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/gif,image/webp"
             style={{ display: 'none' }}
             onChange={handleFileInput}
           />

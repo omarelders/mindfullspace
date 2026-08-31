@@ -530,7 +530,7 @@ export const LEGACY_COLOR_MAP = {
 }
 
 export const normalizeCardColor = (color) => {
-  if (!color) return null
+  if (typeof color !== 'string' || !color) return null
   return LEGACY_COLOR_MAP[color.toLowerCase()] || color
 }
 

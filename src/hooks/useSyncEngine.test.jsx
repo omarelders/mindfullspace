@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createRoot } from 'solid-js'
+import { createRoot, createSignal } from 'solid-js'
 import { createSyncEngine } from './useSyncEngine'
 import * as cloudDb from '../lib/cloudDb'
 
@@ -298,8 +298,7 @@ describe('useSyncEngine', () => {
 
     expect(onLoaded).toHaveBeenCalledWith(
       expect.objectContaining({
-        // validateWorkspaceState normalizes column items (adds `items: []`)
-        columns: [{ id: 'col-remote-updated', items: [] }],
+        columns: [expect.objectContaining({ id: 'col-remote-updated', items: [] })],
       })
     )
     expect(backupSpy).toHaveBeenCalled()
@@ -404,5 +403,112 @@ describe('useSyncEngine', () => {
     )
     expect(deviceB.engine.syncStatus).toBe('idle')
     expect(deviceB.engine.syncError).toMatch(/backed up/i)
+  })
+
+  it('dynamically resolves late-loading auth and begins sync when user logs in', async () => {
+    const [currentUser, setCurrentUser] = createSignal(null)
+    pushSpy.mockResolvedValue({ success: true, version: 1 })
+    pullSpy.mockResolvedValue(null)
+
+    const { engine } = mountEngine({
+      workspaceId: 'ws-late-auth',
+      captureSnapshot: () => ({ columns: [{ id: 'local-1' }] }),
+      getUser: currentUser,
+    })
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(pullSpy).not.toHaveBeenCalled()
+    expect(pushSpy).not.toHaveBeenCalled()
+
+    // Auth resolves asynchronously
+    setCurrentUser({ id: 'user-late' })
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(pullSpy).toHaveBeenCalledWith('user-late', 'ws-late-auth')
+    expect(pushSpy).toHaveBeenCalledWith(
+      'user-late',
+      'ws-late-auth',
+      expect.objectContaining({ columns: [{ id: 'local-1' }] }),
+      expect.anything()
+    )
+  })
+
+  it('aborts reconciliation without overwriting cloud when pullWorkspace throws an error', async () => {
+    pullSpy.mockRejectedValue(new Error('500 Internal Server Error'))
+    pushSpy.mockResolvedValue({ success: true, version: 1 })
+
+    const { engine } = mountEngine({
+      workspaceId: 'ws-error-guard',
+      captureSnapshot: () => ({ columns: [{ id: 'local-snap' }] }),
+      user: { id: 'user-1' },
+    })
+
+    engine.notifyChange()
+    await vi.advanceTimersByTimeAsync(3500)
+
+    // Reconcile failed due to server error: status must be error, and it must NOT perform an initial push
+    expect(engine.syncStatus).toBe('error')
+    expect(engine.syncError).toMatch(/500 Internal Server Error/)
+    expect(pushSpy).not.toHaveBeenCalled()
+  })
+
+  it('cancels a pending retry when the authenticated user changes', async () => {
+    const [currentUser, setCurrentUser] = createSignal({ id: 'user-a' })
+    pullSpy.mockResolvedValue({
+      version: 1,
+      data: { columns: [] },
+      syncedAt: new Date().toISOString(),
+    })
+    pushSpy.mockRejectedValue(new Error('temporary failure'))
+
+    const { engine } = mountEngine({
+      workspaceId: 'ws-account-switch',
+      captureSnapshot: () => ({ columns: [{ id: 'user-a-local' }] }),
+      getUser: currentUser,
+      debounceMs: 100,
+    })
+
+    await vi.advanceTimersByTimeAsync(0)
+    engine.notifyChange()
+    await vi.advanceTimersByTimeAsync(100)
+    expect(pushSpy).toHaveBeenCalledWith('user-a', 'ws-account-switch', expect.anything(), expect.anything())
+
+    setCurrentUser({ id: 'user-b' })
+    await vi.advanceTimersByTimeAsync(0)
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(pushSpy).not.toHaveBeenCalledWith('user-b', 'ws-account-switch', expect.anything(), expect.anything())
+  })
+
+  it('does not initialize a new empty account from the old in-memory board', async () => {
+    const [currentUser, setCurrentUser] = createSignal({ id: 'user-a' })
+    pullSpy
+      .mockResolvedValueOnce({
+        version: 1,
+        data: { columns: [] },
+        syncedAt: new Date().toISOString(),
+      })
+      .mockResolvedValueOnce(null)
+    pushSpy.mockResolvedValue({ success: true, version: 1 })
+
+    const { engine } = mountEngine({
+      workspaceId: 'ws-account-switch-empty',
+      captureSnapshot: () => ({ columns: [{ id: 'user-a-local' }] }),
+      getUser: currentUser,
+      debounceMs: 100,
+    })
+
+    await vi.advanceTimersByTimeAsync(0)
+    setCurrentUser({ id: 'user-b' })
+    await vi.advanceTimersByTimeAsync(0)
+    engine.notifyChange()
+    await vi.advanceTimersByTimeAsync(3500)
+
+    expect(pushSpy).not.toHaveBeenCalledWith(
+      'user-b',
+      'ws-account-switch-empty',
+      expect.anything(),
+      expect.anything()
+    )
   })
 })

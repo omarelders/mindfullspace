@@ -84,12 +84,12 @@ describe('imageSync module', () => {
   })
 
   it('uploads valid image blob to user-scoped storage path', async () => {
-    const blob = new Blob(['small image'], { type: 'image/jpeg' })
+    const blob = new Blob([new Uint8Array([255, 216, 255, 224, 0, 16])], { type: 'image/jpeg' })
     const path = await uploadImageToCloud('user-123', 'img-abc', blob)
 
-    expect(path).toBe('user-123/img-abc.jpeg')
+    expect(path).toBe('user-123/img-abc.jpg')
     expect(mockUpload).toHaveBeenCalledWith(
-      'user-123/img-abc.jpeg',
+      'user-123/img-abc.jpg',
       blob,
       expect.objectContaining({ contentType: 'image/jpeg', upsert: true })
     )
@@ -98,7 +98,7 @@ describe('imageSync module', () => {
       expect.objectContaining({
         image_id: 'img-abc',
         user_id: 'user-123',
-        storage_path: 'user-123/img-abc.jpeg',
+        storage_path: 'user-123/img-abc.jpg',
       }),
       expect.objectContaining({ onConflict: 'image_id,user_id' })
     )
@@ -106,7 +106,7 @@ describe('imageSync module', () => {
 
   it('downloads image from cloud and caches in IndexedDB', async () => {
     const saveSpy = vi.spyOn(imageStore, 'saveImage').mockResolvedValue(true)
-    const downloadedBlob = new Blob(['downloaded content'], { type: 'image/png' })
+    const downloadedBlob = new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' })
     mockDownload.mockResolvedValue({ data: downloadedBlob, error: null })
 
     const blob = await downloadImageFromCloud('user-123', 'img-xyz')
@@ -142,7 +142,7 @@ describe('imageSync module', () => {
   })
 
   it('batches uploads of un-uploaded images', async () => {
-    vi.spyOn(imageStore, 'getImage').mockResolvedValue(new Blob(['img'], { type: 'image/png' }))
+    vi.spyOn(imageStore, 'getImage').mockResolvedValue(new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' }))
 
     const wsState = {
       pictures: [{ id: 'p1', imageId: 'img-new-1' }, { id: 'p2', imageId: 'img-existing' }],
@@ -153,5 +153,27 @@ describe('imageSync module', () => {
 
     // img-existing is returned by mockIn, so only img-new-1 should be uploaded
     expect(mockUpload).toHaveBeenCalledWith('user-123/img-new-1.png', expect.anything(), expect.anything())
+  })
+
+  it('rejects SVG uploads even when called outside the PictureCard UI', async () => {
+    const svgBlob = new Blob(['<svg><script>alert(1)</script></svg>'], { type: 'image/svg+xml' })
+
+    const result = await uploadImageToCloud('user-123', 'img-svg', svgBlob)
+
+    expect(result).toBeNull()
+    expect(mockUpload).not.toHaveBeenCalled()
+  })
+
+  it('rejects cloud payloads whose declared MIME type does not match their bytes', async () => {
+    mockDownload.mockResolvedValue({
+      data: new Blob(['<svg><script>alert(1)</script></svg>'], { type: 'image/png' }),
+      error: null,
+    })
+    const saveSpy = vi.spyOn(imageStore, 'saveImage').mockResolvedValue(true)
+
+    const result = await downloadImageFromCloud('user-123', 'img-spoofed')
+
+    expect(result).toBeNull()
+    expect(saveSpy).not.toHaveBeenCalled()
   })
 })

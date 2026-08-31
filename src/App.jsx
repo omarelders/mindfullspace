@@ -1,17 +1,31 @@
 import { createSignal, createEffect, onMount, onCleanup, createMemo, Show } from 'solid-js'
-import { getInitialAppState, writeJsonStorage, readJsonStorage } from './utils/storage'
-import { WORKSPACE_STORAGE_KEY_PREFIX, APP_STORAGE_KEY } from './utils/constants'
+import {
+  getInitialAppState,
+  getInitialWorkspaceState,
+  writeJsonStorage,
+  readJsonStorage,
+} from './utils/storage'
+import {
+  WORKSPACE_STORAGE_KEY_PREFIX,
+  APP_STORAGE_KEY,
+  DEFAULT_WORKSPACES,
+} from './utils/constants'
 import { createId } from './utils/id'
 import { WorkspaceBoard } from './components/WorkspaceBoard'
 import { InstallPrompt } from './components/InstallPrompt'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider, useAuth } from './hooks/useAuth'
-import { handleFirstSignIn } from './lib/migration'
+import { handleFirstSignIn, hasMigrationCompleted, pullAllFromCloud } from './lib/migration'
 import {
   ensureCloudWorkspace,
   renameCloudWorkspace,
   deleteCloudWorkspace,
 } from './lib/cloudDb'
+import {
+  enqueuePendingWorkspaceDelete,
+  flushPendingWorkspaceDeletes as flushQueuedWorkspaceDeletes,
+} from './utils/pendingWorkspaceDeletes'
+import { clearImages } from './utils/imageStore'
 
 const WORKSPACES_LIST_KEY = 'mindfulspace_workspaces'
 
@@ -28,7 +42,10 @@ function WorkspaceManager() {
 
   // Closure variables replace React refs — the component body runs once
   let previousUserId = null
+  let lastAuthenticatedUserId = null
   let lastRemoteAppValue = null
+  let accountSwitching = false
+  let accountSwitchGeneration = 0
 
   onMount(() => {
     // Cleanup legacy keys
@@ -38,6 +55,15 @@ function WorkspaceManager() {
     } catch {
       // ignore
     }
+  })
+
+  onMount(() => {
+    const handleOnline = () => {
+      const user = auth.user
+      if (user) flushPendingWorkspaceDeletes(user.id)
+    }
+    window.addEventListener('online', handleOnline)
+    onCleanup(() => window.removeEventListener('online', handleOnline))
   })
 
   // Cross-tab sync for the workspace list. Without this, two open tabs would
@@ -52,6 +78,7 @@ function WorkspaceManager() {
       lastRemoteAppValue = null
       return
     }
+    if (accountSwitching) return
     writeJsonStorage(APP_STORAGE_KEY, {
       workspaces,
       activeWorkspaceId: activeId
@@ -132,6 +159,10 @@ function WorkspaceManager() {
     })
   }
 
+  function flushPendingWorkspaceDeletes(userId) {
+    return flushQueuedWorkspaceDeletes(userId, deleteCloudWorkspace)
+  }
+
   function handleDeleteWorkspace(id) {
     setAllWorkspaces((current) => {
       if (current.length <= 1) return current // Prevent deleting the last workspace
@@ -141,13 +172,15 @@ function WorkspaceManager() {
       try { localStorage.removeItem(`${WORKSPACE_STORAGE_KEY_PREFIX}${id}`) } catch { /* ignore */ }
       return filtered
     })
-    // Remove the cloud registry row too — the FK cascade wipes its data so
-    // the workspace cannot resurrect on another device. Fire-and-forget.
+    // Remove the cloud registry row — the FK cascade wipes its data.
+    // On failure, queue in pending deletes to prevent resurrection on reconnect.
     const user = auth.user
     if (user) {
-      deleteCloudWorkspace(user.id, id).catch((err) =>
-        console.warn('[App] Cloud workspace delete failed:', err?.message)
-      )
+      deleteCloudWorkspace(user.id, id)
+        .catch((err) => {
+          console.warn('[App] Cloud workspace delete failed:', err?.message)
+          enqueuePendingWorkspaceDelete(user.id, id)
+        })
     }
   }
 
@@ -161,6 +194,31 @@ function WorkspaceManager() {
     }
   }
 
+  function prepareAccountTransition() {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index)
+      if (!key?.startsWith(WORKSPACE_STORAGE_KEY_PREFIX)) continue
+      try {
+        localStorage.removeItem(key)
+      } catch { /* ignore */ }
+    }
+    const clearImagesPromise = clearImages().catch(() => {})
+
+    const transitionWorkspace = {
+      id: generateId(),
+      name: DEFAULT_WORKSPACES[0].name,
+    }
+    writeJsonStorage(
+      `${WORKSPACE_STORAGE_KEY_PREFIX}${transitionWorkspace.id}`,
+      getInitialWorkspaceState(transitionWorkspace.id)
+    )
+    writeJsonStorage(APP_STORAGE_KEY, {
+      workspaces: [transitionWorkspace],
+      activeWorkspaceId: transitionWorkspace.id,
+    })
+    return clearImagesPromise.then(() => transitionWorkspace)
+  }
+
   // Handle first sign in or account switch migration.
   // The heavy flow runs once per account (marker-guarded inside
   // handleFirstSignIn); passive session restores are no-ops — the sync
@@ -168,14 +226,55 @@ function WorkspaceManager() {
   createEffect(() => {
     const user = auth.user
     if (user && user.id !== previousUserId) {
+      const isAccountSwitch = Boolean(
+        lastAuthenticatedUserId && lastAuthenticatedUserId !== user.id
+      )
+      const transitionGeneration = ++accountSwitchGeneration
       previousUserId = user.id
-      handleFirstSignIn(user.id, (workspaces, activeId) => {
-        handleSetAllWorkspaces(workspaces, activeId)
-      }).catch((err) => {
+      lastAuthenticatedUserId = user.id
+      let preparePromise = Promise.resolve()
+      if (isAccountSwitch) {
+        accountSwitching = true
+        preparePromise = prepareAccountTransition()
+      }
+      flushPendingWorkspaceDeletes(user.id)
+      let pendingWorkspaceList = null
+      const onWorkspaceListLoaded = (workspaces, activeId) => {
+        if (isAccountSwitch) {
+          pendingWorkspaceList = { workspaces, activeId }
+        } else {
+          handleSetAllWorkspaces(workspaces, activeId)
+        }
+      }
+      const accountSync = preparePromise.then(() => {
+        if (
+          isAccountSwitch &&
+          (transitionGeneration !== accountSwitchGeneration || auth.user?.id !== user.id)
+        ) return
+        return isAccountSwitch && hasMigrationCompleted(user.id)
+          ? pullAllFromCloud(user.id, onWorkspaceListLoaded)
+          : handleFirstSignIn(user.id, onWorkspaceListLoaded)
+      })
+      accountSync.catch((err) => {
         console.warn('[App] Sign-in sync failed:', err?.message)
+      }).finally(() => {
+        if (
+          isAccountSwitch &&
+          transitionGeneration === accountSwitchGeneration &&
+          auth.user?.id === user.id
+        ) {
+          const nextState = getInitialAppState()
+          const nextWorkspaces = pendingWorkspaceList?.workspaces || nextState.workspaces
+          const nextActiveId = pendingWorkspaceList?.activeId || nextState.activeWorkspaceId
+          accountSwitching = false
+          setAllWorkspaces(nextWorkspaces)
+          setActiveWorkspaceId(nextActiveId)
+        }
       })
     } else if (!user) {
       previousUserId = null
+      accountSwitchGeneration += 1
+      accountSwitching = false
     }
   })
 

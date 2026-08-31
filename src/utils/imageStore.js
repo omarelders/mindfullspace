@@ -1,7 +1,8 @@
+import { MAX_IMAGE_SIZE, validateImageBlob } from './imageValidation'
+
 const DB_NAME = 'mindfulspace-images'
 const DB_VERSION = 1
 const STORE_NAME = 'images'
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
 
 // The connection is opened once and reused for every operation — opening a
 // new IndexedDB connection per call leaked handles and slowed image loads.
@@ -33,8 +34,15 @@ function openDB() {
 }
 
 export async function saveImage(id, blob) {
-  if (blob.size > MAX_IMAGE_SIZE) {
-    throw new Error(`Image is too large (${(blob.size / 1024 / 1024).toFixed(1)}MB). Max size is 5MB.`)
+  if (typeof id !== 'string' || id.length === 0) {
+    throw new Error('Image ID is required.')
+  }
+  const validation = await validateImageBlob(blob)
+  if (!validation.valid) {
+    if (validation.reason === 'too-large') {
+      throw new Error(`Image is too large (${(blob.size / 1024 / 1024).toFixed(1)}MB). Max size is 5MB.`)
+    }
+    throw new Error('Unsupported or invalid image data.')
   }
   const db = await openDB()
   return new Promise((resolve, reject) => {
@@ -60,6 +68,16 @@ export async function deleteImage(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
     tx.objectStore(STORE_NAME).delete(id)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function clearImages() {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    tx.objectStore(STORE_NAME).clear()
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })

@@ -6,7 +6,7 @@ import { readJsonStorage } from '../utils/storage'
 
 // Mock the image store to avoid IndexedDB issues in tests
 vi.mock('../utils/imageStore', () => ({
-  getImage: vi.fn().mockResolvedValue(new Blob(['mock'], { type: 'image/png' })),
+  getImage: vi.fn().mockResolvedValue(new Blob([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], { type: 'image/png' })),
   saveImage: vi.fn().mockResolvedValue('mock-image-id'),
   deleteImage: vi.fn().mockResolvedValue(true),
   MAX_IMAGE_SIZE: 5 * 1024 * 1024
@@ -174,6 +174,69 @@ describe('PictureCard', () => {
     fireEvent.click(toggleBtn)
     expect(props.onUpdateFitMode).toHaveBeenCalledWith('pic-1', 'cover')
   })
+
+  it('rejects SVG files to prevent stored XSS vulnerabilities', async () => {
+    const props = {
+      ...defaultProps(),
+      picture: { id: 'pic-no-img', title: 'Upload', width: 200, height: 150, imageId: null }
+    }
+    render(() => <PictureCard {...props} />)
+
+    const input = document.querySelector('input[type="file"]')
+    const svgFile = new File(['<svg onload="alert(1)"></svg>'], 'exploit.svg', { type: 'image/svg+xml' })
+
+    fireEvent.change(input, { target: { files: [svgFile] } })
+
+    expect(await screen.findByText(/SVGs are not allowed/i)).toBeInTheDocument()
+    expect(props.onUpdateImageId).not.toHaveBeenCalled()
+  })
+
+  it('rejects SVG payloads disguised as PNG files', async () => {
+    const props = {
+      ...defaultProps(),
+      picture: { id: 'pic-spoofed-svg', title: 'Upload', width: 200, height: 150, imageId: null }
+    }
+    render(() => <PictureCard {...props} />)
+
+    const input = document.querySelector('input[type="file"]')
+    const spoofedFile = new File(['<svg><script>alert(1)</script></svg>'], 'exploit.png', { type: 'image/png' })
+
+    fireEvent.change(input, { target: { files: [spoofedFile] } })
+
+    expect(await screen.findByText(/valid image file/i)).toBeInTheDocument()
+    expect(props.onUpdateImageId).not.toHaveBeenCalled()
+  })
+
+  it('rejects SVG content embedded in a workspace backup', async () => {
+    const originalFileReader = global.FileReader
+    const svgData = window.btoa('<svg><script>alert(1)</script></svg>')
+    global.FileReader = class {
+      constructor() {
+        this.onload = null
+        this.onerror = null
+      }
+
+      readAsText(file, encoding) {
+        void file
+        void encoding
+        this.onload?.({
+          target: {
+            result: JSON.stringify({
+              version: 1,
+              workspace: {},
+              images: { evil: `data:image/svg+xml;base64,${svgData}` },
+            }),
+          },
+        })
+      }
+    }
+
+    try {
+      await expect(parseWorkspaceBackup(new File(['backup'], 'backup.json'))).rejects.toThrow(/image/i)
+    } finally {
+      global.FileReader = originalFileReader
+    }
+  })
 })
 
 describe('Backup UTF-8 Encoding & Image References', () => {
@@ -194,9 +257,9 @@ describe('Backup UTF-8 Encoding & Image References', () => {
 
     const clickMock = vi.fn()
     const mockAnchor = { click: clickMock, href: '', download: '' }
-    vi.spyOn(document, 'createElement').mockReturnValue(mockAnchor)
-    vi.spyOn(document.body, 'appendChild').mockImplementation(() => {})
-    vi.spyOn(document.body, 'removeChild').mockImplementation(() => {})
+    const createSpy = vi.spyOn(document, 'createElement').mockReturnValue(mockAnchor)
+    const appendSpy = vi.spyOn(document.body, 'appendChild').mockImplementation(() => {})
+    const removeSpy = vi.spyOn(document.body, 'removeChild').mockImplementation(() => {})
 
     let blobSpy;
     // Intercept Blob constructor to verify charset
@@ -206,13 +269,18 @@ describe('Backup UTF-8 Encoding & Image References', () => {
       return new OriginalBlob(content, options)
     }
 
-    await exportWorkspace('ws-1', 'Test Workspace')
+    try {
+      await exportWorkspace('ws-1', 'Test Workspace')
 
-    expect(blobSpy.options.type).toBe('application/json;charset=utf-8')
-    expect(mockAnchor.download).toContain('Test_Workspace_backup')
-    expect(clickMock).toHaveBeenCalled()
-
-    global.Blob = OriginalBlob
+      expect(blobSpy.options.type).toBe('application/json;charset=utf-8')
+      expect(mockAnchor.download).toContain('Test_Workspace_backup')
+      expect(clickMock).toHaveBeenCalled()
+    } finally {
+      global.Blob = OriginalBlob
+      createSpy.mockRestore()
+      appendSpy.mockRestore()
+      removeSpy.mockRestore()
+    }
   })
 
   it('parseWorkspaceBackup correctly enforces UTF-8 decoding on readAsText', async () => {

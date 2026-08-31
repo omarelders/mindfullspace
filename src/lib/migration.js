@@ -188,7 +188,7 @@ async function resolveCollidingWorkspace(userId, localWs, cloudRecord) {
   const localState = readJsonStorage(storageKey)
   if (!localState) return 'cloud'
 
-  const localMeta = getLastPushMeta(localWs.id)
+  const localMeta = getLastPushMeta(localWs.id, userId)
   const localTime = localMeta?.at ?? 0
   const cloudTime = cloudRecord?.syncedAt ? Date.parse(cloudRecord.syncedAt) : 0
 

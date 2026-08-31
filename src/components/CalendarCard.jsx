@@ -92,7 +92,8 @@ export function CalendarCard(props) {
                     {(_, index) => {
                       const dayNumber = index() + 1
                       const dateKey = buildDateKey(props.calendar.year, props.calendar.month, dayNumber)
-                      const hasEntry = Boolean(props.calendar.entries?.[dateKey]?.trim())
+                      const rawEntry = props.calendar.entries?.[dateKey]
+                      const hasEntry = typeof rawEntry === 'string' ? Boolean(rawEntry.trim()) : Boolean(rawEntry)
                       const isToday = dateKey === monthGeometry().todayKey
 
                       return (

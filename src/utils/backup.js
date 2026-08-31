@@ -1,6 +1,7 @@
 import { getImage, saveImage } from './imageStore'
 import { readJsonStorage, validateWorkspaceState } from './storage'
 import { WORKSPACE_STORAGE_KEY_PREFIX } from './constants'
+import { validateImageBlob } from './imageValidation'
 
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -13,7 +14,11 @@ function blobToBase64(blob) {
 
 function base64ToBlob(base64DataUrl) {
   try {
+    if (typeof base64DataUrl !== 'string' || !base64DataUrl.startsWith('data:')) {
+      throw new Error('Image data is not a data URL.')
+    }
     const parts = base64DataUrl.split(';base64,')
+    if (parts.length !== 2) throw new Error('Image data is not base64 encoded.')
     const contentType = parts[0].split(':')[1]
     const raw = window.atob(parts[1])
     const rawLength = raw.length
@@ -122,9 +127,11 @@ export function parseWorkspaceBackup(file) {
           for (const [imageId, base64Str] of Object.entries(data.images)) {
             try {
               const blob = base64ToBlob(base64Str)
+              const validation = await validateImageBlob(blob)
+              if (!validation.valid) throw new Error(`Invalid image data (${validation.reason}).`)
               await saveImage(imageId, blob)
             } catch (err) {
-              console.error(`Failed to restore image ${imageId} to IndexedDB:`, err)
+              throw new Error(`Failed to restore image ${imageId}: ${err.message}`)
             }
           }
         }
@@ -205,9 +212,11 @@ export async function parseImportedCards(file) {
           for (const [imageId, base64Str] of Object.entries(data.images)) {
             try {
               const blob = base64ToBlob(base64Str)
+              const validation = await validateImageBlob(blob)
+              if (!validation.valid) throw new Error(`Invalid image data (${validation.reason}).`)
               await saveImage(imageId, blob)
             } catch (err) {
-              console.error(`Failed to restore image ${imageId} to IndexedDB:`, err)
+              throw new Error(`Failed to restore image ${imageId}: ${err.message}`)
             }
           }
         }

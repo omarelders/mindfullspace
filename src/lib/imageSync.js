@@ -1,19 +1,22 @@
 import { supabase } from './supabase'
-import { getImage, saveImage, MAX_IMAGE_SIZE } from '../utils/imageStore'
+import { getImage, saveImage } from '../utils/imageStore'
+import { validateImageBlob, imageExtensionForMime } from '../utils/imageValidation'
 
 const BUCKET_NAME = 'user-images'
 const MAX_CONCURRENT_UPLOADS = 3
+const SAFE_IMAGE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 
 export async function uploadImageToCloud(userId, imageId, blob) {
-  if (!supabase || !userId || !imageId || !blob) return null
+  if (!supabase || !userId || !imageId || !SAFE_IMAGE_ID.test(imageId) || !blob) return null
 
-  if (blob.size > MAX_IMAGE_SIZE) {
-    console.warn(`[ImageSync] Image ${imageId} exceeds maximum size of 5MB.`)
+  const validation = await validateImageBlob(blob)
+  if (!validation.valid) {
+    console.warn(`[ImageSync] Image ${imageId} was rejected (${validation.reason}).`)
     return null
   }
 
-  const mimeType = blob.type || 'image/png'
-  const ext = mimeType.split('/')[1] || 'png'
+  const mimeType = validation.mimeType
+  const ext = imageExtensionForMime(mimeType)
   const storagePath = `${userId}/${imageId}.${ext}`
 
   try {
@@ -80,6 +83,12 @@ export async function downloadImageFromCloud(userId, imageId) {
       .download(record.storage_path)
 
     if (downloadError || !blob) {
+      return null
+    }
+
+    const validation = await validateImageBlob(blob)
+    if (!validation.valid) {
+      console.warn(`[ImageSync] Rejected invalid cloud image ${imageId} (${validation.reason}).`)
       return null
     }
 

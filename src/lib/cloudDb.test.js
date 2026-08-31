@@ -26,6 +26,9 @@ const mockUpdate = vi.fn()
 const mockDelete = vi.fn()
 const mockEq = vi.fn()
 const mockOrder = vi.fn()
+let workspaceListResult = { data: [{ id: 'ws-1', name: 'Work', sort_order: 0 }], error: null }
+let mockFallbackUpdateResult = { data: [{ version: 2 }], error: null }
+let mockInsertResult = { error: null }
 
 vi.mock('./supabase', () => ({
   isSupabaseConfigured: () => true,
@@ -47,13 +50,13 @@ vi.mock('./supabase', () => ({
               maybeSingle: () => mockMaybeSingle(),
               order: (...orderArgs) => {
                 mockOrder(...orderArgs)
-                return Promise.resolve({ data: [{ id: 'ws-1', name: 'Work', sort_order: 0 }], error: null })
+                return Promise.resolve(workspaceListResult)
               },
             }
           },
           order: (...orderArgs) => {
             mockOrder(...orderArgs)
-            return Promise.resolve({ data: [{ id: 'ws-1', name: 'Work', sort_order: 0 }], error: null })
+            return Promise.resolve(workspaceListResult)
           },
         }
       },
@@ -67,17 +70,25 @@ vi.mock('./supabase', () => ({
       },
       update: (patch) => {
         mockUpdate(table, patch)
-        return {
+        let eqCount = 0
+        const query = {
           eq: (f1, v1) => {
             mockEq(f1, v1)
-            return {
-              eq: (f2, v2) => {
-                mockEq(f2, v2)
-                return Promise.resolve({ error: null })
-              },
+            eqCount += 1
+            if (eqCount >= 3) {
+              return {
+                select: () => Promise.resolve(mockFallbackUpdateResult),
+              }
             }
+            if (eqCount === 2) return Promise.resolve({ error: null })
+            return query
           },
         }
+        return query
+      },
+      insert: (row) => {
+        mockUpsert(table, row, { insert: true })
+        return Promise.resolve(mockInsertResult)
       },
       delete: () => ({
         eq: (f1, v1) => ({
@@ -95,6 +106,9 @@ describe('cloudDb helper functions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.localStorage.clear()
+    workspaceListResult = { data: [{ id: 'ws-1', name: 'Work', sort_order: 0 }], error: null }
+    mockFallbackUpdateResult = { data: [{ version: 2 }], error: null }
+    mockInsertResult = { error: null }
   })
 
   it('generates and persists a stable device ID in localStorage', () => {
@@ -205,6 +219,13 @@ describe('cloudDb helper functions', () => {
     expect(result).toBeNull()
   })
 
+  it('throws on query error during pullWorkspace', async () => {
+    mockMaybeSingle.mockResolvedValue({ data: null, error: { message: 'Database connection failed' } })
+    await expect(pullWorkspace('user-1', 'ws-err')).rejects.toMatchObject({
+      message: 'Database connection failed',
+    })
+  })
+
   // ─── Workspace registry helpers ─────────────────────────────────
 
   it('ensures a parent workspace registry row exists', async () => {
@@ -249,6 +270,34 @@ describe('cloudDb helper functions', () => {
     expect(mockOrder).toHaveBeenCalledWith('sort_order', { ascending: true })
   })
 
+  it('throws when fetching the cloud workspace list fails', async () => {
+    workspaceListResult = { data: null, error: { message: 'workspace list unavailable' } }
+
+    await expect(fetchCloudWorkspaces('user-1')).rejects.toMatchObject({
+      message: 'workspace list unavailable',
+    })
+  })
+
+  it('returns a conflict when a concurrent initial fallback insert wins the race', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'RPC missing' } })
+    mockMaybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: { version: 1, data: { columns: [{ id: 'remote-winner', items: [] }] } },
+        error: null,
+      })
+    mockInsertResult = { error: { code: '23505', message: 'duplicate key value violates unique constraint' } }
+
+    const result = await pushWorkspace('user-1', 'ws-race-insert', { columns: [] })
+
+    expect(result).toMatchObject({
+      success: false,
+      reason: 'conflict',
+      cloudVersion: 1,
+    })
+    expect(result.cloudData.columns[0].id).toBe('remote-winner')
+  })
+
   it('deletes cloud workspace record', async () => {
     await deleteCloudWorkspace('user-1', 'ws-1')
     expect(mockDelete).toHaveBeenCalledWith('workspaces', 'id', 'ws-1', 'user_id', 'user-1')
@@ -269,6 +318,17 @@ describe('cloudDb helper functions', () => {
     expect(getLastPushMeta('ws-none')).toBeNull()
     setLastPushMeta('ws-x', { at: 123, version: 7 })
     expect(getLastPushMeta('ws-x')).toEqual({ at: 123, version: 7 })
+  })
+
+  it('does not reuse push metadata across authenticated users', () => {
+    setLastPushMeta('ws-scoped', { at: 123, version: 7, userId: 'user-a' })
+
+    expect(getLastPushMeta('ws-scoped', 'user-a')).toEqual({
+      at: 123,
+      version: 7,
+      userId: 'user-a',
+    })
+    expect(getLastPushMeta('ws-scoped', 'user-b')).toBeNull()
   })
 
   it('saves conflict backups and prunes beyond the retention limit', () => {

@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup } from 'solid-js'
+import { createSignal, createEffect, onMount, onCleanup } from 'solid-js'
 import {
   pushWorkspace,
   pullWorkspace,
@@ -49,7 +49,8 @@ function serializeState(state) {
 export function createSyncEngine({
   workspaceId,
   captureSnapshot,
-  user,
+  user: initialUser,
+  getUser,
   workspaceName = null,
   onRemoteWorkspaceLoaded,
   debounceMs = 3000,
@@ -59,6 +60,12 @@ export function createSyncEngine({
   )
   const [lastSyncedAt, setLastSyncedAt] = createSignal(null)
   const [syncError, setSyncError] = createSignal(null)
+
+  function resolveCurrentUser() {
+    if (typeof getUser === 'function') return getUser()
+    if (typeof initialUser === 'function') return initialUser()
+    return initialUser ?? null
+  }
 
   // Closure variables replace React refs — the factory body runs exactly once.
   // Last snapshot (serialized) this client knows is identical to the cloud row.
@@ -76,12 +83,175 @@ export function createSyncEngine({
   let mounted = true
   let reconcileGate = Promise.resolve()
 
+  let activeRealtimeChannel = null
+  let cleanupReconcile = null
+  let lastHandledUserId = null
+  let userGeneration = 0
+  let reconcileFailed = false
+  let skipEmptyInitialization = false
+
   function safeSetStatus(status) {
     if (mounted) setSyncStatus(status)
   }
 
   function safeSetError(message) {
     if (mounted) setSyncError(message)
+  }
+
+  function cleanupRealtime() {
+    if (activeRealtimeChannel) {
+      supabase?.removeChannel?.(activeRealtimeChannel)
+      activeRealtimeChannel = null
+    }
+  }
+
+  function setupRealtime(userId, generation = userGeneration) {
+    cleanupRealtime()
+    if (!userId || !isSupabaseConfigured() || !supabase?.channel || !workspaceId) return
+
+    activeRealtimeChannel = supabase
+      .channel(`workspace-sync-${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'workspace_data',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload) => {
+          if (generation !== userGeneration || resolveCurrentUser()?.id !== userId) return
+          if (!payload?.new?.data) return
+          const remoteStr = serializeState(payload.new.data)
+
+          // Ignore echoes of our own writes (in-flight or already synced).
+          if (
+            remoteStr === lastPushedSnapshot ||
+            remoteStr === inFlightSnapshot
+          ) {
+            return
+          }
+
+          const localCurrent = captureSnapshot?.()
+
+          if (pendingChange && localCurrent) {
+            // Local unsynced edits exist — never silently drop them.
+            // Back them up and let the server arbitrate via the next
+            // version-checked push (conflict path preserves the local copy).
+            saveConflictBackup(workspaceId, localCurrent)
+            if (debounceTimer) clearTimeout(debounceTimer)
+            performPush()
+            return
+          }
+
+          try {
+            adoptRemoteData(validateWorkspaceState(payload.new.data), payload.new.version)
+          } catch {
+            // Malformed remote payload — ignore.
+          }
+        }
+      )
+      .subscribe()
+  }
+
+  function startReconciliation(user, generation = userGeneration) {
+    if (!user || !isSupabaseConfigured() || !workspaceId) {
+      reconcileFailed = false
+      reconcileGate = Promise.resolve()
+      return null
+    }
+
+    let cancelled = false
+    reconcileFailed = true
+    let resolveGate
+    let gateSettled = false
+    reconcileGate = new Promise((resolve) => {
+      resolveGate = () => {
+        if (!gateSettled) {
+          gateSettled = true
+          resolve()
+        }
+      }
+    })
+
+    pullWorkspace(user.id, workspaceId)
+      .then((record) => {
+        if (cancelled || generation !== userGeneration || resolveCurrentUser()?.id !== user.id) return
+        if (!record) {
+          knownVersion = null
+          const localSnap = captureSnapshot?.()
+          if (skipEmptyInitialization) {
+            // A live engine may observe a new account before the board is
+            // remounted. Its old in-memory state must never initialize the
+            // new account's empty cloud workspace.
+            reconcileFailed = true
+            resolveGate()
+          } else {
+            reconcileFailed = false
+          }
+          if (localSnap && !skipEmptyInitialization) {
+            // Cloud is completely empty for this workspace. Initialize it with local data!
+            pendingChange = true
+            lastPushedSnapshot = null
+            resolveGate()
+            performPush()
+          } else {
+            resolveGate()
+          }
+          return
+        }
+
+        knownVersion = Number.isFinite(record.version) ? record.version : null
+
+        try {
+          const localSnap = captureSnapshot?.()
+          const localStr = serializeState(localSnap)
+          const cloudStr = record.data ? serializeState(record.data) : null
+
+          if (cloudStr === localStr) {
+            // Already identical — suppress the redundant mount-time push.
+            lastPushedSnapshot = localStr
+            pendingChange = false
+            setLastSyncedAt(record.syncedAt ? Date.parse(record.syncedAt) : Date.now())
+            safeSetStatus('idle')
+            safeSetError(null)
+            reconcileFailed = false
+            return
+          }
+
+          const localMeta = getLastPushMeta(workspaceId, user.id)
+          const localTime = localMeta?.at ?? 0
+          const cloudTime = record.syncedAt ? Date.parse(record.syncedAt) : 0
+
+          if (record.data && cloudTime > localTime) {
+            // Cloud is strictly newer than anything this device pushed.
+            // adoptRemoteData backs up any unsynced local edits first.
+            adoptRemoteData(record.data, record.version)
+            safeSetStatus('idle')
+            safeSetError(null)
+          }
+          reconcileFailed = false
+        } catch {
+          reconcileFailed = true
+          safeSetStatus('error')
+          safeSetError('Failed to reconcile workspace data')
+        }
+      })
+      .catch((err) => {
+        if (cancelled || generation !== userGeneration || resolveCurrentUser()?.id !== user.id) return
+        // Offline or read error — DO NOT treat as empty cloud workspace. Keep local-first state intact.
+        reconcileFailed = true
+        safeSetStatus('error')
+        safeSetError(err?.message || 'Failed to fetch cloud workspace')
+      })
+      .finally(() => {
+        resolveGate()
+      })
+
+    return () => {
+      cancelled = true
+      resolveGate()
+    }
   }
 
   /**
@@ -113,12 +283,19 @@ export function createSyncEngine({
     const nextDelay = Math.min(60000, 1000 * Math.pow(2, retryCount))
     retryCount += 1
     if (retryTimer) clearTimeout(retryTimer)
-    retryTimer = setTimeout(() => pushFn(), nextDelay)
+    const retryGeneration = userGeneration
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      if (retryGeneration === userGeneration) pushFn()
+    }, nextDelay)
     return true
   }
 
   async function performPush() {
+    const user = resolveCurrentUser()
     if (!user || !isSupabaseConfigured() || !workspaceId) return false
+    const pushGeneration = userGeneration
+    const pushUserId = user.id
 
     // Wait for the initial reconciliation so the first push carries a real
     // expectedVersion instead of blindly overwriting a newer cloud row.
@@ -127,7 +304,12 @@ export function createSyncEngine({
     } catch {
       /* gate never rejects */
     }
-    if (!mounted) return false
+    if (
+      !mounted ||
+      reconcileFailed ||
+      pushGeneration !== userGeneration ||
+      resolveCurrentUser()?.id !== pushUserId
+    ) return false
 
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       safeSetStatus('offline')
@@ -154,7 +336,12 @@ export function createSyncEngine({
         workspaceName,
       })
 
-      inFlightSnapshot = null
+      if (pushGeneration === userGeneration && inFlightSnapshot === serialized) {
+        inFlightSnapshot = null
+      }
+      if (pushGeneration !== userGeneration || resolveCurrentUser()?.id !== pushUserId) {
+        return false
+      }
 
       if (result?.success) {
         lastPushedSnapshot = serialized
@@ -185,7 +372,12 @@ export function createSyncEngine({
 
       return false
     } catch (err) {
-      inFlightSnapshot = null
+      if (pushGeneration === userGeneration && inFlightSnapshot === serialized) {
+        inFlightSnapshot = null
+      }
+      if (pushGeneration !== userGeneration || resolveCurrentUser()?.id !== pushUserId) {
+        return false
+      }
       console.warn('[SyncEngine] Cloud push failed:', err.message)
       safeSetStatus('error')
       safeSetError(err.message || 'Sync failed')
@@ -199,33 +391,51 @@ export function createSyncEngine({
     }
   }
 
+  function restartReconciliation() {
+    const user = resolveCurrentUser()
+    if (!user || !isSupabaseConfigured() || !workspaceId) return
+    if (typeof cleanupReconcile === 'function') cleanupReconcile()
+    cleanupReconcile = startReconciliation(user, userGeneration)
+    setupRealtime(user.id, userGeneration)
+  }
+
   // Manual or external sync trigger
   async function syncNow() {
     if (debounceTimer) clearTimeout(debounceTimer)
     if (retryTimer) clearTimeout(retryTimer)
+    debounceTimer = null
+    retryTimer = null
     retryCount = 0
+    if (reconcileFailed) restartReconciliation()
     return await performPush()
   }
 
   // Explicit pull (also used manually from tests / future UI)
   async function pullFromCloud() {
+    const user = resolveCurrentUser()
     if (!user || !isSupabaseConfigured() || !workspaceId) return null
+    const pullGeneration = userGeneration
 
     try {
       safeSetStatus('syncing')
       const record = await pullWorkspace(user.id, workspaceId)
+      if (pullGeneration !== userGeneration || resolveCurrentUser()?.id !== user.id) return null
       if (record?.data) {
         adoptRemoteData(record.data, record.version)
         safeSetStatus('idle')
         safeSetError(null)
+        reconcileFailed = false
         return record.data
       }
       if (record && Number.isFinite(record.version)) {
         knownVersion = record.version
       }
       safeSetStatus('idle')
+      reconcileFailed = false
       return null
     } catch (err) {
+      if (pullGeneration !== userGeneration || resolveCurrentUser()?.id !== user.id) return null
+      reconcileFailed = true
       safeSetStatus('error')
       safeSetError(err.message)
       return null
@@ -234,148 +444,57 @@ export function createSyncEngine({
 
   // Notify the engine that local state changed (schedules a debounced push).
   function notifyChange() {
+    const user = resolveCurrentUser()
     if (!user || !isSupabaseConfigured()) return
     pendingChange = true
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
+      debounceTimer = null
       performPush()
     }, debounceMs)
   }
 
+  // React to dynamic user changes / late authentication resolution
+  createEffect(() => {
+    const user = resolveCurrentUser()
+    const currentUserId = user?.id ?? null
+
+    if (currentUserId !== lastHandledUserId) {
+      const switchingAccounts = Boolean(
+        user && lastHandledUserId && lastHandledUserId !== currentUserId
+      )
+      lastHandledUserId = currentUserId
+      userGeneration += 1
+      skipEmptyInitialization = switchingAccounts
+      if (debounceTimer) clearTimeout(debounceTimer)
+      if (retryTimer) clearTimeout(retryTimer)
+      debounceTimer = null
+      retryTimer = null
+      retryCount = 0
+      lastPushedSnapshot = null
+      inFlightSnapshot = null
+      knownVersion = null
+      pendingChange = false
+      reconcileFailed = Boolean(user)
+      if (typeof cleanupReconcile === 'function') {
+        cleanupReconcile()
+        cleanupReconcile = null
+      }
+      cleanupRealtime()
+
+      if (user) {
+        cleanupReconcile = startReconciliation(user, userGeneration)
+        setupRealtime(user.id, userGeneration)
+      } else {
+        skipEmptyInitialization = false
+        reconcileFailed = false
+        reconcileGate = Promise.resolve()
+        safeSetStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'idle')
+      }
+    }
+  })
+
   onMount(() => {
-    // ─── Mount reconciliation (multi-device load) ────────────────────
-    // On becoming active for a workspace: learn the current cloud version,
-    // adopt the cloud copy when it is strictly newer than anything this
-    // device pushed, and align dedupe state when both sides already match.
-    if (!user || !isSupabaseConfigured() || !workspaceId) {
-      reconcileGate = Promise.resolve()
-    } else {
-      let cancelled = false
-      let resolveGate
-      let gateSettled = false
-      reconcileGate = new Promise((resolve) => {
-        resolveGate = () => {
-          if (!gateSettled) {
-            gateSettled = true
-            resolve()
-          }
-        }
-      })
-
-      pullWorkspace(user.id, workspaceId)
-        .then((record) => {
-          if (cancelled) return
-          if (!record) {
-            knownVersion = null
-            const localSnap = captureSnapshot?.()
-            if (localSnap) {
-              // Cloud is completely empty for this workspace. Initialize it with local data!
-              pendingChange = true
-              lastPushedSnapshot = null
-              resolveGate()
-              performPush()
-            } else {
-              resolveGate()
-            }
-            return
-          }
-
-          knownVersion = Number.isFinite(record.version) ? record.version : null
-
-          try {
-            const localSnap = captureSnapshot?.()
-            const localStr = serializeState(localSnap)
-            const cloudStr = record.data ? serializeState(record.data) : null
-
-            if (cloudStr === localStr) {
-              // Already identical — suppress the redundant mount-time push.
-              lastPushedSnapshot = localStr
-              pendingChange = false
-              setLastSyncedAt(record.syncedAt ? Date.parse(record.syncedAt) : Date.now())
-              safeSetStatus('idle')
-              return
-            }
-
-            const localMeta = getLastPushMeta(workspaceId)
-            const localTime = localMeta?.at ?? 0
-            const cloudTime = record.syncedAt ? Date.parse(record.syncedAt) : 0
-
-            if (record.data && cloudTime > localTime) {
-              // Cloud is strictly newer than anything this device pushed.
-              // adoptRemoteData backs up any unsynced local edits first.
-              adoptRemoteData(record.data, record.version)
-              safeSetStatus('idle')
-              safeSetError(null)
-            }
-            // else: local is newer or equal precedence — leave it; the
-            // debounced push runs version-protected against knownVersion.
-          } catch {
-            // Reconciliation is best-effort; local-first behavior continues.
-          }
-        })
-        .catch(() => {
-          // Offline/unreachable — stay fully local; pushes handle retries.
-        })
-        .finally(() => {
-          resolveGate()
-        })
-
-      onCleanup(() => {
-        cancelled = true
-        resolveGate()
-      })
-    }
-
-    // ─── Realtime remote updates from other devices/tabs ─────────────
-    if (user && isSupabaseConfigured() && supabase?.channel && workspaceId) {
-      const channel = supabase
-        .channel(`workspace-sync-${workspaceId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'workspace_data',
-            filter: `workspace_id=eq.${workspaceId}`,
-          },
-          (payload) => {
-            if (!payload?.new?.data) return
-            const remoteStr = serializeState(payload.new.data)
-
-            // Ignore echoes of our own writes (in-flight or already synced).
-            if (
-              remoteStr === lastPushedSnapshot ||
-              remoteStr === inFlightSnapshot
-            ) {
-              return
-            }
-
-            const localCurrent = captureSnapshot?.()
-
-            if (pendingChange && localCurrent) {
-              // Local unsynced edits exist — never silently drop them.
-              // Back them up and let the server arbitrate via the next
-              // version-checked push (conflict path preserves the local copy).
-              saveConflictBackup(workspaceId, localCurrent)
-              if (debounceTimer) clearTimeout(debounceTimer)
-              performPush()
-              return
-            }
-
-            try {
-              adoptRemoteData(validateWorkspaceState(payload.new.data), payload.new.version)
-            } catch {
-              // Malformed remote payload — ignore.
-            }
-          }
-        )
-        .subscribe()
-
-      onCleanup(() => {
-        supabase.removeChannel?.(channel)
-      })
-    }
-
     // ─── Online/offline transitions ──────────────────────────────────
     const handleOnline = () => {
       safeSetStatus('idle')
@@ -395,6 +514,7 @@ export function createSyncEngine({
 
     // ─── Flush pending changes when leaving / hiding the page ────────
     const flushPending = () => {
+      const user = resolveCurrentUser()
       if (!user || !isSupabaseConfigured() || !pendingChange) return
       if (typeof navigator !== 'undefined' && !navigator.onLine) return
       const snapshot = captureSnapshot?.()
@@ -430,14 +550,22 @@ export function createSyncEngine({
     mounted = false
     if (debounceTimer) clearTimeout(debounceTimer)
     if (retryTimer) clearTimeout(retryTimer)
+    if (typeof cleanupReconcile === 'function') {
+      cleanupReconcile()
+      cleanupReconcile = null
+    }
+    cleanupRealtime()
 
     // Best-effort immediate flush of unsynced edits when the engine
     // is disposed (workspace switch / logout). Closures still hold the old
     // workspace's state at cleanup time, which is exactly what we want.
+    const user = resolveCurrentUser()
     if (
       user &&
+      user.id === lastHandledUserId &&
       isSupabaseConfigured() &&
       pendingChange &&
+      !reconcileFailed &&
       typeof navigator !== 'undefined' &&
       navigator.onLine
     ) {

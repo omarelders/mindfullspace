@@ -3,7 +3,7 @@ import { createRoot } from 'solid-js'
 import { createWorkspace } from './useWorkspace'
 import { useAuth } from './useAuth'
 import { writeJsonStorage, getInitialWorkspaceState } from '../utils/storage'
-import { WORKSPACE_STORAGE_KEY_PREFIX } from '../utils/constants'
+import { WORKSPACE_STORAGE_KEY_PREFIX, APP_STORAGE_KEY } from '../utils/constants'
 
 // Mocking necessary audio utility (matches the real module's exports)
 vi.mock('../utils/audio', () => ({
@@ -15,6 +15,20 @@ vi.mock('../utils/audio', () => ({
 
 vi.mock('./useAuth', () => ({
   useAuth: vi.fn(() => ({ user: null })),
+}))
+
+const mockDeleteImageBlob = vi.fn().mockResolvedValue(true)
+const mockDeleteImageFromCloud = vi.fn().mockResolvedValue(true)
+
+vi.mock('../utils/imageStore', () => ({
+  deleteImage: (...args) => mockDeleteImageBlob(...args),
+  saveImage: vi.fn().mockResolvedValue('new-img-id'),
+  MAX_IMAGE_SIZE: 5 * 1024 * 1024,
+}))
+
+vi.mock('../lib/imageSync', () => ({
+  uploadImageToCloud: vi.fn().mockResolvedValue('uploaded-url'),
+  deleteImageFromCloud: (...args) => mockDeleteImageFromCloud(...args),
 }))
 
 describe('useWorkspace hook', () => {
@@ -154,5 +168,77 @@ describe('useWorkspace hook', () => {
     expect(titles).toContain('Imported Note 1')
     expect(titles).toContain('Imported Note 2')
     vi.useFakeTimers()
+  })
+
+  it('handles undo immediately after adding a card', async () => {
+    const ws = mountWorkspace('ws-default')
+    const initialNoteCount = ws.state.notes.length
+
+    // Add a new note
+    ws.actions.handleQuickAction('note', null, { x: 200, y: 200 })
+    expect(ws.state.notes.length).toBe(initialNoteCount + 1)
+
+    // Undo should immediately remove the newly added note
+    ws.actions.handleUndo()
+    expect(ws.state.notes.length).toBe(initialNoteCount)
+  })
+
+  it('safely replaces picture image without deleting blob if another card references it', async () => {
+    const ws = mountWorkspace('ws-default')
+
+    // Add picture card
+    ws.actions.handleQuickAction('picture', null, { x: 300, y: 300 })
+    const pic1 = ws.state.pictures[0]
+    ws.actions.updatePictureImageId(pic1.id, 'img-shared')
+
+    // Duplicate picture card (both now share 'img-shared')
+    ws.actions.duplicatePictureCard(pic1.id)
+    const pic2 = ws.state.pictures[1]
+    expect(pic2.imageId).toBe('img-shared')
+
+    mockDeleteImageBlob.mockClear()
+
+    // Replace image on pic1 -> pic2 still uses 'img-shared', so 'img-shared' MUST NOT be deleted
+    ws.actions.updatePictureImageId(pic1.id, 'img-new-1', 'img-shared')
+    expect(mockDeleteImageBlob).not.toHaveBeenCalledWith('img-shared')
+
+    // Now replace image on pic2 -> no one else uses 'img-shared', so it should be deleted
+    ws.actions.updatePictureImageId(pic2.id, 'img-new-2', 'img-shared')
+    expect(mockDeleteImageBlob).toHaveBeenCalledWith('img-shared')
+  })
+
+  it('keeps an image when another local workspace still references it', () => {
+    writeJsonStorage(APP_STORAGE_KEY, {
+      workspaces: [
+        { id: 'ws-default', name: 'Welcome' },
+        { id: 'ws-other', name: 'Other' },
+      ],
+      activeWorkspaceId: 'ws-default',
+    })
+    writeJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}ws-other`, {
+      pictures: [{ id: 'other-picture', imageId: 'img-cross-workspace' }],
+    })
+
+    const ws = mountWorkspace('ws-default')
+    ws.actions.handleQuickAction('picture', null, { x: 300, y: 300 })
+    const picture = ws.state.pictures[0]
+    ws.actions.updatePictureImageId(picture.id, 'img-cross-workspace')
+    mockDeleteImageBlob.mockClear()
+
+    ws.actions.updatePictureImageId(picture.id, 'img-replacement', 'img-cross-workspace')
+
+    expect(mockDeleteImageBlob).not.toHaveBeenCalledWith('img-cross-workspace')
+  })
+
+  it('does not crash when persisted labels contain null or malformed colors', () => {
+    writeJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}ws-malformed`, {
+      ...getInitialWorkspaceState('ws-malformed'),
+      customLabels: [null, { id: 'label-safe', text: 'Safe', role: 'routine', customColor: 42 }],
+    })
+
+    expect(() => {
+      const ws = mountWorkspace('ws-malformed')
+      void ws.state.detachedLabels
+    }).not.toThrow()
   })
 })

@@ -248,9 +248,11 @@ VALUES (
     'user-images',
     false,
     5242880,
-    ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml']
+    ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
 
 -- Storage RLS Policies: file path convention is {user_id}/{image_id}.{ext}
 DROP POLICY IF EXISTS "Users can upload own images" ON storage.objects;
@@ -259,6 +261,7 @@ CREATE POLICY "Users can upload own images"
     WITH CHECK (
         bucket_id = 'user-images'
         AND (storage.foldername(name))[1] = auth.uid()::text
+        AND lower(storage.extension(name)) IN ('jpg', 'jpeg', 'png', 'gif', 'webp')
     );
 
 DROP POLICY IF EXISTS "Users can view own images" ON storage.objects;
@@ -267,6 +270,7 @@ CREATE POLICY "Users can view own images"
     USING (
         bucket_id = 'user-images'
         AND (storage.foldername(name))[1] = auth.uid()::text
+        AND lower(storage.extension(name)) IN ('jpg', 'jpeg', 'png', 'gif', 'webp')
     );
 
 DROP POLICY IF EXISTS "Users can update own images" ON storage.objects;
@@ -275,10 +279,12 @@ CREATE POLICY "Users can update own images"
     USING (
         bucket_id = 'user-images'
         AND (storage.foldername(name))[1] = auth.uid()::text
+        AND lower(storage.extension(name)) IN ('jpg', 'jpeg', 'png', 'gif', 'webp')
     )
     WITH CHECK (
         bucket_id = 'user-images'
         AND (storage.foldername(name))[1] = auth.uid()::text
+        AND lower(storage.extension(name)) IN ('jpg', 'jpeg', 'png', 'gif', 'webp')
     );
 
 -- ============================================================

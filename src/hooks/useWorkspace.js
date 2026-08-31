@@ -2,6 +2,7 @@ import { createSignal, createEffect, createMemo, onMount, onCleanup } from 'soli
 import { createStore, reconcile } from 'solid-js/store'
 import {
   writeJsonStorage,
+  readJsonStorage,
   getInitialWorkspaceState,
   validateWorkspaceState,
   removeStorageKey
@@ -16,6 +17,7 @@ import {
   CARD_MOVE_TARGETS,
   HABIT_ICON_OPTIONS,
   WORKSPACE_STORAGE_KEY_PREFIX,
+  APP_STORAGE_KEY,
 } from '../utils/constants'
 import { parseDateKey, buildDateKey } from '../utils/dateUtils'
 import { saveImage, deleteImage as deleteImageBlob, MAX_IMAGE_SIZE } from '../utils/imageStore'
@@ -26,7 +28,7 @@ import { supportsNativeZoom } from '../utils/browserSupport'
 import { createUndoRedo } from './useUndoRedo'
 import { createCardCollection } from './useCardCollection'
 import { useAuth } from './useAuth'
-import { uploadImageToCloud, deleteImageFromCloud } from '../lib/imageSync'
+import { uploadImageToCloud } from '../lib/imageSync'
 
 function reorderListItems(list, itemId, targetItemId) {
   const currentIndex = list.findIndex((item) => item.id === itemId)
@@ -739,7 +741,7 @@ export function createWorkspace(workspaceId, workspaceRef) {
   })
 
   async function handlePasteImage(blob) {
-    if (blob.size > MAX_IMAGE_SIZE) {
+    if (!blob || blob.size > MAX_IMAGE_SIZE) {
       showToast(`Image too large (${(blob.size / 1024 / 1024).toFixed(1)}MB). Max 5MB.`)
       return
     }
@@ -1108,7 +1110,38 @@ export function createWorkspace(workspaceId, workspaceRef) {
   const togglePictureMinimize = picCol.toggleMinimize
   const duplicatePictureCard = picCol.duplicate
   const archivePictureCard = picCol.archive
-  function updatePictureImageId(id, imageId) { picCol.update(id, { imageId }) }
+  function hasLocalPictureReference(imageId, excludedCardId = null) {
+    if (!imageId) return false
+    const appState = readJsonStorage(APP_STORAGE_KEY)
+    const workspaceIds = [
+      workspaceId,
+      ...(Array.isArray(appState?.workspaces) ? appState.workspaces.map((workspace) => workspace?.id) : []),
+    ].filter((id, index, ids) => typeof id === 'string' && ids.indexOf(id) === index)
+
+    return workspaceIds.some((id) => {
+      const state = id === workspaceId
+        ? captureSnapshot()
+        : readJsonStorage(`${WORKSPACE_STORAGE_KEY_PREFIX}${id}`)
+      const activeMatch = Array.isArray(state?.pictures) && state.pictures.some((picture) =>
+        picture?.id !== excludedCardId && picture?.imageId === imageId
+      )
+      const archivedMatch = Array.isArray(state?.archivedCards) && state.archivedCards.some((entry) =>
+        entry?.type === 'picture' &&
+        entry.data?.id !== excludedCardId &&
+        entry.data?.imageId === imageId
+      )
+      return activeMatch || archivedMatch
+    })
+  }
+
+  function updatePictureImageId(id, imageId, oldImageId) {
+    picCol.update(id, { imageId })
+    if (oldImageId && oldImageId !== imageId) {
+      if (!hasLocalPictureReference(oldImageId)) {
+        deleteImageBlob(oldImageId).catch(() => {})
+      }
+    }
+  }
   function updatePictureDimensions(id, width, height) { picCol.update(id, { width, height }) }
   function updatePictureFitMode(id, fitMode) { picCol.update(id, { fitMode }) }
   function updatePictureFontSize(id, fontSize) { picCol.update(id, { fontSize }) }
@@ -1116,23 +1149,10 @@ export function createWorkspace(workspaceId, workspaceRef) {
     // Compute from current state directly — never run side effects inside a
     // setItems updater.
     const card = picCol.items.find((t) => t.id === id)
-    const isReferencedByActive = card?.imageId
-      ? picCol.items.some((c) => c.id !== id && c.imageId === card.imageId)
-      : false
-    const isReferencedByArchived = card?.imageId
-      ? ui.archivedCards.some((a) => a.type === 'picture' && a.data?.imageId === card.imageId)
-      : false
-
     picCol.remove(id)
 
-    if (card?.imageId && !isReferencedByActive && !isReferencedByArchived) {
+    if (card?.imageId && !hasLocalPictureReference(card.imageId)) {
       deleteImageBlob(card.imageId).catch(() => {})
-      // Remove the cloud copy too so deleted images don't accumulate as
-      // orphaned Storage objects.
-      const user = auth.user
-      if (user) {
-        deleteImageFromCloud(user.id, card.imageId).catch(() => {})
-      }
     }
   }
 
@@ -1400,86 +1420,86 @@ export function createWorkspace(workspaceId, workspaceRef) {
   }
 
   function handleAddLabel(pos) {
+    saveSnapshot('add-label')
     const id = createId('label'); const roles = ['routine', 'programming', 'english']
     setCustomLabels((p) => [...p, { id, text: '', role: roles[Math.floor(Math.random() * roles.length)] }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 400 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddSingleNote(pos) {
+    saveSnapshot('add-singlenote')
     const id = createId('singlenote')
     const vx = viewportLive.x / viewportLive.scale; const vy = viewportLive.y / viewportLive.scale
     setCardPositions((prev) => ({ ...prev, [id]: pos || { x: 450 - vx, y: 350 - vy } }))
     setSingleNotes((prev) => [...prev, { id, text: 'Single Note', shape: 'rectangle' }])
-    saveSnapshot()
   }
 
   function handleAddNote(pos) {
+    saveSnapshot('add-note')
     const id = createId('note')
     setNotes((p) => [...p, { id, text: '', title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 350 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddTodoList(pos) {
+    saveSnapshot('add-todolist')
     const id = createId('col'); const tones = ['charcoal', 'gold', 'violet', 'red', 'blue']
     setColumns((p) => [...p, { id, tone: tones[Math.floor(Math.random() * tones.length)], positionClass: '', items: [], title: '', color: null, minimized: false }])
     setUi('drafts', (p) => ({ ...p, [id]: '' }))
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 400 - (viewportLive.x / viewportLive.scale), y: 200 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddTimer(pos) {
+    saveSnapshot('add-timer')
     const id = createId('timer'); setTimers((p) => [...p, { id, initialSeconds: 2700, remainingSeconds: 2700, title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 600 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddCounter(pos) {
+    saveSnapshot('add-counter')
     const id = createId('counter'); setCounters((p) => [...p, { id, initialValue: 0, title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 960 - (viewportLive.x / viewportLive.scale), y: 260 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddStopwatch(pos) {
+    saveSnapshot('add-stopwatch')
     const id = createId('stopwatch'); setStopwatches((p) => [...p, { id, initialSeconds: 0, elapsedSeconds: 0, title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 1240 - (viewportLive.x / viewportLive.scale), y: 260 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddCalendar(pos) {
+    saveSnapshot('add-calendar')
     const id = createId('calendar'); const now = new Date()
     setCalendars((p) => [...p, { id, year: now.getFullYear(), month: now.getMonth(), selectedDate: null, entries: {}, title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 1500 - (viewportLive.x / viewportLive.scale), y: 120 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddHabit(pos) {
+    saveSnapshot('add-habit')
     const id = createId('habit'); const now = new Date()
     setHabits((p) => [...p, { id, icon: HABIT_ICON_OPTIONS[0].id, year: now.getFullYear(), month: now.getMonth(), view: 'summary', completions: {}, title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 1700 - (viewportLive.x / viewportLive.scale), y: 120 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddPicture(pos) {
+    saveSnapshot('add-picture')
     const id = createId('picture')
     setPictures((p) => [...p, { id, imageId: null, title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 500 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddQuickLinks(pos) {
+    saveSnapshot('add-quicklinks')
     const id = createId('quick-links')
     setQuickLinks((p) => [...p, { id, links: [], title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 1000 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleAddQuote(pos) {
+    saveSnapshot('add-quote')
     const id = createId('quote')
     setQuotes((p) => [...p, { id, text: '', author: '', title: '', color: null, minimized: false }])
     setCardPositions((p) => ({ ...p, [id]: pos || { x: 450 - (viewportLive.x / viewportLive.scale), y: 300 - (viewportLive.y / viewportLive.scale) } }))
-    saveSnapshot()
   }
 
   function handleQuickAction(actionId, event, canvasPos) {

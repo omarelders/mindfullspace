@@ -36,6 +36,7 @@ export function WorkspaceBoard(props) {
   const sync = createSyncEngine({
     workspaceId: props.workspace.id,
     captureSnapshot: actions.captureSnapshot,
+    getUser: () => auth.user,
     get user() { return auth.user },
     workspaceName: props.workspace.name,
     onRemoteWorkspaceLoaded: actions.importWorkspaceState,

@@ -256,6 +256,16 @@ describe('migration module', () => {
     expect(window.localStorage.getItem(`${MIGRATION_MARKER_PREFIX}user-fail`)).toBeNull()
   })
 
+  it('does not migrate local data when the cloud workspace-list read fails', async () => {
+    vi.spyOn(cloudDb, 'fetchCloudWorkspaces').mockRejectedValue(new Error('workspace list unavailable'))
+
+    await expect(handleFirstSignIn('user-list-read-fail')).rejects.toMatchObject({
+      message: 'workspace list unavailable',
+    })
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(`${MIGRATION_MARKER_PREFIX}user-list-read-fail`)).toBeNull()
+  })
+
   it('pullAllFromCloud backs up meaningful local content before overwriting it', async () => {
     vi.spyOn(cloudDb, 'fetchCloudWorkspaces').mockResolvedValue([
       { id: 'ws-pull', name: 'Pulled', sort_order: 0 },
